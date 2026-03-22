@@ -1,0 +1,21 @@
+{
+  "id": "cfbc642e-57df-4b9a-98ff-d3868ef11982",
+  "timestamp": "2026-03-22T03:00:49.350443",
+  "source": "environment",
+  "tool_name": "web_re_search",
+  "tool_call_id": "toolu_08",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Error calling MCP tool web_re_search: "
+      }
+    ],
+    "is_error": true,
+    "tool_name": "web_re_search",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "b6c638ca-6df7-4685-9bc7-7ff095671cb5",
+  "kind": "ObservationEvent"
+}

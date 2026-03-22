@@ -1,0 +1,13 @@
+[Unit]
+Description=LM Studio Docker localhost DNAT rule
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/dev/OH_SHOP/scripts/lmstudio-docker-dnat.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

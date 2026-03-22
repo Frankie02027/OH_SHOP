@@ -1,0 +1,37 @@
+{
+  "id": "26e4ab0e-d24e-4dfa-bf5c-1fd5f9a5e0bd",
+  "timestamp": "2026-03-22T00:03:09.233314",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": ""
+    }
+  ],
+  "reasoning_content": null,
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {
+      "query": "current temperature Burbank IL",
+      "max_results": "10",
+      "max_pages": "2",
+      "max_steps": "3"
+    },
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "sse_f9a746b5_web_research",
+  "tool_call_id": "toolu_01",
+  "tool_call": {
+    "id": "toolu_01",
+    "name": "sse_f9a746b5_web_research",
+    "arguments": "{\"query\": \"current temperature Burbank IL\", \"security_risk\": \"MEDIUM\", \"max_results\": \"10\", \"max_pages\": \"2\", \"max_steps\": \"3\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-q2vyl1k33t9jveoaj258em",
+  "security_risk": "MEDIUM",
+  "critic_result": null,
+  "summary": "sse_f9a746b5_web_research: {\"query\": \"current temperature Burbank IL\", \"max_results\": \"10\", \"max_pages\": \"2\", \"max_steps\": \"3\"}",
+  "kind": "ActionEvent"
+}

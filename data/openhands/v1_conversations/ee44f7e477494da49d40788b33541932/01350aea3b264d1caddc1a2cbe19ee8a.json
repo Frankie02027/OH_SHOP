@@ -1,0 +1,27 @@
+{
+  "id": "01350aea-3b26-4d1c-addc-1a2cbe19ee8a",
+  "timestamp": "2026-03-21T21:35:04.246357",
+  "source": "agent",
+  "llm_message": {
+    "role": "assistant",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "The current temperature in Burbank, IL is 70F / 21C. This information was obtained from the weather source wttr.in.\n\nI used the web_research tool to find this information by searching for \"current temperature Burbank IL\". The search returned results from wttr.in, which provides real-time weather data."
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": "",
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": "chatcmpl-a7gj4ocw4p7x9upo03k29e",
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

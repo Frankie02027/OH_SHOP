@@ -1,0 +1,22 @@
+{
+  "id": "fc5d6f03-df66-4e1a-a4ab-ddaa530c3276",
+  "timestamp": "2026-03-21T22:07:42.487825",
+  "source": "environment",
+  "tool_name": "browser_navigate",
+  "tool_call_id": "toolu_06",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Opened new tab with URL: https://www.google.com/search?q=current+temperature+Burbank+IL"
+      }
+    ],
+    "is_error": false,
+    "screenshot_data": null,
+    "full_output_save_dir": "/workspace/conversations/4a0e88ff848a4316964d8831583c03e4/observations",
+    "kind": "BrowserObservation"
+  },
+  "action_id": "37eb9e18-cfec-4bd0-91cd-3ec0c6ef664f",
+  "kind": "ObservationEvent"
+}

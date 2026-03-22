@@ -1,0 +1,27 @@
+{
+  "id": "1e0c1db3-d70e-429e-af9c-977d578334b2",
+  "timestamp": "2026-03-21T22:12:05.579953",
+  "source": "user",
+  "llm_message": {
+    "role": "user",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Parameter 'command' is not allowed for function 'sse_42efed88_web_research'. Allowed parameters: {'download', 'max_results', 'security_risk', 'max_steps', 'query', 'allowed_domains', 'summary', 'max_pages'}"
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": null,
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": null,
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

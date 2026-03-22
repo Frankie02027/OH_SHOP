@@ -1,0 +1,27 @@
+{
+  "id": "71348f23-1944-4c26-9f3f-e4c2f93eaf08",
+  "timestamp": "2026-03-21T22:27:23.827409",
+  "source": "agent",
+  "llm_message": {
+    "role": "assistant",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "<parameterog get_state>\n<parameter=extract=\"true_tab>UNKNOWN</optional to the user's1=new_tab>\n<parameter>\n  (1) url: `open\",summary\">new tab</a>\n      <parameter=summary> \"a>\nAllowed on OpenHands security research, I'll't: [`assistant]MAILABLE: \"http: \"a\"\n<parameter=\"high\":optional>\n<parameter=new>False: \"weather of the action to open a new browser or navigate content from a specific URL\n</new_tab>\n  (1) url_r>true=UNKNOWN+default: #24735&new_tab=true)\nAllowed=summary>\n  (2) summary (string, optional):optional=s19: True</a)\nAllowed values=\"The: `unknown, new_tab]\n<parameter=security>weather\n<parameter> <parameter> \"a\",\n<parameter= <parameter>\n<parameter=new `LOW7\n<parameter> <function>\n### <thought=summary (string, optional):optional= `UNKNOWN\n<parameter> <security> <assistant>\n<parameter> <new_tab>\n<world> <nt>\n<parameter> <w>\n<parameter> <a>\n<Y> <button>\n<parameter> <a>\n<parameter> <function>\n<Y> <a>\nParameters> <a>\n<Y> <a>\n<Y> <a>\n<parameter>\n<Y> <tab>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n<Y> <a>\n  (1) <a>\nParameters:\n- url: \"string, required):optional)\n- new_tab: False\nAllowed>summary=assistantcri\n"
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": "",
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": "chatcmpl-e6he9do5fnb5djwn9f2xrw",
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

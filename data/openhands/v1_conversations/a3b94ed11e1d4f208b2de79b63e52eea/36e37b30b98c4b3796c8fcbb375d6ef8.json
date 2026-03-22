@@ -1,0 +1,35 @@
+{
+  "id": "36e37b30-b98c-4b37-96c8-fcbb375d6ef8",
+  "timestamp": "2026-03-21T21:30:56.537645",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": ""
+    }
+  ],
+  "reasoning_content": null,
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {
+      "query": "current temperature Burbank IL",
+      "max_results": "5"
+    },
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "sse_b3fbbeb7_web_research",
+  "tool_call_id": "toolu_01",
+  "tool_call": {
+    "id": "toolu_01",
+    "name": "sse_b3fbbeb7_web_research",
+    "arguments": "{\"query\": \"current temperature Burbank IL\", \"max_results\": \"5\", \"security_risk\": \"MEDIUM\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-0foj0yioi0yotpg0innbqls",
+  "security_risk": "MEDIUM",
+  "critic_result": null,
+  "summary": "sse_b3fbbeb7_web_research: {\"query\": \"current temperature Burbank IL\", \"max_results\": \"5\"}",
+  "kind": "ActionEvent"
+}

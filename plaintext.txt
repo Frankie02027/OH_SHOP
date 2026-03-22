@@ -1,0 +1,7 @@
+ssh -Y user@host
+
+VERIFY_CYCLES=6 VERIFY_INTERVAL=10 VERIFY_RETRIES=3 VERIFY_RETRY_DELAY=2 python3 scripts/verify.py
+# if you're in /home/dev/OH_SHOP
+VERIFY_CYCLES=6 VERIFY_INTERVAL=10 VERIFY_RETRIES=3 VERIFY_RETRY_DELAY=2 python3 scripts/verify.py
+# if you're in /home/dev/OH_SHOP/scripts
+VERIFY_CYCLES=6 VERIFY_INTERVAL=10 VERIFY_RETRIES=3 VERIFY_RETRY_DELAY=2 python3 verify.py

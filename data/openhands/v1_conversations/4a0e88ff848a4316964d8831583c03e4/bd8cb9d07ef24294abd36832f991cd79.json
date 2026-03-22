@@ -1,0 +1,22 @@
+{
+  "id": "bd8cb9d0-7ef2-4294-abd3-6832f991cd79",
+  "timestamp": "2026-03-21T22:23:14.934466",
+  "source": "environment",
+  "tool_name": "browser_navigate",
+  "tool_call_id": "toolu_16",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Opened new tab with URL: http://localhost:58447"
+      }
+    ],
+    "is_error": false,
+    "screenshot_data": null,
+    "full_output_save_dir": "/workspace/conversations/4a0e88ff848a4316964d8831583c03e4/observations",
+    "kind": "BrowserObservation"
+  },
+  "action_id": "6ad58e20-648a-420c-9cb6-f1cefe739d30",
+  "kind": "ObservationEvent"
+}

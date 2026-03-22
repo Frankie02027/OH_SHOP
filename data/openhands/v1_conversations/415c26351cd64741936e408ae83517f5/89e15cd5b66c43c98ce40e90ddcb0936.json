@@ -1,0 +1,26 @@
+{
+  "id": "89e15cd5-b66c-43c9-8ce4-0e90ddcb0936",
+  "timestamp": "2026-03-22T05:58:29.646531",
+  "source": "environment",
+  "tool_name": "web_re_search",
+  "tool_call_id": "toolu_01",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'web_re_search' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"answer\": \"Web research results for: https://github.com/opengauss/openGauss/blob/master/README.md\\nVisited 1 page(s).\\nKey excerpts:\\n- Hi there \\ud83d\\udc4b git opengauss \\u53ef\\u4ee5\\u51fa\\u552e \\u8054\\u7cfb\\u90ae\\u7bb1 myzhs@hotmail.com\\nSources:\\n- https://github.com/opengauss/openGauss/blob/main/README.md\",\n  \"sources\": [\n    \"https://github.com/opengauss/openGauss/blob/main/README.md\"\n  ],\n  \"quotes\": [\n    \"Hi there \\ud83d\\udc4b git opengauss \\u53ef\\u4ee5\\u51fa\\u552e \\u8054\\u7cfb\\u90ae\\u7bb1 myzhs@hotmail.com\"\n  ],\n  \"artifacts\": [],\n  \"trace\": {\n    \"searched\": [],\n    \"seeded\": [\n      \"https://github.com/opengauss/openGauss/blob/master/README.md\"\n    ],\n    \"visited\": [\n      \"https://github.com/opengauss/openGauss/blob/main/README.md\"\n    ],\n    \"downloads\": []\n  }\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "web_re_search",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "d59bc020-f182-4444-8101-91fb572a0531",
+  "kind": "ObservationEvent"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "3bc2aa7f-5a2f-4c2a-8629-a0b1a57f3a85",
+  "timestamp": "2026-03-22T05:28:29.090190",
+  "source": "environment",
+  "tool_name": "web_re_search",
+  "tool_call_id": "toolu_02",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'web_re_search' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"answer\": \"No browsable sources were found for: https://github.com/opengauss/openGauss/blob/main/README.md\",\n  \"sources\": [],\n  \"quotes\": [],\n  \"artifacts\": [],\n  \"trace\": {\n    \"searched\": [],\n    \"seeded\": [\n      \"https://github.com/opengauss/openGauss/blob/main/README.md\"\n    ],\n    \"visited\": [],\n    \"downloads\": []\n  }\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "web_re_search",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "a05c58de-1632-470c-8bab-ed85e85dda5c",
+  "kind": "ObservationEvent"
+}

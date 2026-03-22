@@ -1,0 +1,27 @@
+{
+  "id": "72efcbfa-a307-4e45-91ce-01a3f7b11d56",
+  "timestamp": "2026-03-22T03:01:25.773058",
+  "source": "user",
+  "llm_message": {
+    "role": "user",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Function 'web_re_search' not found in available tools: ['web_research', 'finish', 'think']"
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": null,
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": null,
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

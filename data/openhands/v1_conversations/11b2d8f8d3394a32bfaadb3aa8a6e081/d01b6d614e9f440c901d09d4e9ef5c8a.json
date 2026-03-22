@@ -1,0 +1,27 @@
+{
+  "id": "d01b6d61-4e9f-440c-901d-09d4e9ef5c8a",
+  "timestamp": "2026-03-21T23:54:32.081267",
+  "source": "user",
+  "llm_message": {
+    "role": "user",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Parameter 'security_risk' is not allowed for function 'browser_get_state'. Allowed parameters: {'summary', 'include_screenshot'}"
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": null,
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": null,
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

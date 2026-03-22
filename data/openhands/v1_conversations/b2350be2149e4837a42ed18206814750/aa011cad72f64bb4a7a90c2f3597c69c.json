@@ -1,0 +1,21 @@
+{
+  "id": "aa011cad-72f6-4bb4-a7a9-0c2f3597c69c",
+  "timestamp": "2026-03-22T03:43:18.339333",
+  "source": "environment",
+  "tool_name": "web_re_search",
+  "tool_call_id": "toolu_01",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Error calling MCP tool web_re_search: Connection closed"
+      }
+    ],
+    "is_error": true,
+    "tool_name": "web_re_search",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "2c909e2d-4790-46c5-9c5c-a3eea9703b18",
+  "kind": "ObservationEvent"
+}

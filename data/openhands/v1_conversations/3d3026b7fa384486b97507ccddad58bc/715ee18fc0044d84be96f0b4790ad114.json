@@ -1,0 +1,27 @@
+{
+  "id": "715ee18f-c004-4d84-be96-f0b4790ad114",
+  "timestamp": "2026-03-22T05:49:11.708273",
+  "source": "user",
+  "llm_message": {
+    "role": "user",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Function 'web_re_search security_risk=\"LOW\"\n<parameter=query' not found in available tools: ['web_research', 'web_re_search', 'finish', 'think']"
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": null,
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": null,
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

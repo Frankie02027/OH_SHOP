@@ -1,0 +1,27 @@
+{
+  "id": "349be7a3-58bf-44a4-ae43-8463caa43cbd",
+  "timestamp": "2026-03-21T21:50:45.628582",
+  "source": "user",
+  "llm_message": {
+    "role": "user",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Use the web_research tool to find the current temperature in Burbank, IL. Cite the source you used and say explicitly that you used web_research."
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": null,
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": null,
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

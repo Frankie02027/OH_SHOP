@@ -1,0 +1,26 @@
+{
+  "id": "5078f256-0e80-4af8-b041-4474dbd07e11",
+  "timestamp": "2026-03-22T02:04:37.475336",
+  "source": "environment",
+  "tool_name": "web_research",
+  "tool_call_id": "toolu_11",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'web_research' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"answer\": \"No results matched query/domain constraints for: openGauss GitHub\",\n  \"sources\": [],\n  \"quotes\": [],\n  \"artifacts\": [],\n  \"trace\": {\n    \"searched\": [],\n    \"visited\": [],\n    \"downloads\": []\n  }\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "web_research",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "ca242114-25fe-4eaa-9020-d6124e4e2391",
+  "kind": "ObservationEvent"
+}

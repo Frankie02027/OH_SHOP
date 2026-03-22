@@ -1,0 +1,27 @@
+{
+  "id": "1df9072f-dbfb-4222-bbe0-cd618c88b880",
+  "timestamp": "2026-03-21T20:58:43.755315",
+  "source": "agent",
+  "llm_message": {
+    "role": "assistant",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Hello! How can I assist you today?"
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": "",
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": "chatcmpl-ifrg8w8uruo6fu0ywxz64",
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

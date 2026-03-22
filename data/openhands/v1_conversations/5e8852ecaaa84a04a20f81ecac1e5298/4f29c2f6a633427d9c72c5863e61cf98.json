@@ -1,0 +1,8 @@
+{
+  "id": "4f29c2f6-a633-427d-9c72-c5863e61cf98",
+  "timestamp": "2026-03-21T20:09:44.095282",
+  "source": "environment",
+  "code": "LLMBadRequestError",
+  "detail": "litellm.BadRequestError: LLM Provider NOT provided. Pass in the LLM provider you are trying to call. You passed model=all-hands_openhands-lm-32b-v0.1\n Pass model as E.g. For 'Huggingface' inference endpoints pass in `completion(model='huggingface/starcoder',..)` Learn more: https://docs.litellm.ai/docs/providers",
+  "kind": "ConversationErrorEvent"
+}

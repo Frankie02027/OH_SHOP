@@ -1,0 +1,27 @@
+{
+  "id": "aaad5c01-4e6e-4996-a204-35a8cdc6bb1e",
+  "timestamp": "2026-03-21T23:57:14.105906",
+  "source": "user",
+  "llm_message": {
+    "role": "user",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Function 'web_research' not found in available tools: ['terminal', 'file_editor', 'task_tracker', 'browser_navigate', 'browser_click', 'browser_get_state', 'browser_get_content', 'browser_type', 'browser_scroll', 'browser_go_back', 'browser_list_tabs', 'browser_switch_tab', 'browser_close_tab', 'browser_get_storage', 'browser_set_storage', 'default_create_pr', 'default_create_mr', 'default_create_bitbucket_pr', 'default_create_azure_devops_pr', 'sse_676a5d75_web_research', 'finish', 'think']"
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": null,
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": null,
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

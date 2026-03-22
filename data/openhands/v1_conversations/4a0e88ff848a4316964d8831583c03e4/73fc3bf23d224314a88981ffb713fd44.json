@@ -1,0 +1,22 @@
+{
+  "id": "73fc3bf2-3d22-4314-a889-81ffb713fd44",
+  "timestamp": "2026-03-21T22:13:54.793736",
+  "source": "environment",
+  "tool_name": "browser_navigate",
+  "tool_call_id": "toolu_12",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Opened new tab with URL: https://www.bing.com/search?q=current+temperature+Burbank+IL"
+      }
+    ],
+    "is_error": false,
+    "screenshot_data": null,
+    "full_output_save_dir": "/workspace/conversations/4a0e88ff848a4316964d8831583c03e4/observations",
+    "kind": "BrowserObservation"
+  },
+  "action_id": "9364bec7-d6e9-47e9-a324-79c597d6333c",
+  "kind": "ObservationEvent"
+}

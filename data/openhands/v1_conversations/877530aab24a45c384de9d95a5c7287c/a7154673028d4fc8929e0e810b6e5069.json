@@ -1,0 +1,26 @@
+{
+  "id": "a7154673-028d-4fc8-929e-0e810b6e5069",
+  "timestamp": "2026-03-22T04:19:05.003464",
+  "source": "environment",
+  "tool_name": "web_re_search",
+  "tool_call_id": "toolu_07",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'web_re_search' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"answer\": \"No browsable sources were found for: https://gitee.com/opengauss/openGauss-server\",\n  \"sources\": [],\n  \"quotes\": [],\n  \"artifacts\": [],\n  \"trace\": {\n    \"searched\": [],\n    \"seeded\": [\n      \"https://gitee.com/opengauss/openGauss-server\"\n    ],\n    \"visited\": [],\n    \"downloads\": []\n  }\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "web_re_search",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "91073bd9-f9fe-4760-a4cd-4ccc57c4b795",
+  "kind": "ObservationEvent"
+}

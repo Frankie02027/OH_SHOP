@@ -1,0 +1,160 @@
+services:
+  # ----------------------------
+  # OpenHands (the house)
+  # ----------------------------
+  openhands:
+    build:
+      context: ..
+      dockerfile: compose/openhands_override/Dockerfile
+    image: oh-shop/openhands:61470a1-python-patched
+    container_name: openhands-app
+    command: ["uvicorn", "openhands.server.listen:app", "--host", "0.0.0.0", "--port", "3000"]
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "${DOCKER_BRIDGE_GATEWAY:-172.17.0.1}:3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - OH_PERSISTENCE_DIR=/.openhands
+      - LOG_ALL_EVENTS=true
+      - WORKSPACE_MOUNT_PATH=/opt/workspace_base
+      - AGENT_SERVER_IMAGE_REPOSITORY=oh-shop/agent-server
+      - AGENT_SERVER_IMAGE_TAG=61470a1-python-patched
+    volumes:
+      # OpenHands uses Docker to spin up sandbox runtimes, so it needs the Docker socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persist OpenHands state under OH_SHOP
+      - /home/dev/OH_SHOP/data/openhands:/.openhands
+      # Only allow repos under OH_SHOP as workspace base
+      - /home/dev/OH_SHOP/repos:/opt/workspace_base
+    stdin_open: true
+    tty: true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3000/', timeout=3); raise SystemExit(0 if r.status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ----------------------------
+  # chat-guard (optional / provisional repair tooling)
+  # - Not part of the canonical baseline architecture
+  # - Retained for targeted reconciliation of transient chat-state rows
+  # - Do not treat this service as proof that the core stack is healthy
+  # ----------------------------
+  chat-guard:
+    image: python:3.11-alpine
+    container_name: openhands-chat-guard
+    command:
+      [
+        "sh",
+        "-lc",
+        "python3 -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir docker >/dev/null && python3 -u /opt/oh_shop/scripts/chat_guard.py --db /.openhands/openhands.db --watch --interval 60 --openhands-url http://openhands:3000",
+      ]
+    volumes:
+      - /home/dev/OH_SHOP/data/openhands:/.openhands
+      - /home/dev/OH_SHOP/scripts:/opt/oh_shop/scripts:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      openhands:
+        condition: service_started
+    restart: unless-stopped
+
+  # ----------------------------
+  # OpenWebUI (the cockpit)
+  # ----------------------------
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "127.0.0.1:3001:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - OPENAI_API_BASE_URLS=http://host.docker.internal:1234/v1
+      - OPENAI_API_KEYS=lm-studio
+      - ENABLE_OPENAI_API=true
+      - OLLAMA_BASE_URLS=
+    volumes:
+      - openwebui_data:/app/backend/data
+    restart: unless-stopped
+
+  # ----------------------------
+  # SearxNG (free search backend)
+  # ----------------------------
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "127.0.0.1:3002:8080"
+    volumes:
+      - searxng_data:/etc/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:3002/
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8080/', timeout=3); raise SystemExit(0 if r.status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ----------------------------
+  # oh-browser-mcp (Phase 1: full browsing tool server)
+  # - Uses SearxNG for search
+  # - Uses Playwright + AI---browser-use for real navigation/clicking/downloads
+  # - Exposes MCP over SSE to OpenHands
+  # ----------------------------
+  oh-browser-mcp:
+    build:
+      context: ../repos/oh-browser-mcp
+    container_name: oh-browser-mcp
+    ports:
+      - "127.0.0.1:3010:3010"
+      - "${DOCKER_BRIDGE_GATEWAY:-172.17.0.1}:3010:3010"
+    environment:
+      - SEARXNG_URL=http://searxng:8080
+      - LLM_BASE_URL=http://host.docker.internal:1234/v1
+      - LLM_MODEL=all-hands_openhands-lm-32b-v0.1
+      - LLM_API_KEY=lm-studio
+      - DOWNLOAD_DIR=/data/downloads
+      - LOG_DIR=/data/logs
+      - MCP_PORT=3010
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /home/dev/OH_SHOP/downloads:/data/downloads
+      - /home/dev/OH_SHOP/data/oh_browser_mcp:/data
+    depends_on:
+      searxng:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3010/health', timeout=3); raise SystemExit(0 if r.status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  openwebui_data:
+  searxng_data:

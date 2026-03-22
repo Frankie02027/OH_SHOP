@@ -1,0 +1,26 @@
+{
+  "id": "76e15151-cdb4-4486-95ce-7156fb232631",
+  "timestamp": "2026-03-22T05:26:08.929692",
+  "source": "environment",
+  "tool_name": "web_re_search",
+  "tool_call_id": "toolu_01",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'web_re_search' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"answer\": \"No browsable sources were found for: https://github.com/opengauss/openGauss\",\n  \"sources\": [],\n  \"quotes\": [],\n  \"artifacts\": [],\n  \"trace\": {\n    \"searched\": [],\n    \"seeded\": [\n      \"https://github.com/opengauss/openGauss\"\n    ],\n    \"visited\": [],\n    \"downloads\": []\n  }\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "web_re_search",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "66611a06-4fa5-462a-82ae-a65914e22d60",
+  "kind": "ObservationEvent"
+}

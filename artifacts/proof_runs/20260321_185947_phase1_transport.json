@@ -1,0 +1,53 @@
+{
+  "tool_names": [
+    "web_research"
+  ],
+  "request": {
+    "query": "Inspect http://phase1-fixture:8080/, follow the Phase 1 release walkthrough, and download the Linux amd64 Phase 1 proof artifact.",
+    "max_results": 5,
+    "max_pages": 5,
+    "max_steps": 20,
+    "download": true,
+    "allowed_domains": [
+      "phase1-fixture"
+    ]
+  },
+  "response": {
+    "answer": "Web research results for: Inspect http://phase1-fixture:8080/, follow the Phase 1 release walkthrough, and download the Linux amd64 Phase 1 proof artifact.\nVisited 2 page(s).\nKey excerpts:\n- Start the release walkthrough to find the Linux amd64 Phase 1 proof artifact.\n- This deterministic fixture exists to prove that web_research can follow links across multiple pages and trigger a real browser download.\n- Open the Phase 1 release walkthrough\n- Artifact target: Linux amd64 Phase 1 proof artifact.\n- Download Linux amd64 Phase 1 proof artifact\n- This page mimics a release page. The downloadable asset is hidden until the assets control is clicked.\nCaptured 1 downloaded artifact(s).\nSources:\n- http://phase1-fixture:8080/\n- http://phase1-fixture:8080/release.html",
+    "sources": [
+      "http://phase1-fixture:8080/",
+      "http://phase1-fixture:8080/release.html"
+    ],
+    "quotes": [
+      "Start the release walkthrough to find the Linux amd64 Phase 1 proof artifact.",
+      "This deterministic fixture exists to prove that web_research can follow links across multiple pages and trigger a real browser download.",
+      "Open the Phase 1 release walkthrough",
+      "Artifact target: Linux amd64 Phase 1 proof artifact.",
+      "Download Linux amd64 Phase 1 proof artifact",
+      "This page mimics a release page. The downloadable asset is hidden until the assets control is clicked."
+    ],
+    "artifacts": [
+      {
+        "path": "/data/downloads/phase1-proof_2.txt",
+        "sha256": "4d057f1a6b9bd2c158db29b17d58df75dc5deb15ed78317ad0af1ab0f3eb8ba5",
+        "bytes": 150
+      }
+    ],
+    "trace": {
+      "searched": [],
+      "seeded": [
+        "http://phase1-fixture:8080/"
+      ],
+      "visited": [
+        "http://phase1-fixture:8080/",
+        "http://phase1-fixture:8080/release.html"
+      ],
+      "downloads": [
+        "/data/downloads/phase1-proof_2.txt"
+      ]
+    }
+  },
+  "host_artifacts": [
+    "/home/dev/OH_SHOP/downloads/phase1-proof_2.txt"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "55dec2eb-dfff-476f-b3ea-b891b5bac3cc",
+  "timestamp": "2026-03-21T16:42:48.669019",
+  "source": "user",
+  "llm_message": {
+    "role": "user",
+    "content": [],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": null,
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": null,
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

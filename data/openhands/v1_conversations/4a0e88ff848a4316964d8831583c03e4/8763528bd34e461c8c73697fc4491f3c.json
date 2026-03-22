@@ -1,0 +1,22 @@
+{
+  "id": "8763528b-d34e-461c-8c73-697fc4491f3c",
+  "timestamp": "2026-03-21T22:09:10.632526",
+  "source": "environment",
+  "tool_name": "browser_navigate",
+  "tool_call_id": "toolu_08",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Opened new tab with URL: https://www.weather.com/weather/today/l/41705"
+      }
+    ],
+    "is_error": false,
+    "screenshot_data": null,
+    "full_output_save_dir": "/workspace/conversations/4a0e88ff848a4316964d8831583c03e4/observations",
+    "kind": "BrowserObservation"
+  },
+  "action_id": "401ad3bb-1f50-410c-b206-298571786eb1",
+  "kind": "ObservationEvent"
+}

@@ -1,0 +1,21 @@
+{
+  "id": "59bc8f4e-cdfe-42ce-892c-dab710384aec",
+  "timestamp": "2026-03-22T02:46:00.542015",
+  "source": "environment",
+  "tool_name": "web_re_search",
+  "tool_call_id": "toolu_01",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "MCP tool 'web_re_search' timed out after 300 seconds. The tool server may be unresponsive or the operation is taking too long. Consider retrying or using an alternative approach."
+      }
+    ],
+    "is_error": true,
+    "tool_name": "web_re_search",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "8317a1d0-1a5c-4f88-99eb-b5acd9f60eaa",
+  "kind": "ObservationEvent"
+}

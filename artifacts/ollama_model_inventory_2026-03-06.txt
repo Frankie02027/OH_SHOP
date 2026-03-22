@@ -1,0 +1,12 @@
+Captured: 2026-03-06
+Source: ollama list
+
+Original Ollama model names:
+- seamon67/Devstral1.1-2507:24b-q4_K_M
+- hf.co/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF:latest
+- glm-4.7-flash:latest
+
+LM Studio pulled models:
+- mistralai/devstral-small-2-2512 (closest available to seamon67 Devstral)
+- qwen2.5-coder-32b-instruct
+- zai-org/glm-4.7-flash
