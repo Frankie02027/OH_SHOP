@@ -1,0 +1,9 @@
+{
+  "name": "model-router",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "bun run router.ts",
+    "dev": "bun --watch run router.ts"
+  },
+  "dependencies": {}
+}

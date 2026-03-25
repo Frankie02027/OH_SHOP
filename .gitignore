@@ -1,0 +1,35 @@
+.vscode/
+**/__pycache__/
+**/*.py[cod]
+**/.turbo/
+**/node_modules/
+*.log
+*.tmp
+*.swp
+nohup.out
+.DS_Store
+
+# Local runtime state
+.openhands/
+data/
+downloads/
+artifacts/backups/
+
+# Nested repos managed separately
+repos/OpenHands/
+repos/stagehand(working)/
+
+# Local scratch and benchmark fixtures
+repos/benchmark_workspace/
+repos/test_data/
+repos/test_files/
+repos/test_images/
+repos/test.service
+repos/bsearch.py
+repos/bugfix1.py
+repos/bugfix2.py
+repos/bugfix3.py
+repos/fizzbuzz.py
+repos/hello.py
+repos/mergesort.py
+repos/palindrome.py

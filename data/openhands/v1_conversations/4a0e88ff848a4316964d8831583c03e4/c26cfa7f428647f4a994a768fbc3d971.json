@@ -1,8 +1,0 @@
-{
-  "id": "c26cfa7f-4286-47f4-a994-a768fbc3d971",
-  "timestamp": "2026-03-21T22:27:23.840219",
-  "source": "environment",
-  "key": "execution_status",
-  "value": "finished",
-  "kind": "ConversationStateUpdateEvent"
-}

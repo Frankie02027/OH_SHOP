@@ -1,8 +1,0 @@
-{
-  "id": "9490f893-0388-4051-825a-9b160a961f83",
-  "timestamp": "2026-03-21T19:32:28.878837",
-  "source": "environment",
-  "code": "NotFoundError",
-  "detail": "litellm.NotFoundError: NotFoundError: OpenAIException - Error code: 404",
-  "kind": "ConversationErrorEvent"
-}

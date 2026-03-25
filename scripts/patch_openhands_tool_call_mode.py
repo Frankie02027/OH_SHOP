@@ -11,8 +11,7 @@ LLM_TARGET = Path(
 FN_CONVERTER_TARGET = Path("/app/openhands/llm/fn_call_converter.py")
 SDK_FN_CONVERTER_TARGET = Path(
     "/app/.venv/lib/python3.13/site-packages/openhands/sdk/llm/mixins/"
-    "fn_call_converter.py"
-)
+    "fn_call_converter.py")
 
 PATCH_SNIPPET = """        if model and 'openhands-lm' in model:
             llm_kwargs['native_tool_calling'] = False
@@ -52,6 +51,11 @@ NEW_FIX_STOPWORD_BLOCK = """def _normalize_model_tool_markup(content: str) -> st
     \"\"\"Normalize malformed mock function-calling markup from local models.\"\"\"
     content = content.replace('<|im_start|>', '').replace('<|im_end|>', '')
     content = re.sub(
+        r'<function=([^>\\n]+)>',
+        lambda match: '<function=' + match.group(1).strip().split()[0] + '>',
+        content,
+    )
+    content = re.sub(
         r'<function=([^\\s>]+)[^>\\n]*(?:\\n)?(?=<parameter=)',
         r'<function=\\1>\\n',
         content,
@@ -60,6 +64,12 @@ NEW_FIX_STOPWORD_BLOCK = """def _normalize_model_tool_markup(content: str) -> st
     content = re.sub(
         r'<parameter>\\s*([a-zA-Z0-9_]+)>(.*?)</parameter>',
         r'<parameter=\\1>\\2</parameter>',
+        content,
+        flags=re.DOTALL,
+    )
+    content = re.sub(
+        r'<parameter=(security_risk|summary)>.*?</parameter>\\s*',
+        '',
         content,
         flags=re.DOTALL,
     )
@@ -112,7 +122,98 @@ NEW_NORMALIZE_PARAM_BLOCK = """def _normalize_parameter_tags(fn_body: str) -> st
         fn_body,
         flags=re.DOTALL,
     )
+    fn_body = re.sub(
+        r'<parameter=(security_risk|summary)>.*?</parameter>\\s*',
+        '',
+        fn_body,
+        flags=re.DOTALL,
+    )
     return fn_body
+"""
+
+FN_NAME_SNIPPET = """                fn_name = fn_match.group(1)
+                fn_body = _normalize_parameter_tags(fn_match.group(2))
+"""
+
+FN_NAME_REPLACEMENT = """                raw_fn_name = fn_match.group(1)
+                fn_name = raw_fn_name.strip().split()[0].splitlines()[0]
+                if '<parameter=' in fn_name:
+                    fn_name = fn_name.split('<parameter=', 1)[0].strip()
+                fn_body = _normalize_parameter_tags(fn_match.group(2))
+"""
+
+UNKNOWN_PARAM_SNIPPET = """        # Validate parameter is allowed
+        if allowed_params and param_name not in allowed_params:
+            raise FunctionCallValidationError(
+                f\"Parameter '{param_name}' is not allowed for function '{fn_name}'. \"
+                f\"Allowed parameters: {allowed_params}\"
+            )
+"""
+
+UNKNOWN_PARAM_REPLACEMENT = """        # Validate parameter is allowed
+        if allowed_params and param_name not in allowed_params:
+            if param_name in {'security_risk', 'summary'}:
+                continue
+            raise FunctionCallValidationError(
+                f\"Parameter '{param_name}' is not allowed for function '{fn_name}'. \"
+                f\"Allowed parameters: {allowed_params}\"
+            )
+"""
+
+OPTIONAL_ARRAY_SNIPPET = """            elif param_name_to_type[param_name] == \"array\":
+                try:
+                    param_value = json.loads(param_value)
+                except json.JSONDecodeError:
+                    raise FunctionCallValidationError(
+                        f\"Parameter '{param_name}' is expected to be an array.\"
+                    )
+"""
+
+OPTIONAL_ARRAY_REPLACEMENT = """            elif param_name_to_type[param_name] == \"array\":
+                try:
+                    param_value = json.loads(param_value)
+                except json.JSONDecodeError:
+                    if param_name not in required_params:
+                        continue
+                    raise FunctionCallValidationError(
+                        f\"Parameter '{param_name}' is expected to be an array.\"
+                    )
+"""
+
+UNKNOWN_PARAM_SNIPPET_OLD = """        # Validate parameter is allowed
+        if allowed_params and param_name not in allowed_params:
+            raise FunctionCallValidationError(
+                f\"Parameter '{param_name}' is not allowed for function '{fn_name}'. \"
+                f'Allowed parameters: {allowed_params}'
+            )
+"""
+
+OPTIONAL_ARRAY_SNIPPET_OLD = """            elif param_name_to_type[param_name] == 'array':
+                try:
+                    param_value = json.loads(param_value)
+                except json.JSONDecodeError:
+                    raise FunctionCallValidationError(
+                        f\"Parameter '{param_name}' is expected to be an array.\"
+                    )
+"""
+
+OPTIONAL_ARRAY_REPLACEMENT_OLD = """            elif param_name_to_type[param_name] == 'array':
+                try:
+                    param_value = json.loads(param_value)
+                except json.JSONDecodeError:
+                    if param_name not in required_params:
+                        continue
+                    raise FunctionCallValidationError(
+                        f\"Parameter '{param_name}' is expected to be an array.\"
+                    )
+"""
+
+MISSING_PARAMS_SNIPPET_OLD = """    # Check all required parameters are present
+    missing_params = required_params - found_params
+"""
+
+MISSING_PARAMS_REPLACEMENT_OLD = """    # Check all required parameters are present
+    missing_params = required_params - found_params - {'security_risk'}
 """
 
 
@@ -142,7 +243,9 @@ def _patch_llm_startup() -> int:
 
         text = text.replace(replacement_source, NEW_BLOCK, 1)
         LLM_TARGET.write_text(text, encoding="utf-8")
-        print("Applied OpenHands tool-calling compatibility patch for openhands-lm.")
+        print(
+            "Applied OpenHands tool-calling compatibility patch for openhands-lm."
+        )
     else:
         print("OpenHands tool-calling compatibility patch already present.")
 
@@ -178,43 +281,58 @@ def _patch_single_fn_converter(target: Path) -> int:
         1,
     )
     fix_start = text.find("def _fix_stopword(content: str) -> str:\n")
-    normalize_start = text.find("def _normalize_parameter_tags(fn_body: str) -> str:\n")
+    normalize_start = text.find(
+        "def _normalize_parameter_tags(fn_body: str) -> str:\n")
     convert_start = text.find(
-        "def convert_non_fncall_messages_to_fncall_messages(\n"
-    )
+        "def convert_non_fncall_messages_to_fncall_messages(\n")
 
     if fix_start != -1 and normalize_start != -1 and fix_start < normalize_start:
-        text = (
-            text[:fix_start]
-            + NEW_FIX_STOPWORD_BLOCK
-            + "\n\n"
-            + text[normalize_start:]
-        )
+        text = (text[:fix_start] + NEW_FIX_STOPWORD_BLOCK + "\n\n" +
+                text[normalize_start:])
 
-    normalize_start = text.find("def _normalize_parameter_tags(fn_body: str) -> str:\n")
+    normalize_start = text.find(
+        "def _normalize_parameter_tags(fn_body: str) -> str:\n")
     convert_start = text.find(
-        "def convert_non_fncall_messages_to_fncall_messages(\n"
+        "def convert_non_fncall_messages_to_fncall_messages(\n")
+    if (normalize_start != -1 and convert_start != -1
+            and normalize_start < convert_start):
+        text = (text[:normalize_start] + NEW_NORMALIZE_PARAM_BLOCK + "\n\n" +
+                text[convert_start:])
+
+    text = text.replace(FN_NAME_SNIPPET, FN_NAME_REPLACEMENT, 1)
+    text = text.replace(
+        UNKNOWN_PARAM_SNIPPET,
+        UNKNOWN_PARAM_REPLACEMENT,
+        1,
     )
-    if (
-        normalize_start != -1
-        and convert_start != -1
-        and normalize_start < convert_start
-    ):
-        text = (
-            text[:normalize_start]
-            + NEW_NORMALIZE_PARAM_BLOCK
-            + "\n\n"
-            + text[convert_start:]
-        )
+    text = text.replace(
+        UNKNOWN_PARAM_SNIPPET_OLD,
+        UNKNOWN_PARAM_REPLACEMENT,
+        1,
+    )
+    text = text.replace(
+        OPTIONAL_ARRAY_SNIPPET,
+        OPTIONAL_ARRAY_REPLACEMENT,
+        1,
+    )
+    text = text.replace(
+        OPTIONAL_ARRAY_SNIPPET_OLD,
+        OPTIONAL_ARRAY_REPLACEMENT_OLD,
+        1,
+    )
+    text = text.replace(
+        MISSING_PARAMS_SNIPPET_OLD,
+        MISSING_PARAMS_REPLACEMENT_OLD,
+        1,
+    )
 
     expected_regex_markers = (
         "FN_REGEX_PATTERN = r'<function=([^\\s>]+)>\\s*(.*?)</function>'",
         'FN_REGEX_PATTERN = r"<function=([^\\s>]+)>\\s*(.*?)</function>"',
     )
-    if (
-        "_normalize_model_tool_markup" not in text
-        or not any(marker in text for marker in expected_regex_markers)
-    ):
+    if ("_normalize_model_tool_markup" not in text
+            or "raw_fn_name = fn_match.group(1)" not in text
+            or not any(marker in text for marker in expected_regex_markers)):
         print(
             "expected fn_call_converter compatibility markers not found; refusing blind patch",
             file=sys.stderr,
@@ -226,12 +344,13 @@ def _patch_single_fn_converter(target: Path) -> int:
         if not backup.exists():
             backup.write_text(original_text, encoding="utf-8")
         target.write_text(text, encoding="utf-8")
-        print(f"Applied OpenHands fn_call_converter compatibility patch: {target}")
+        print(
+            f"Applied OpenHands fn_call_converter compatibility patch: {target}"
+        )
     else:
         print(
             "OpenHands fn_call_converter compatibility patch already present: "
-            f"{target}"
-        )
+            f"{target}")
 
     return 0
 

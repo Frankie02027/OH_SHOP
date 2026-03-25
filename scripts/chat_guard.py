@@ -20,15 +20,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "openhands" / "openhands.db"
-DEFAULT_OPENHANDS_URL = os.getenv(
-    "CHAT_GUARD_OPENHANDS_URL", "http://openhands:3000"
-)
+DEFAULT_OPENHANDS_URL = os.getenv("CHAT_GUARD_OPENHANDS_URL",
+                                  "http://openhands:3000")
 DEFAULT_SANDBOX_STALE_SECONDS = int(
-    os.getenv("CHAT_GUARD_SANDBOX_STALE_SECONDS", "900")
-)
+    os.getenv("CHAT_GUARD_SANDBOX_STALE_SECONDS", "900"))
 
 
 def _canon(conversation_id: str | None) -> str:
@@ -47,17 +44,18 @@ class CleanupStats:
 
 
 def _metadata_ids(cur: sqlite3.Cursor) -> set[str]:
-    rows = cur.execute("SELECT conversation_id FROM conversation_metadata").fetchall()
+    rows = cur.execute(
+        "SELECT conversation_id FROM conversation_metadata").fetchall()
     return {_canon(row[0]) for row in rows}
 
 
-def _delete_orphan_start_tasks(cur: sqlite3.Cursor, valid_ids: set[str]) -> int:
+def _delete_orphan_start_tasks(cur: sqlite3.Cursor,
+                               valid_ids: set[str]) -> int:
     rows = cur.execute(
         "SELECT id, app_conversation_id FROM app_conversation_start_task"
     ).fetchall()
     orphan_ids = [
-        row_id
-        for row_id, app_conversation_id in rows
+        row_id for row_id, app_conversation_id in rows
         if _canon(app_conversation_id) not in valid_ids
     ]
     if not orphan_ids:
@@ -70,11 +68,12 @@ def _delete_orphan_start_tasks(cur: sqlite3.Cursor, valid_ids: set[str]) -> int:
     return len(orphan_ids)
 
 
-def _delete_orphan_callbacks(cur: sqlite3.Cursor, valid_ids: set[str]) -> tuple[int, int]:
-    rows = cur.execute("SELECT id, conversation_id FROM event_callback").fetchall()
+def _delete_orphan_callbacks(cur: sqlite3.Cursor,
+                             valid_ids: set[str]) -> tuple[int, int]:
+    rows = cur.execute(
+        "SELECT id, conversation_id FROM event_callback").fetchall()
     orphan_callback_ids = [
-        callback_id
-        for callback_id, conversation_id in rows
+        callback_id for callback_id, conversation_id in rows
         if _canon(conversation_id) not in valid_ids
     ]
 
@@ -102,11 +101,12 @@ def _delete_orphan_callbacks(cur: sqlite3.Cursor, valid_ids: set[str]) -> tuple[
     return len(orphan_callback_ids), deleted_results
 
 
-def _delete_orphan_results_by_conversation(cur: sqlite3.Cursor, valid_ids: set[str]) -> int:
-    rows = cur.execute("SELECT id, conversation_id FROM event_callback_result").fetchall()
+def _delete_orphan_results_by_conversation(cur: sqlite3.Cursor,
+                                           valid_ids: set[str]) -> int:
+    rows = cur.execute(
+        "SELECT id, conversation_id FROM event_callback_result").fetchall()
     orphan_result_ids = [
-        result_id
-        for result_id, conversation_id in rows
+        result_id for result_id, conversation_id in rows
         if _canon(conversation_id) not in valid_ids
     ]
     if not orphan_result_ids:
@@ -134,11 +134,8 @@ def _http_json(
 
 
 def _created_at_ts(container: object) -> float:
-    created = (
-        getattr(container, "attrs", {})
-        .get("Created", "")
-        .replace("Z", "+00:00")
-    )
+    created = (getattr(container, "attrs", {}).get("Created",
+                                                   "").replace("Z", "+00:00"))
     try:
         return datetime.fromisoformat(created).timestamp()
     except ValueError:
@@ -178,17 +175,16 @@ def _cleanup_finished_sandboxes(
     removed = 0
 
     for container in client.containers.list(
-        all=True, filters={"name": "oh-agent-server-"}
-    ):
+            all=True, filters={"name": "oh-agent-server-"}):
         name = str(getattr(container, "name", "") or "").strip()
         if not name.startswith("oh-agent-server-"):
             continue
 
         record = active_by_sandbox.get(name)
-        execution_status = str(
-            (record or {}).get("execution_status") or ""
-        ).lower()
-        sandbox_status = str((record or {}).get("sandbox_status") or "").lower()
+        execution_status = str((record or {}).get("execution_status")
+                               or "").lower()
+        sandbox_status = str((record or {}).get("sandbox_status")
+                             or "").lower()
         age_seconds = max(0.0, now - _created_at_ts(container))
         container_status = str(getattr(container, "status", "") or "").lower()
 
@@ -231,15 +227,13 @@ def run_once(
         stats.orphan_start_tasks = _delete_orphan_start_tasks(cur, valid_ids)
 
         callbacks_deleted, callback_results_deleted_via_callback = _delete_orphan_callbacks(
-            cur, valid_ids
-        )
+            cur, valid_ids)
         stats.orphan_callbacks = callbacks_deleted
         stats.orphan_callback_results = callback_results_deleted_via_callback
 
         # Safety net for result rows that point to unknown conversations.
         stats.orphan_callback_results += _delete_orphan_results_by_conversation(
-            cur, valid_ids
-        )
+            cur, valid_ids)
 
         (
             stats.sandbox_containers_removed,
@@ -287,10 +281,8 @@ def main() -> int:
         "--sandbox-stale-seconds",
         type=int,
         default=DEFAULT_SANDBOX_STALE_SECONDS,
-        help=(
-            "Remove orphaned/paused sandbox containers older than this many "
-            f"seconds (default: {DEFAULT_SANDBOX_STALE_SECONDS})"
-        ),
+        help=("Remove orphaned/paused sandbox containers older than this many "
+              f"seconds (default: {DEFAULT_SANDBOX_STALE_SECONDS})"),
     )
     args = parser.parse_args()
 
@@ -303,15 +295,15 @@ def main() -> int:
             openhands_url=args.openhands_url,
             sandbox_stale_seconds=args.sandbox_stale_seconds,
         )
-        print(
-            "chat_guard: "
-            f"orphan_start_tasks={stats.orphan_start_tasks} "
-            f"orphan_callbacks={stats.orphan_callbacks} "
-            f"orphan_callback_results={stats.orphan_callback_results} "
-            f"sandbox_containers_removed={stats.sandbox_containers_removed}"
-        )
+        print("chat_guard: "
+              f"orphan_start_tasks={stats.orphan_start_tasks} "
+              f"orphan_callbacks={stats.orphan_callbacks} "
+              f"orphan_callback_results={stats.orphan_callback_results} "
+              f"sandbox_containers_removed={stats.sandbox_containers_removed}")
         if stats.sandbox_cleanup_skipped:
-            print(f"chat_guard: sandbox_cleanup_skipped={stats.sandbox_cleanup_skipped}")
+            print(
+                f"chat_guard: sandbox_cleanup_skipped={stats.sandbox_cleanup_skipped}"
+            )
         if not args.watch:
             return 0
         time.sleep(args.interval)

@@ -87,74 +87,52 @@ services:
     restart: unless-stopped
 
   # ----------------------------
-  # SearxNG (free search backend)
+  # stagehand-mcp (Stagehand browser tools over MCP SHTTP)
+  # - Uses Stagehand LOCAL mode + LM Studio
+  # - Exposes MCP SHTTP to OpenHands at /mcp
   # ----------------------------
-  searxng:
-    image: searxng/searxng:latest
-    container_name: searxng
-    ports:
-      - "127.0.0.1:3002:8080"
-    volumes:
-      - searxng_data:/etc/searxng
-    environment:
-      - SEARXNG_BASE_URL=http://localhost:3002/
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8080/', timeout=3); raise SystemExit(0 if r.status == 200 else 1)",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
-
-  # ----------------------------
-  # oh-browser-mcp (Phase 1: full browsing tool server)
-  # - Uses SearxNG for search
-  # - Uses Playwright + AI---browser-use for real navigation/clicking/downloads
-  # - Exposes MCP over SSE to OpenHands
-  # ----------------------------
-  oh-browser-mcp:
+  stagehand-mcp:
     build:
-      context: ../repos/oh-browser-mcp
-    container_name: oh-browser-mcp
+      context: "../repos/stagehand(working)"
+      dockerfile: Dockerfile.mcp
+    image: oh-stagehand-mcp:latest
+    container_name: stagehand-mcp
     ports:
-      - "127.0.0.1:3010:3010"
-      - "${DOCKER_BRIDGE_GATEWAY:-172.17.0.1}:3010:3010"
+      - "127.0.0.1:3020:3020"
+      - "${DOCKER_BRIDGE_GATEWAY:-172.17.0.1}:3020:3020"
     environment:
-      - SEARXNG_URL=http://searxng:8080
-      - LLM_BASE_URL=http://host.docker.internal:1234/v1
-      - LLM_MODEL=all-hands_openhands-lm-32b-v0.1
-      - LLM_API_KEY=lm-studio
-      - DOWNLOAD_DIR=/data/downloads
-      - LOG_DIR=/data/logs
-      - MCP_PORT=3010
+      # Model - default to the currently loaded LM Studio model unless explicitly overridden
+      - STAGEHAND_MODEL=${STAGEHAND_MODEL:-}
+      - STAGEHAND_LLM_BASE_URL=http://host.docker.internal:1234/v1
+      - STAGEHAND_LLM_API_KEY=lm-studio
+      # Browser settings
+      - CHROME_PATH=/usr/bin/chromium
+      - HEADLESS=true
+      - BROWSER_WIDTH=1920
+      - BROWSER_HEIGHT=1080
+      - DEVTOOLS=false
+      # Server settings
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=3020
+      # Features
+      - EXPERIMENTAL=true
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - /home/dev/OH_SHOP/downloads:/data/downloads
-      - /home/dev/OH_SHOP/data/oh_browser_mcp:/data
-    depends_on:
-      searxng:
-        condition: service_healthy
     healthcheck:
       test:
         [
           "CMD",
-          "python",
-          "-c",
-          "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3010/health', timeout=3); raise SystemExit(0 if r.status == 200 else 1)",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3020/healthz').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))",
         ]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
     restart: unless-stopped
 
 volumes:
   openwebui_data:
-  searxng_data:

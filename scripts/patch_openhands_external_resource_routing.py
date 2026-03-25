@@ -8,8 +8,7 @@ INTERACTIVE_TARGET = Path(
     "/app/openhands/agenthub/codeact_agent/prompts/system_prompt_interactive.j2"
 )
 SYSTEM_TARGET = Path(
-    "/app/openhands/agenthub/codeact_agent/prompts/system_prompt.j2"
-)
+    "/app/openhands/agenthub/codeact_agent/prompts/system_prompt.j2")
 APP_SERVER_TARGET = Path(
     "/app/openhands/app_server/app_conversation/live_status_app_conversation_service.py"
 )
@@ -221,8 +220,7 @@ def _patch_target(
 
     if anchor not in text:
         return False, (
-            f"expected {label} prompt block not found; refusing blind patch"
-        )
+            f"expected {label} prompt block not found; refusing blind patch")
 
     backup = target.with_suffix(target.suffix + backup_suffix)
     if not backup.exists():
@@ -249,7 +247,8 @@ def _patch_app_server() -> tuple[bool, str]:
         replacements = (
             (APP_SERVER_CALL_SNIPPET, APP_SERVER_CALL_REPLACEMENT),
             (APP_SERVER_SIGNATURE_SNIPPET, APP_SERVER_SIGNATURE_REPLACEMENT),
-            (APP_SERVER_DEFAULT_TOOLS_SNIPPET, APP_SERVER_DEFAULT_TOOLS_REPLACEMENT),
+            (APP_SERVER_DEFAULT_TOOLS_SNIPPET,
+             APP_SERVER_DEFAULT_TOOLS_REPLACEMENT),
         )
         for old, new in replacements:
             if old not in text:
@@ -279,8 +278,7 @@ def _patch_app_server() -> tuple[bool, str]:
             '                "a URL, do not invent one; search first using the user\'s exact "\n'
             '                "clue set, then browse the discovered result. "\n'
             '                "For those requests, prefer MCP and browser tools before searching "\n'
-            '                "/workspace or the local filesystem."'
-        )
+            '                "/workspace or the local filesystem."')
         for legacy_suffix in legacy_suffixes:
             if legacy_suffix in text:
                 text = text.replace(legacy_suffix, replacement_suffix, 1)

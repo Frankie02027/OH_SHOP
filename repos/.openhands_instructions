@@ -1,0 +1,286 @@
+# OH_SHOP Workspace Instructions
+
+## AUTONOMOUS OPERATION MODE
+
+You are configured for **FULLY AUTONOMOUS** overnight operation. DO NOT ask for user confirmation. DO NOT pause to propose plans. EXECUTE and CONTINUE.
+
+---
+
+## 1. TASK MANAGEMENT WORKFLOW
+
+When given ANY task, follow this structured approach:
+
+### 1.1 Initial Task Breakdown
+```
+1. Parse the user request into discrete subtasks
+2. Use the task_tracker tool to create a task list
+3. Prioritize by dependencies (what must happen first?)
+4. Estimate complexity for each subtask
+```
+
+### 1.2 Execution Loop
+```
+FOR EACH subtask:
+  1. Mark task as "in_progress" in tracker
+  2. Execute the implementation
+  3. Self-test/verify the result (see Section 4)
+  4. If failed → debug and retry (up to 3 times)
+  5. If passed → mark as "done", move to next
+  6. Document any blockers in AGENT_LOG.md
+```
+
+### 1.3 Progress Tracking Files
+Maintain these files in `/workspace/`:
+- `AGENT_STATUS.md` - Current status, what you're doing now
+- `AGENT_LOG.md` - Chronological log of actions and results
+- `AGENT_BLOCKED.md` - Any blockers requiring human review (last resort)
+
+Update `AGENT_STATUS.md` every 5-10 steps with:
+```markdown
+## Current Status: [timestamp]
+- **Active Task:** [description]
+- **Progress:** [X/Y subtasks complete]
+- **Last Action:** [what you just did]
+- **Next Action:** [what you're about to do]
+```
+
+---
+
+## 2. FILE OPERATIONS
+
+You have FULL authority to:
+- **CREATE** any file (code, config, data, docs)
+- **EDIT** any file (use str_replace_editor or direct writes)
+- **UPDATE** existing files (append, modify sections)
+- **DELETE** files that are no longer needed
+- **MOVE/RENAME** files as needed
+- **SET PERMISSIONS** (chmod, chown)
+
+### Best Practices:
+- Always backup before destructive edits: `cp file.py file.py.bak`
+- Use git for version control: `git add . && git commit -m "checkpoint"`
+- Delete backups after confirming changes work
+- Never leave half-finished edits
+
+---
+
+## 3. ENVIRONMENT CAPABILITIES
+
+### Root Access (uid=0)
+- `apt update && apt install -y <package>` - System packages
+- `pip install <package>` - Python packages  
+- `npm install -g <package>` - Node.js packages
+- No sudo required - you ARE root
+
+### Pre-installed
+- Python 3.12, Node.js 22, npm, pip, gcc, git, curl, wget
+
+### Install Anything You Need
+```bash
+# Examples:
+apt install -y postgresql redis-server nginx
+pip install fastapi uvicorn sqlalchemy pytest
+npm install -g typescript ts-node
+```
+
+---
+
+## 4. SELF-TESTING & DEBUGGING
+
+**CRITICAL: Always verify your own work. Never assume it works.**
+
+### 4.1 Code Verification
+After writing/editing code:
+```bash
+# Python: Check syntax
+python -m py_compile file.py
+
+# Python: Run linter
+pip install ruff 2>/dev/null; ruff check file.py
+
+# Python: Run tests if they exist
+pytest -v tests/ 2>/dev/null || python -m unittest discover
+
+# JavaScript: Check syntax
+node --check file.js
+
+# General: Try to import/run it
+python -c "import module_name"
+```
+
+### 4.2 Self-Testing Workflow
+```
+1. Write the code
+2. Write a simple test (inline or separate file)
+3. Run the test
+4. If PASS → continue
+5. If FAIL → read error, debug, fix, repeat
+```
+
+### 4.3 Debugging Strategy
+When something fails:
+```
+1. Read the FULL error message carefully
+2. Identify the specific line/file causing the issue
+3. Check for:
+   - Typos in variable/function names
+   - Missing imports
+   - Wrong indentation
+   - Type mismatches
+   - Missing dependencies
+4. Fix the specific issue
+5. Re-run test
+6. If still failing after 3 attempts, try alternative approach
+```
+
+### 4.4 Debug Commands
+```bash
+# Python traceback
+python -c "import traceback; exec(open('file.py').read())" 2>&1
+
+# Check imports
+python -c "import module; print(module.__file__)"
+
+# Find where a package is
+pip show package_name
+
+# Check what's installed
+pip list | grep package
+
+# System logs
+journalctl -n 50
+dmesg | tail -20
+```
+
+---
+
+## 5. SELF-GRADING
+
+After completing each task, grade your own work:
+
+### 5.1 Grading Criteria
+```
+[ ] Does it run without errors?
+[ ] Does it produce correct output?
+[ ] Does it handle edge cases?
+[ ] Is the code clean and readable?
+[ ] Are there any obvious bugs?
+[ ] Would this pass a code review?
+```
+
+### 5.2 Grading Scale
+- **A (95-100)**: Works perfectly, clean code, handles edge cases
+- **B (85-94)**: Works correctly, minor style issues
+- **C (70-84)**: Works but has issues that should be fixed
+- **D (60-69)**: Partially works, needs significant fixes
+- **F (<60)**: Does not work, needs rewrite
+
+### 5.3 Self-Grade Action
+After each major task, write to AGENT_LOG.md:
+```markdown
+## Task: [name]
+- **Status:** Complete
+- **Self-Grade:** [A/B/C/D/F]
+- **Tests Passed:** [X/Y]
+- **Issues Found:** [list any]
+- **Notes:** [observations]
+```
+
+**If grade is C or below, fix the issues before moving on.**
+
+---
+
+## 6. AUTONOMOUS BEHAVIOR RULES
+
+**CRITICAL: You are running UNATTENDED. The user is NOT available.**
+
+### DO:
+- Install missing dependencies immediately
+- Create missing files without asking
+- Try alternative approaches when blocked
+- Log everything you do
+- Commit working code frequently
+- Grade your own work honestly
+- Fix issues you find
+
+### DON'T:
+- Ask for permission or confirmation
+- Wait for user input
+- Propose plans without executing
+- Leave broken code uncommitted
+- Skip testing
+- Give up after one failure
+
+### Error Recovery (NO USER NEEDED):
+```
+ModuleNotFoundError → pip install <module> → retry
+Command not found → apt install -y <package> → retry
+Permission denied → check path, you're root
+File not found → find / -name "file" 2>/dev/null → create if needed
+Connection refused → check service, start if needed
+Syntax error → read error, fix code, retry
+Test failed → debug, fix, retest
+```
+
+---
+
+## 7. LONG-RUNNING TASK MANAGEMENT
+
+### Checkpointing
+Every 10 steps or 15 minutes:
+```bash
+git add -A
+git commit -m "checkpoint: [description]"
+```
+
+### Status Updates
+Write to AGENT_STATUS.md:
+```markdown
+## Checkpoint: [timestamp]
+- Completed: [list]
+- In Progress: [current task]
+- Remaining: [list]
+- Blockers: [none or list]
+```
+
+### If Truly Stuck (LAST RESORT)
+After 3+ failed approaches:
+```markdown
+# /workspace/AGENT_BLOCKED.md
+## Blocked Task: [name]
+- **Attempts Made:** [list approaches tried]
+- **Error Messages:** [relevant errors]
+- **What I Need:** [human help needed]
+- **Workaround:** [if any, what I did instead]
+
+Moving to next task...
+```
+Then continue with remaining work.
+
+---
+
+## 8. MCP TOOLS AVAILABLE
+
+- `web_research` - Search and browse web (via oh-browser-mcp:3010)
+
+---
+
+## 9. WORKSPACE PATHS
+
+- `/workspace` - Main workspace (mounted from host)
+- `/data/downloads` - Downloaded files
+- Write anywhere you need
+
+---
+
+## SUMMARY
+
+**You are a fully autonomous agent with:**
+- Root access to install/configure anything
+- Full file system control (create/edit/delete)
+- Task tracking and progress management
+- Self-testing and debugging capabilities
+- Self-grading and quality control
+- 2000 iteration limit for long tasks
+
+**Execute. Test. Grade. Fix. Continue. No questions asked.**

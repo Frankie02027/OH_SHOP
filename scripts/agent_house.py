@@ -17,23 +17,22 @@ COMPOSE_FILE = ROOT / "compose" / "docker-compose.yml"
 PROOF_TEMPLATE = ROOT / "docs" / "templates" / "fresh_session_mcp_proof_run.md"
 OPENHANDS_SETTINGS_FILE = ROOT / "data" / "openhands" / "settings.json"
 OPENHANDS_URL = "http://localhost:3000"
-CORE_SERVICES = ["openhands", "open-webui", "searxng", "oh-browser-mcp"]
+CORE_SERVICES = ["openhands", "open-webui", "stagehand-mcp"]
 CORE_CONTAINERS = {
     "OpenHands": "openhands-app",
     "OpenWebUI": "open-webui",
-    "SearxNG": "searxng",
-    "oh-browser-mcp": "oh-browser-mcp",
+    "Stagehand MCP": "stagehand-mcp",
 }
 OPENHANDS_SANDBOX_NAME_PREFIX = "oh-agent-server-"
-EXPECTED_MCP_URL = "http://host.docker.internal:3010/sse"
+EXPECTED_MCP_URL = "http://stagehand-mcp:3020/mcp"
 OPENHANDS_TOOL_CALL_PATCH_TARGET = (
     "/app/openhands/app_server/app_conversation/"
     "live_status_app_conversation_service.py"
 )
-DEFAULT_WEB_RESEARCH_PROOF_PROMPT = (
-    "Use the web_research tool to find the current temperature in "
+DEFAULT_BROWSER_TOOL_PROOF_PROMPT = (
+    "Use the Stagehand browser tools to find the current temperature in "
     "Burbank, IL. Cite the source you used and say explicitly that "
-    "you used web_research."
+    "you used a browser tool."
 )
 
 
@@ -324,17 +323,18 @@ def _has_runtime_events(items: Any) -> bool:
     return False
 
 
-def _extract_web_research_events(
+def _extract_browser_tool_events(
     items: Any,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str, str]:
     if not isinstance(items, list):
         return None, None, "", ""
 
-    def _is_web_research_tool_name(name: object) -> bool:
+    def _is_browser_tool_name(name: object) -> bool:
         if not isinstance(name, str):
             return False
-        return name in {"web_research", "web_re_search"} or name.endswith(
-            "_web_research"
+        return (
+            name.startswith("browserbase_")
+            or "stagehand" in name
         )
 
     tool_action = next(
@@ -344,7 +344,7 @@ def _extract_web_research_events(
             if (
                 isinstance(event, dict)
                 and event.get("kind") == "ActionEvent"
-                and _is_web_research_tool_name(event.get("tool_name"))
+                and _is_browser_tool_name(event.get("tool_name"))
             )
         ),
         None,
@@ -586,12 +586,12 @@ def _smoke_markdown(
 ) -> str:
     return "\n".join(
         [
-            "# OH_SHOP Automated web_research Smoke Test",
+            "# OH_SHOP Automated Browser Tool Smoke Test",
             "",
             f"- Captured at: {timestamp}",
             f"- Repo root: {ROOT}",
             "- Command: python3 scripts/agent_house.py "
-            "smoke-test-web-research",
+            "smoke-test-browser-tool",
             f"- Title: {title}",
             f"- Start task id: {task_id or 'unknown'}",
             f"- Start task status: {start_task_status or 'unknown'}",
@@ -625,12 +625,12 @@ def _smoke_markdown(
     )
 
 
-def cmd_smoke_test_web_research(
+def cmd_smoke_test_browser_tool(
     output_path: str | None = None,
     prompt: str | None = None,
     timeout_seconds: int | None = None,
 ) -> int:
-    prompt_text = (prompt or DEFAULT_WEB_RESEARCH_PROOF_PROMPT).strip()
+    prompt_text = (prompt or DEFAULT_BROWSER_TOOL_PROOF_PROMPT).strip()
     timeout_seconds = timeout_seconds or int(
         os.getenv("SMOKE_TEST_TIMEOUT", "420")
     )
@@ -931,7 +931,7 @@ def cmd_smoke_test_web_research(
                 observation_event,
                 assistant_text,
                 observation_text,
-            ) = _extract_web_research_events(items)
+            ) = _extract_browser_tool_events(items)
             if observation_event is not None and observation_seen_at is None:
                 observation_seen_at = time.monotonic()
             if assistant_text and assistant_seen_at is None:
@@ -1023,17 +1023,17 @@ def cmd_smoke_test_web_research(
         observation_event,
         assistant_text,
         observation_text,
-    ) = _extract_web_research_events(items)
+    ) = _extract_browser_tool_events(items)
 
     if tool_action is None:
         detail = (
-            "timed out before a real web_research tool "
+            "timed out before a real browser tool "
             "action event was observed"
         )
         if execution_status == "finished":
             detail = (
                 "conversation finished without a real "
-                "web_research tool action event"
+                "browser tool action event"
             )
         return emit_result(
             "model-behavior failure",
@@ -1056,12 +1056,12 @@ def cmd_smoke_test_web_research(
         ).get("is_error")
     ):
         detail = (
-            "web_research tool observation was missing "
+            "browser tool observation was missing "
             "or marked as an error"
         )
         if observation_event is None and execution_status != "finished":
             detail = (
-                "timed out after the web_research action "
+                "timed out after the browser tool action "
                 "but before a successful observation was captured"
             )
         return emit_result(
@@ -1192,8 +1192,7 @@ def cmd_verify() -> int:
         service_checks = [
             ("OpenHands", "http://localhost:3000"),
             ("OpenWebUI", "http://localhost:3001"),
-            ("SearxNG", "http://localhost:3002/"),
-            ("oh-browser-mcp health", "http://localhost:3010/health"),
+            ("stagehand-mcp health", "http://localhost:3020/healthz"),
         ]
         if not containers_running:
             for label, _ in service_checks:
@@ -1263,8 +1262,8 @@ def cmd_verify() -> int:
                 ],
             ),
             (
-                "LM Studio route from oh-browser-mcp",
-                "oh-browser-mcp",
+                "LM Studio route from stagehand-mcp",
+                "stagehand-mcp",
                 [
                     "curl",
                     "-sf",
@@ -1273,19 +1272,6 @@ def cmd_verify() -> int:
                     "--max-time",
                     "5",
                     lm_docker_url,
-                ],
-            ),
-            (
-                "SearxNG route from oh-browser-mcp",
-                "oh-browser-mcp",
-                [
-                    "curl",
-                    "-sf",
-                    "-o",
-                    "/dev/null",
-                    "--max-time",
-                    "5",
-                    "http://searxng:8080/",
                 ],
             ),
         ]
@@ -1341,55 +1327,22 @@ def cmd_verify() -> int:
             "and readiness reported"
         )
         mcp_health_ok, mcp_health_payload, mcp_health_detail = (
-            _fetch_json("http://localhost:3010/health", timeout=5)
+            _fetch_json("http://localhost:3020/healthz", timeout=5)
         )
         if mcp_health_ok and mcp_health_payload is not None:
             cycle_require(
                 True,
-                "oh-browser-mcp /health reachable",
+                "stagehand-mcp /healthz reachable",
                 (
-                    f"ok={mcp_health_payload.get('ok')} "
-                    f"ready={mcp_health_payload.get('ready')}"
+                    f"status={mcp_health_payload.get('status')}"
                 ),
             )
         else:
             cycle_require(
                 False,
-                "oh-browser-mcp /health reachable",
+                "stagehand-mcp /healthz reachable",
                 mcp_health_detail,
             )
-
-        mcp_ready_ok, mcp_ready_payload, mcp_ready_detail = (
-            _fetch_json("http://localhost:3010/ready", timeout=5)
-        )
-        if mcp_ready_ok and mcp_ready_payload is not None:
-            cycle_require(
-                bool(mcp_ready_payload.get("ready")),
-                (
-                    "oh-browser-mcp /ready "
-                    "reports research readiness"
-                ),
-                mcp_ready_payload.get("readiness", "ready"),
-            )
-        else:
-            cycle_require(
-                False,
-                (
-                    "oh-browser-mcp /ready "
-                    "reports research readiness"
-                ),
-                mcp_ready_detail,
-            )
-
-        sse_ok, sse_detail = _fetch_sse_status(
-            "http://localhost:3010/sse",
-            timeout=5,
-        )
-        cycle_require(
-            sse_ok,
-            "oh-browser-mcp SSE endpoint reachable",
-            sse_detail or ("reachable" if sse_ok else "SSE handshake failed"),
-        )
 
         sandbox_mcp_ok, sandbox_mcp_detail = _run_capture(
             [
@@ -1402,13 +1355,13 @@ def cmd_verify() -> int:
                 "-I",
                 "--max-time",
                 "5",
-                "http://host.docker.internal:3010/sse",
+                "http://host.docker.internal:3020/healthz",
             ],
             timeout=20,
         )
         cycle_require(
             sandbox_mcp_ok,
-            "oh-browser-mcp route from sandbox bridge",
+            "stagehand-mcp route from sandbox bridge",
             sandbox_mcp_detail or "reachable",
         )
 
@@ -1427,11 +1380,8 @@ def cmd_verify() -> int:
                     f"text = Path("
                     f"{OPENHANDS_TOOL_CALL_PATCH_TARGET!r}"
                     ").read_text(); "
-                    "raise SystemExit(0 if "
-                    '"if model and \'openhands-lm\' in model:\\n'
-                    '            llm_kwargs[\'native_tool_calling\']'
-                    ' = False" '
-                    "in text else 1)"
+                    "target = \"native_tool_calling=False if (model and 'openhands-lm' in model) else True\"; "
+                    "raise SystemExit(0 if target in text else 1)"
                 ),
             ],
             timeout=10,
@@ -1514,22 +1464,22 @@ def cmd_verify() -> int:
                 ),
             )
 
-            sse_servers = live_settings_payload.get(
+            shttp_servers = live_settings_payload.get(
                 "mcp_config", {}
-            ).get("sse_servers", [])
-            first_sse_url = None
-            if isinstance(sse_servers, list) and sse_servers:
-                first_entry = sse_servers[0]
+            ).get("shttp_servers", [])
+            first_shttp_url = None
+            if isinstance(shttp_servers, list) and shttp_servers:
+                first_entry = shttp_servers[0]
                 if isinstance(first_entry, dict):
-                    first_sse_url = first_entry.get("url")
+                    first_shttp_url = first_entry.get("url")
             cycle_require(
-                first_sse_url == EXPECTED_MCP_URL,
+                first_shttp_url == EXPECTED_MCP_URL,
                 (
                     "OpenHands live MCP URL matches "
                     "sandbox-reachable path"
                 ),
                 (
-                    f"current={first_sse_url!r} "
+                    f"current={first_shttp_url!r} "
                     f"expected={EXPECTED_MCP_URL!r}"
                 ),
             )
@@ -1588,7 +1538,7 @@ def cmd_verify() -> int:
         print("Layer 6 - fresh-session tool invocation")
         print_result(
             "UNPROVEN",
-            "Fresh-session web_research invocation",
+            "Fresh-session browser-tool invocation",
             (
                 "requires manual MCP registration and "
                 "a new OpenHands session; verify only proves "
@@ -1629,7 +1579,7 @@ def main() -> int:
             "logs",
             "verify",
             "capture-proof-context",
-            "smoke-test-web-research",
+            "smoke-test-browser-tool",
             "reconcile-chats",
             "monitor-chats",
         ],
@@ -1640,12 +1590,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--prompt",
-        help="Optional prompt override for smoke-test-web-research.",
+        help="Optional prompt override for smoke-test-browser-tool.",
     )
     parser.add_argument(
         "--timeout",
         type=int,
-        help="Optional timeout in seconds for smoke-test-web-research.",
+        help="Optional timeout in seconds for smoke-test-browser-tool.",
     )
     args = parser.parse_args()
 
@@ -1663,8 +1613,8 @@ def main() -> int:
         return cmd_verify()
     if args.command == "capture-proof-context":
         return cmd_capture_proof_context(args.output)
-    if args.command == "smoke-test-web-research":
-        return cmd_smoke_test_web_research(
+    if args.command == "smoke-test-browser-tool":
+        return cmd_smoke_test_browser_tool(
             args.output,
             args.prompt,
             args.timeout,
