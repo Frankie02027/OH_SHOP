@@ -1,0 +1,561 @@
+/**
+ * oh-stagehand MCP SHTTP server
+ *
+ * Exposes a full browser tool surface via MCP over Streamable HTTP:
+ *
+ * AI-powered (Stagehand):
+ *   browser_stagehand_agent   — autonomous multi-step agent
+ *   browser_stagehand_act     — single AI-driven DOM action
+ *   browser_stagehand_extract — AI-driven data extraction
+ *   browser_stagehand_observe — AI-driven action observation
+ *
+ * Page-level (Playwright via Stagehand):
+ *   browser_navigate          — goto URL
+ *   browser_go_back           — history back
+ *   browser_go_forward        — history forward
+ *   browser_reload            — reload page
+ *   browser_page_info         — current URL + title
+ *   browser_snapshot          — accessibility tree snapshot
+ *   browser_screenshot        — base64 PNG screenshot
+ *   browser_evaluate          — execute JS in page context
+ *   browser_click_element     — click element by CSS/XPath selector
+ *   browser_type_text         — type text into element by selector
+ *   browser_fill              — fill input element by selector
+ *   browser_scroll            — scroll page or element
+ *   browser_wait_for          — wait for selector or load state
+ */
+
+import dotenv from "dotenv";
+dotenv.config({ path: ".env" });
+
+import Fastify from "fastify";
+import { StatusCodes } from "http-status-codes";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { z } from "zod";
+import { Stagehand, AISdkClient } from "@browserbasehq/stagehand";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import pino from "pino";
+
+// ── Config from env ──────────────────────────────────────────────────────────
+const MODEL      = process.env.STAGEHAND_MODEL         ?? "openai/all-hands_openhands-lm-32b-v0.1";
+const BASE_URL   = process.env.STAGEHAND_LLM_BASE_URL  ?? "http://host.docker.internal:1234/v1";
+const API_KEY    = process.env.STAGEHAND_LLM_API_KEY    ?? "lm-studio";
+const CHROME     = process.env.CHROME_PATH              ?? "/usr/bin/chromium";
+const HEADLESS   = process.env.HEADLESS !== "false";
+const PORT       = parseInt(process.env.MCP_PORT ?? "3020", 10);
+
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  base: { service: "stagehand-mcp" },
+  ...(process.env.NODE_ENV !== "production" && {
+    transport: { target: "pino-pretty", options: { colorize: true } },
+  }),
+});
+
+// ── LLM client (bypasses Stagehand model resolver) ────────────────────────────
+// Per Stagehand docs: for custom providers, use llmClient with AISdkClient.
+// @ai-sdk/openai-compatible avoids OpenAI-specific model metadata resolution.
+const provider = createOpenAICompatible({
+  name: "lm-studio",
+  baseURL: BASE_URL,
+  apiKey: API_KEY,
+  // Note: We patch Stagehand's aisdk.js in Dockerfile to force mode: "tool"
+  // for generateObject(). This uses function calling instead of response_format,
+  // which avoids LM Studio's json_object rejection and json_schema non-enforcement.
+});
+const llmClient = new AISdkClient({
+  model: provider(MODEL.replace(/^openai\//, "")),
+});
+
+// ── Stagehand lifecycle ──────────────────────────────────────────────────────
+let stagehand: Stagehand | null = null;
+
+async function getStagehand(): Promise<Stagehand> {
+  if (stagehand) return stagehand;
+
+  logger.info({ model: MODEL, baseUrl: BASE_URL }, "Initializing Stagehand");
+
+  stagehand = new Stagehand({
+    env: "LOCAL",
+    llmClient,
+    localBrowserLaunchOptions: {
+      executablePath: CHROME,
+      headless: HEADLESS,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+    },
+    verbose: 1,
+    disablePino: true,
+  });
+
+  await stagehand.init();
+  logger.info("Stagehand initialized");
+  return stagehand;
+}
+
+async function closeStagehand(): Promise<void> {
+  if (stagehand) {
+    await stagehand.close().catch(() => {});
+    stagehand = null;
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function ok(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+}
+function fail(toolName: string, e: unknown) {
+  logger.error({ err: e }, `${toolName} error`);
+  return { content: [{ type: "text" as const, text: `Error: ${e}` }], isError: true as const };
+}
+
+// ── Fastify ──────────────────────────────────────────────────────────────────
+const app = Fastify({ logger: false, return503OnClosing: false });
+let isReady = false;
+
+app.get("/healthz", { logLevel: "silent" as any }, async () => ({
+  status: "ok", timestamp: new Date().toISOString(),
+}));
+
+app.get("/readyz", { logLevel: "silent" as any }, async (_req, reply) => {
+  return isReady
+    ? reply.code(StatusCodes.OK).send("Ready")
+    : reply.code(StatusCodes.SERVICE_UNAVAILABLE).send("Not ready");
+});
+
+// ── MCP tool registration factory ────────────────────────────────────────────
+// Each SHTTP request gets a fresh McpServer instance (stateless transport).
+function createMcpServer(): McpServer {
+  const mcp = new McpServer({ name: "stagehand-mcp", version: "0.2.0" });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  AI-POWERED TOOLS  (Stagehand act / extract / observe / agent)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // --- browser_stagehand_agent ---
+  mcp.tool(
+    "browser_stagehand_agent",
+    "Run an autonomous browser agent task. The agent navigates pages, clicks, types, " +
+    "and reads content to accomplish the instruction. Returns the agent's final answer.",
+    {
+      instruction: z.string(),
+      start_url: z.string().optional(),
+      max_steps: z.number().optional(),
+    },
+    async ({ instruction, start_url, max_steps: rawMaxSteps }) => {
+      const max_steps = rawMaxSteps ?? 15;
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+
+        if (start_url) {
+          await page.goto(start_url, { waitUntil: "domcontentloaded" });
+        }
+
+        const sources: string[] = [];
+        const agent = sh.agent({ mode: "dom" });
+
+        const result = await agent.execute({
+          instruction,
+          maxSteps: max_steps,
+          callbacks: {
+            onStepFinish: async () => {
+              const url = page.url();
+              if (url && url !== "about:blank" && !sources.includes(url)) {
+                sources.push(url);
+              }
+            },
+          },
+        });
+
+        return ok({
+          answer: (result as any).message ?? "(no message)",
+          completed: (result as any).completed ?? true,
+          sources,
+        });
+      } catch (e) { return fail("browser_stagehand_agent", e); }
+    }
+  );
+
+  // --- browser_stagehand_act ---
+  mcp.tool(
+    "browser_stagehand_act",
+    "Perform a single browser action described in natural language (click, type, scroll, etc).",
+    {
+      instruction: z.string(),
+      url: z.string().optional(),
+    },
+    async ({ instruction, url }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
+
+        const result = await sh.act(instruction);
+        return ok({ success: result.success, actions: result.actions, url: page.url() });
+      } catch (e) { return fail("browser_stagehand_act", e); }
+    }
+  );
+
+  // --- browser_stagehand_extract ---
+  mcp.tool(
+    "browser_stagehand_extract",
+    "Extract structured information from the current page using AI DOM analysis.",
+    {
+      instruction: z.string().optional(),
+      url: z.string().optional(),
+    },
+    async ({ instruction, url }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
+
+        const result = instruction ? await sh.extract(instruction) : await sh.extract();
+        return ok({ data: result, url: page.url() });
+      } catch (e) { return fail("browser_stagehand_extract", e); }
+    }
+  );
+
+  // --- browser_stagehand_observe ---
+  mcp.tool(
+    "browser_stagehand_observe",
+    "Observe available actions on the current page. Returns a list of possible actions.",
+    {
+      instruction: z.string().optional(),
+      url: z.string().optional(),
+    },
+    async ({ instruction, url }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
+
+        const actions = instruction ? await sh.observe(instruction) : await sh.observe();
+        return ok({ actions, url: page.url() });
+      } catch (e) { return fail("browser_stagehand_observe", e); }
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  PAGE-LEVEL TOOLS  (navigation, snapshot, screenshot, evaluate, etc.)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // --- browser_navigate ---
+  mcp.tool(
+    "browser_navigate",
+    "Navigate the browser to a URL. Returns the final URL after any redirects.",
+    {
+      url: z.string(),
+      wait_until: z.enum(["load", "domcontentloaded", "networkidle"]).optional(),
+    },
+    async ({ url, wait_until }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        const resp = await page.goto(url, { waitUntil: wait_until ?? "domcontentloaded" });
+        return ok({
+          url: page.url(),
+          title: await page.title(),
+          status: resp?.status() ?? null,
+        });
+      } catch (e) { return fail("browser_navigate", e); }
+    }
+  );
+
+  // --- browser_go_back ---
+  mcp.tool(
+    "browser_go_back",
+    "Navigate back in browser history.",
+    {},
+    async () => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        await page.goBack();
+        return ok({ url: page.url(), title: await page.title() });
+      } catch (e) { return fail("browser_go_back", e); }
+    }
+  );
+
+  // --- browser_go_forward ---
+  mcp.tool(
+    "browser_go_forward",
+    "Navigate forward in browser history.",
+    {},
+    async () => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        await page.goForward();
+        return ok({ url: page.url(), title: await page.title() });
+      } catch (e) { return fail("browser_go_forward", e); }
+    }
+  );
+
+  // --- browser_reload ---
+  mcp.tool(
+    "browser_reload",
+    "Reload the current page.",
+    {},
+    async () => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        await page.reload();
+        return ok({ url: page.url(), title: await page.title() });
+      } catch (e) { return fail("browser_reload", e); }
+    }
+  );
+
+  // --- browser_page_info ---
+  mcp.tool(
+    "browser_page_info",
+    "Get the current page URL and title.",
+    {},
+    async () => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        return ok({ url: page.url(), title: await page.title() });
+      } catch (e) { return fail("browser_page_info", e); }
+    }
+  );
+
+  // --- browser_snapshot ---
+  mcp.tool(
+    "browser_snapshot",
+    "Get an accessibility tree snapshot of the current page. Returns a formatted tree " +
+    "with element IDs, roles, names, plus XPath and URL lookup maps. " +
+    "Essential for understanding page structure without vision.",
+    {
+      url: z.string().optional().describe("Navigate to this URL first if provided"),
+      include_iframes: z.boolean().optional(),
+    },
+    async ({ url, include_iframes }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        if (url) await page.goto(url, { waitUntil: "domcontentloaded" });
+
+        const snapshot = await page.snapshot({
+          includeIframes: include_iframes ?? true,
+        });
+        return ok({
+          url: page.url(),
+          formattedTree: snapshot.formattedTree,
+          xpathMap: snapshot.xpathMap,
+          urlMap: snapshot.urlMap,
+        });
+      } catch (e) { return fail("browser_snapshot", e); }
+    }
+  );
+
+  // --- browser_screenshot ---
+  mcp.tool(
+    "browser_screenshot",
+    "Take a screenshot of the current page. Returns base64-encoded PNG image.",
+    {
+      full_page: z.boolean().optional().describe("Capture entire scrollable page (default: false)"),
+    },
+    async ({ full_page }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        const buf = await page.screenshot({ fullPage: full_page ?? false, type: "png" });
+        return {
+          content: [{
+            type: "image" as const,
+            data: buf.toString("base64"),
+            mimeType: "image/png",
+          }],
+        };
+      } catch (e) { return fail("browser_screenshot", e); }
+    }
+  );
+
+  // --- browser_evaluate ---
+  mcp.tool(
+    "browser_evaluate",
+    "Execute JavaScript code in the browser page context. Returns the result as JSON.",
+    {
+      expression: z.string().describe("JavaScript expression or function body to evaluate"),
+    },
+    async ({ expression }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        const result = await page.evaluate(expression);
+        return ok({ result, url: page.url() });
+      } catch (e) { return fail("browser_evaluate", e); }
+    }
+  );
+
+  // --- browser_click_element ---
+  mcp.tool(
+    "browser_click_element",
+    "Click an element identified by a CSS or XPath selector.",
+    {
+      selector: z.string().describe("CSS selector or XPath expression"),
+      button: z.enum(["left", "right", "middle"]).optional(),
+      click_count: z.number().optional().describe("Number of clicks (2 for double-click)"),
+    },
+    async ({ selector, button, click_count }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        const loc = page.locator(selector);
+        await loc.click({ button: button ?? "left", clickCount: click_count ?? 1 });
+        return ok({ clicked: selector, url: page.url() });
+      } catch (e) { return fail("browser_click_element", e); }
+    }
+  );
+
+  // --- browser_type_text ---
+  mcp.tool(
+    "browser_type_text",
+    "Type text into an element by CSS or XPath selector (dispatches keyboard events).",
+    {
+      selector: z.string().describe("CSS selector or XPath for the target element"),
+      text: z.string().describe("Text to type"),
+      delay: z.number().optional().describe("Delay in ms between keystrokes"),
+    },
+    async ({ selector, text, delay }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        const loc = page.locator(selector);
+        await loc.type(text, delay ? { delay } : undefined);
+        return ok({ typed: text, selector, url: page.url() });
+      } catch (e) { return fail("browser_type_text", e); }
+    }
+  );
+
+  // --- browser_fill ---
+  mcp.tool(
+    "browser_fill",
+    "Fill an input, textarea, or contenteditable element by selector. " +
+    "Clears existing content first. Faster than type_text for form fields.",
+    {
+      selector: z.string().describe("CSS selector or XPath for the input element"),
+      value: z.string().describe("Value to fill"),
+    },
+    async ({ selector, value }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+        const loc = page.locator(selector);
+        await loc.fill(value);
+        return ok({ filled: selector, value, url: page.url() });
+      } catch (e) { return fail("browser_fill", e); }
+    }
+  );
+
+  // --- browser_scroll ---
+  mcp.tool(
+    "browser_scroll",
+    "Scroll the page or a specific element. Use delta_y positive to scroll down, negative to scroll up.",
+    {
+      delta_x: z.number().optional().describe("Horizontal scroll amount in pixels (default: 0)"),
+      delta_y: z.number().optional().describe("Vertical scroll amount in pixels (default: 300)"),
+      selector: z.string().optional().describe("If provided, scroll this element to a percentage (0-100) instead"),
+      percent: z.number().optional().describe("Scroll position percentage for element (0-100)"),
+    },
+    async ({ delta_x, delta_y, selector, percent }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+
+        if (selector && percent !== undefined) {
+          const loc = page.locator(selector);
+          await loc.scrollTo(percent);
+          return ok({ scrolled: selector, percent, url: page.url() });
+        }
+
+        // Scroll page at center — use reasonable defaults
+        await page.scroll(640, 360, delta_x ?? 0, delta_y ?? 300);
+        return ok({ scrolled: "page", delta_x: delta_x ?? 0, delta_y: delta_y ?? 300, url: page.url() });
+      } catch (e) { return fail("browser_scroll", e); }
+    }
+  );
+
+  // --- browser_wait_for ---
+  mcp.tool(
+    "browser_wait_for",
+    "Wait for a selector to appear/disappear, or for a page load state.",
+    {
+      selector: z.string().optional().describe("CSS/XPath selector to wait for"),
+      state: z.enum(["attached", "detached", "visible", "hidden", "load", "domcontentloaded", "networkidle"]).optional()
+        .describe("Selector state or page load state to wait for (default: visible)"),
+      timeout: z.number().optional().describe("Max wait time in ms (default: 15000)"),
+    },
+    async ({ selector, state, timeout }) => {
+      try {
+        const sh = await getStagehand();
+        const page = sh.context.pages()[0];
+
+        if (selector) {
+          const selectorState = (state ?? "visible") as "attached" | "detached" | "visible" | "hidden";
+          await page.waitForSelector(selector, {
+            state: selectorState,
+            timeout: timeout ?? 15000,
+          });
+          return ok({ waited: "selector", selector, state: selectorState, url: page.url() });
+        }
+
+        // Wait for load state
+        const loadState = (state ?? "load") as "load" | "domcontentloaded" | "networkidle";
+        await page.waitForLoadState(loadState, timeout ?? 15000);
+        return ok({ waited: "loadState", state: loadState, url: page.url() });
+      } catch (e) { return fail("browser_wait_for", e); }
+    }
+  );
+
+  return mcp;
+}
+
+// ── SHTTP MCP transport (stateless — new McpServer per request) ──────────────
+app.route({
+  method: ["GET", "POST", "DELETE"],
+  url: "/mcp",
+  handler: async (request, reply) => {
+    try {
+      reply.hijack();
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      const mcp = createMcpServer();
+      await mcp.connect(transport);
+      await transport.handleRequest(request.raw, reply.raw, request.body);
+    } catch (e) {
+      logger.error({ err: e }, "MCP transport error");
+      if (!reply.raw.headersSent) {
+        reply.raw.writeHead(500, { "Content-Type": "application/json" });
+        reply.raw.end(JSON.stringify({ error: "Internal MCP error" }));
+      }
+    }
+  },
+});
+
+// ── Lifecycle ────────────────────────────────────────────────────────────────
+const start = async () => {
+  try {
+    await app.ready();
+    await app.listen({ host: "0.0.0.0", port: PORT });
+    isReady = true;
+    logger.info({ port: PORT, model: MODEL }, "stagehand-mcp ready");
+  } catch (e) {
+    logger.error({ err: e }, "Failed to start");
+    process.exit(1);
+  }
+};
+
+const shutdown = async () => {
+  isReady = false;
+  await closeStagehand();
+  await app.close();
+  process.exit(0);
+};
+
+process.on("SIGTERM", () => shutdown().catch(() => process.exit(1)));
+process.on("SIGINT",  () => shutdown().catch(() => process.exit(1)));
+
+start();
