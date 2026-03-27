@@ -8,6 +8,7 @@
 *.swp
 nohup.out
 .DS_Store
+.venv/
 
 # Local runtime state
 .openhands/
@@ -16,8 +17,11 @@ downloads/
 artifacts/backups/
 
 # Nested repos managed separately
-repos/OpenHands/
-repos/stagehand(working)/
+repos/stagehands(working)/node_modules/
+repos/stagehands(working)/.turbo/
+repos/stagehands(working)/.vscode/
+repos/stagehands(working)/.venv/
+repos/stagehands(working)/__pycache__/
 
 # Local scratch and benchmark fixtures
 repos/benchmark_workspace/
