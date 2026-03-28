@@ -6,7 +6,7 @@ services:
     build:
       context: ..
       dockerfile: compose/openhands_override/Dockerfile
-    image: oh-shop/openhands:61470a1-python-patched
+    image: oh-shop/openhands:1.5.0-runtime-patched
     container_name: openhands-app
     command: ["uvicorn", "openhands.server.listen:app", "--host", "0.0.0.0", "--port", "3000"]
     ports:
@@ -19,7 +19,7 @@ services:
       - LOG_ALL_EVENTS=true
       - WORKSPACE_MOUNT_PATH=/opt/workspace_base
       - AGENT_SERVER_IMAGE_REPOSITORY=oh-shop/agent-server
-      - AGENT_SERVER_IMAGE_TAG=61470a1-python-patched
+      - AGENT_SERVER_IMAGE_TAG=1.11.4-runtime-patched
     volumes:
       # OpenHands uses Docker to spin up sandbox runtimes, so it needs the Docker socket.
       - /var/run/docker.sock:/var/run/docker.sock
@@ -101,8 +101,8 @@ services:
       - "127.0.0.1:3020:3020"
       - "${DOCKER_BRIDGE_GATEWAY:-172.17.0.1}:3020:3020"
     environment:
-      # Model - default to the currently loaded LM Studio model unless explicitly overridden
-      - STAGEHAND_MODEL=${STAGEHAND_MODEL:-}
+      # Model - canonical pinned Stagehand text model for runtime stabilization
+      - STAGEHAND_MODEL=${STAGEHAND_MODEL:-qwen3-coder-30b-a3b-instruct}
       - STAGEHAND_LLM_BASE_URL=http://host.docker.internal:1234/v1
       - STAGEHAND_LLM_API_KEY=lm-studio
       # Browser settings

@@ -24,7 +24,7 @@ CORE_CONTAINERS = {
     "Stagehand MCP": "stagehand-mcp",
 }
 OPENHANDS_SANDBOX_NAME_PREFIX = "oh-agent-server-"
-EXPECTED_MCP_URL = "http://stagehand-mcp:3020/mcp"
+EXPECTED_MCP_URL = "http://host.docker.internal:3020/mcp"
 OPENHANDS_TOOL_CALL_PATCH_TARGET = (
     "/app/openhands/app_server/app_conversation/"
     "live_status_app_conversation_service.py"
@@ -98,7 +98,7 @@ def cmd_up() -> int:
             "docker",
             "build",
             "-t",
-            "oh-shop/agent-server:61470a1-python-patched",
+            "oh-shop/agent-server:1.11.4-runtime-patched",
             str(ROOT / "compose" / "agent_server_override"),
         ]
     )
@@ -1265,12 +1265,13 @@ def cmd_verify() -> int:
                 "LM Studio route from stagehand-mcp",
                 "stagehand-mcp",
                 [
-                    "curl",
-                    "-sf",
-                    "-o",
-                    "/dev/null",
-                    "--max-time",
-                    "5",
+                    "node",
+                    "-e",
+                    (
+                        "fetch(process.argv[1])"
+                        ".then((response) => { if (!response.ok) process.exit(1); })"
+                        ".catch((error) => { console.error(error); process.exit(1); })"
+                    ),
                     lm_docker_url,
                 ],
             ),
@@ -1323,8 +1324,8 @@ def cmd_verify() -> int:
         )
 
         print(
-            "Layer 4 - MCP server endpoint reachable "
-            "and readiness reported"
+            "Layer 4 - MCP endpoint reachable "
+            "(weak readiness only)"
         )
         mcp_health_ok, mcp_health_payload, mcp_health_detail = (
             _fetch_json("http://localhost:3020/healthz", timeout=5)

@@ -1,5 +1,12 @@
 # OH_SHOP Authoritative Rework Contract - 2026-03-21
 
+> Historical contract. This file is no longer the runtime authority for the stabilization phase.
+> Its March 2026 service map and browser-lane claims are stale where they describe `SearxNG` and `oh-browser-mcp` as current.
+> Current runtime authority now lives in:
+> - `docs/SETUP.md`
+> - `docs/runtime_stabilization_contract_v_0.md`
+> - `docs/runtime_stabilization/`
+
 ## Purpose
 
 This document is the authoritative execution contract for reworking OH_SHOP from its current mixed-state condition into one coherent, supportable local stack.

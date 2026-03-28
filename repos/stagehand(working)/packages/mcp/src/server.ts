@@ -1147,7 +1147,8 @@ function createMcpServer(): McpServer {
         // Agent SDK requires supported provider prefix. For OpenAI-compatible endpoints (LM Studio),
         // use "openai/<model>" with custom baseURL. The actual model is served locally.
         // Extract just the model name without provider prefix for the openai format.
-        const modelNameOnly = MODEL_NAME.includes("/") ? MODEL_NAME.split("/").pop()! : MODEL_NAME;
+        const agentModelName = await getStagehandModelName();
+        const modelNameOnly = agentModelName.includes("/") ? agentModelName.split("/").pop()! : agentModelName;
         const agent = sh.agent({
           mode: mode as "dom" | "hybrid",
           model: {
