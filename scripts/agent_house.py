@@ -220,9 +220,17 @@ def _fetch_conversation_events(
     sandbox_headers: dict[str, str],
     timeout: int = 15,
 ) -> tuple[bool, dict[str, Any] | None, str]:
-    """Prefer the app-server v1 event feed; fall back to sandbox."""
+    """Prefer the live sandbox feed; fall back to the app-server mirror."""
 
     attempts: list[tuple[str, str, dict[str, str] | None]] = [
+        (
+            "sandbox",
+            (
+                f"{conversation_api_url}/events/search"
+                "?sort_order=TIMESTAMP&limit=100"
+            ),
+            sandbox_headers,
+        ),
         (
             "app-server",
             (
@@ -231,14 +239,6 @@ def _fetch_conversation_events(
                 "?sort_order=TIMESTAMP&limit=100"
             ),
             None,
-        ),
-        (
-            "sandbox",
-            (
-                f"{conversation_api_url}/events/search"
-                "?sort_order=TIMESTAMP&limit=100"
-            ),
-            sandbox_headers,
         ),
     ]
 
@@ -325,9 +325,9 @@ def _has_runtime_events(items: Any) -> bool:
 
 def _extract_browser_tool_events(
     items: Any,
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str, str]:
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str, str, str]:
     if not isinstance(items, list):
-        return None, None, "", ""
+        return None, None, "", "", ""
 
     def _is_browser_tool_name(name: object) -> bool:
         if not isinstance(name, str):
@@ -368,6 +368,7 @@ def _extract_browser_tool_events(
     )
 
     assistant_text = ""
+    assistant_source = ""
     for event in reversed(items):
         if not isinstance(event, dict):
             continue
@@ -379,6 +380,7 @@ def _extract_browser_tool_events(
                 event.get("llm_message", {}).get("content")
             )
             if assistant_text:
+                assistant_source = "agent_message"
                 break
         if (
             event.get("kind") == "ActionEvent"
@@ -387,6 +389,7 @@ def _extract_browser_tool_events(
             message = event.get("action", {}).get("message")
             if isinstance(message, str) and message.strip():
                 assistant_text = message.strip()
+                assistant_source = "finish_action"
                 break
         if (
             event.get("kind") == "ObservationEvent"
@@ -396,6 +399,7 @@ def _extract_browser_tool_events(
                 event.get("observation", {}).get("content")
             )
             if assistant_text:
+                assistant_source = "finish_observation"
                 break
 
     observation_text = ""
@@ -404,7 +408,13 @@ def _extract_browser_tool_events(
             observation_event.get("observation", {}).get("content")
         )
 
-    return tool_action, observation_event, assistant_text, observation_text
+    return (
+        tool_action,
+        observation_event,
+        assistant_text,
+        observation_text,
+        assistant_source,
+    )
 
 
 def _split_provider_model(model: object) -> tuple[str | None, str | None]:
@@ -580,6 +590,7 @@ def _smoke_markdown(
     conversation_url: str | None,
     execution_status: str | None,
     classification: str,
+    assistant_source: str,
     assistant_text: str,
     observation_text: str,
     detail: str,
@@ -601,6 +612,7 @@ def _smoke_markdown(
             f"- Conversation URL: {conversation_url or 'unknown'}",
             f"- Final execution status: {execution_status or 'unknown'}",
             f"- Outcome classification: {classification}",
+            f"- Captured reply source: {assistant_source or 'none'}",
             f"- Detail: {detail or 'n/a'}",
             "",
             "## Prompt",
@@ -654,6 +666,7 @@ def cmd_smoke_test_browser_tool(
         agent_server_url: str | None = None,
         conversation_url: str | None = None,
         execution_status: str | None = None,
+        assistant_source: str = "",
         assistant_text: str = "",
         observation_text: str = "",
     ) -> int:
@@ -669,6 +682,7 @@ def cmd_smoke_test_browser_tool(
             conversation_url=conversation_url,
             execution_status=execution_status,
             classification=classification,
+            assistant_source=assistant_source,
             assistant_text=assistant_text,
             observation_text=observation_text,
             detail=detail,
@@ -872,6 +886,7 @@ def cmd_smoke_test_browser_tool(
     observation_event: dict[str, Any] | None = None
     assistant_text = ""
     observation_text = ""
+    assistant_source = ""
     observation_seen_at: float | None = None
     assistant_seen_at: float | None = None
 
@@ -898,8 +913,6 @@ def cmd_smoke_test_browser_tool(
         )
         if ok and isinstance(live_conversation, dict):
             execution_status = live_conversation.get("execution_status")
-            if execution_status == "finished":
-                break
             if execution_status in {"error", "failed"}:
                 return emit_result(
                     "integration failure",
@@ -931,6 +944,7 @@ def cmd_smoke_test_browser_tool(
                 observation_event,
                 assistant_text,
                 observation_text,
+                assistant_source,
             ) = _extract_browser_tool_events(items)
             if observation_event is not None and observation_seen_at is None:
                 observation_seen_at = time.monotonic()
@@ -965,6 +979,7 @@ def cmd_smoke_test_browser_tool(
                         agent_server_url=agent_server_url,
                         conversation_url=conversation_url,
                         execution_status=str(execution_status),
+                        assistant_source=assistant_source,
                         assistant_text=assistant_text,
                         observation_text=observation_text,
                     )
@@ -1023,6 +1038,7 @@ def cmd_smoke_test_browser_tool(
         observation_event,
         assistant_text,
         observation_text,
+        assistant_source,
     ) = _extract_browser_tool_events(items)
 
     if tool_action is None:
@@ -1046,6 +1062,7 @@ def cmd_smoke_test_browser_tool(
             agent_server_url=agent_server_url,
             conversation_url=conversation_url,
             execution_status=str(execution_status),
+            assistant_source=assistant_source,
             assistant_text=assistant_text,
         )
 
@@ -1075,6 +1092,7 @@ def cmd_smoke_test_browser_tool(
             agent_server_url=agent_server_url,
             conversation_url=conversation_url,
             execution_status=str(execution_status),
+            assistant_source=assistant_source,
             assistant_text=assistant_text,
             observation_text=observation_text,
         )
@@ -1102,6 +1120,7 @@ def cmd_smoke_test_browser_tool(
             agent_server_url=agent_server_url,
             conversation_url=conversation_url,
             execution_status=str(execution_status),
+            assistant_source=assistant_source,
             observation_text=observation_text,
         )
 
@@ -1128,6 +1147,7 @@ def cmd_smoke_test_browser_tool(
         agent_server_url=agent_server_url,
         conversation_url=conversation_url,
         execution_status=str(execution_status),
+        assistant_source=assistant_source,
         assistant_text=assistant_text,
         observation_text=observation_text,
     )
