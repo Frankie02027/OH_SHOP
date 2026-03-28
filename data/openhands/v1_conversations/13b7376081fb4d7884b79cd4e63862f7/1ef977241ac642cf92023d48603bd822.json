@@ -1,0 +1,26 @@
+{
+  "id": "1ef97724-1ac6-42cf-9202-3d48603bd822",
+  "timestamp": "2026-03-28T00:08:46.950133",
+  "source": "environment",
+  "tool_name": "browserbase_get_html",
+  "tool_call_id": "631162150",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_get_html' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": ""
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_get_html",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "2915db9e-13f5-49dc-9a27-1639fdc8f4e8",
+  "kind": "ObservationEvent"
+}

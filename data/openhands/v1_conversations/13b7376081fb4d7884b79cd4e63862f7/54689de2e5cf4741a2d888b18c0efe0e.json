@@ -1,0 +1,26 @@
+{
+  "id": "54689de2-e5cf-4741-a2d8-88b18c0efe0e",
+  "timestamp": "2026-03-28T00:09:00.895213",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_observe",
+  "tool_call_id": "232023865",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_observe' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Tab 0 observations: []"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_observe",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "c271285c-0e41-4fc7-a739-64112c3d0e1a",
+  "kind": "ObservationEvent"
+}

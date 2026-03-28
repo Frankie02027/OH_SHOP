@@ -1,0 +1,26 @@
+{
+  "id": "69193c1f-bbf4-49c8-882f-b02c37668b2c",
+  "timestamp": "2026-03-28T00:09:47.835153",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "192948859",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_navigate' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Tab 0: Navigated to: https://www.weather.com/weather/today/l/Burbank+IL"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_navigate",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "04cf2e33-d8ee-4d00-a8ed-f032490a4953",
+  "kind": "ObservationEvent"
+}

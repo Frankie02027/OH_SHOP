@@ -1,0 +1,8 @@
+{
+  "id": "bd16e2b2-0916-474c-884f-f9c6307a18c6",
+  "timestamp": "2026-03-27T22:13:25.034614",
+  "source": "environment",
+  "code": "LLMBadRequestError",
+  "detail": "litellm.BadRequestError: OpenAIException - Failed to load model \"lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-GGUF\". Error: Failed to load model.",
+  "kind": "ConversationErrorEvent"
+}

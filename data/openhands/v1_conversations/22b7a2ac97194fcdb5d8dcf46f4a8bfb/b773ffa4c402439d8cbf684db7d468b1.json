@@ -1,0 +1,26 @@
+{
+  "id": "b773ffa4-c402-439d-8cbf-684db7d468b1",
+  "timestamp": "2026-03-28T00:13:24.076399",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_extract",
+  "tool_call_id": "121038115",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_extract' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Extracted content:\n{\n  \"extraction\": \"Example Domain\"\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_extract",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "bdd342f1-ff34-435f-ad24-90d39cb65571",
+  "kind": "ObservationEvent"
+}

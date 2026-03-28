@@ -1,0 +1,26 @@
+{
+  "id": "c2ed54fa-7ec0-4881-9c6a-00213a671cd5",
+  "timestamp": "2026-03-28T00:10:54.743544",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "155290729",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_navigate' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Tab 0: Navigated to: https://www.wunderground.com/weather/us/il/burbank"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_navigate",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "e7437af3-4f42-4978-9924-ba7bd16cfaa1",
+  "kind": "ObservationEvent"
+}

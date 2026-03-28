@@ -1,0 +1,26 @@
+{
+  "id": "f44c5b62-15e5-4ccf-8a4d-6ab7be6eebf8",
+  "timestamp": "2026-03-28T00:10:02.315287",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "625446929",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_navigate' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Tab 0: Navigated to: https://weather.com/weather/today/l/USIL0123:1:US"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_navigate",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "49eb40f1-8bbf-4d17-9e14-b563e03ece5b",
+  "kind": "ObservationEvent"
+}

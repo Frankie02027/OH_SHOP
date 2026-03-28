@@ -1,0 +1,34 @@
+{
+  "id": "e7437af3-4f42-4978-9924-ba7bd16cfaa1",
+  "timestamp": "2026-03-28T00:10:53.136603",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": ""
+    }
+  ],
+  "reasoning_content": "",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {
+      "url": "https://www.wunderground.com/weather/us/il/burbank"
+    },
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "155290729",
+  "tool_call": {
+    "id": "155290729",
+    "name": "browserbase_stagehand_navigate",
+    "arguments": "{\"url\":\"https://www.wunderground.com/weather/us/il/burbank\",\"security_risk\":\"LOW\",\"summary\":\"Navigate to Weather Underground for Burbank, IL\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-lpyql0mf3hheiax3yesu8i",
+  "security_risk": "LOW",
+  "critic_result": null,
+  "summary": "Navigate to Weather Underground for Burbank, IL",
+  "kind": "ActionEvent"
+}

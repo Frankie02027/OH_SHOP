@@ -1,0 +1,32 @@
+{
+  "id": "71c8b98d-0251-475a-9a29-d75cdf73a395",
+  "timestamp": "2026-03-28T00:08:06.942284",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": "I'll use browser tools to find the current temperature in Burbank, IL. Let me start by creating a new browser session and searching for this information.\n"
+    }
+  ],
+  "reasoning_content": "",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {},
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_session_create",
+  "tool_call_id": "256049285",
+  "tool_call": {
+    "id": "256049285",
+    "name": "browserbase_session_create",
+    "arguments": "{\"security_risk\":\"LOW\",\"summary\":\"Create a new browser session\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-devsvb6gqatp0av6gvcckd",
+  "security_risk": "LOW",
+  "critic_result": null,
+  "summary": "Create a new browser session",
+  "kind": "ActionEvent"
+}

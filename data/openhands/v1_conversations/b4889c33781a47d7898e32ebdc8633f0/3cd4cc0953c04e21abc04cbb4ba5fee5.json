@@ -1,0 +1,20 @@
+{
+  "id": "3cd4cc09-53c0-4e21-abc0-4cbb4ba5fee5",
+  "timestamp": "2026-03-27T22:16:35.280095",
+  "source": "environment",
+  "tool_name": "think",
+  "tool_call_id": "227328828",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Your thought has been logged."
+      }
+    ],
+    "is_error": false,
+    "kind": "ThinkObservation"
+  },
+  "action_id": "58f6565b-4138-4ed0-a294-f2294f56ed2d",
+  "kind": "ObservationEvent"
+}
