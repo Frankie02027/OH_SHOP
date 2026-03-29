@@ -5,7 +5,7 @@
 import { Stagehand } from "@browserbasehq/stagehand";
 
 const MODEL    = process.env.STAGEHAND_MODEL         ?? "openai/all-hands_openhands-lm-32b-v0.1";
-const BASE_URL = process.env.STAGEHAND_LLM_BASE_URL  ?? "http://localhost:1234/v1";
+const BASE_URL = process.env.STAGEHAND_LLM_BASE_URL  ?? "http://127.0.0.1:1234/v1";
 const API_KEY  = process.env.STAGEHAND_LLM_API_KEY    ?? "lm-studio";
 const CHROME   = process.env.CHROME_PATH              ?? "/usr/bin/chromium";
 

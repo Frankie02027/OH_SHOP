@@ -17,7 +17,7 @@ import { serve } from "bun";
 import { $ } from "bun";
 
 const LMS = process.env.LMS_PATH || "/home/dev/.lmstudio/bin/lms";
-const LM_STUDIO_URL = process.env.LM_STUDIO_URL || "http://localhost:1234";
+const LM_STUDIO_URL = process.env.LM_STUDIO_URL || "http://127.0.0.1:1234";
 const ROUTER_PORT = parseInt(process.env.ROUTER_PORT || "1235");
 const TEXT_MODEL_OVERRIDE = (process.env.TEXT_MODEL || "").trim() || null;
 const VL_MODEL = (process.env.VL_MODEL || "qwen/qwen3-vl-8b").trim();

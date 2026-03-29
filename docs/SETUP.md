@@ -55,6 +55,9 @@ The current runtime is not:
   - `repos/stagehand(working)/packages/mcp/`
 - runtime state:
   - `data/openhands/`
+- host LM Studio launcher:
+  - `/usr/bin/lm-studio`
+  - `lmstudio` should resolve to the same binary through a shell-level shim or symlink
 
 ## Service map
 
@@ -75,6 +78,11 @@ Expected host ports:
   - `http://127.0.0.1:3020/mcp`
 - LM Studio:
   - `http://127.0.0.1:1234/v1`
+
+Current host launcher truth:
+- the `.deb` install is authoritative at `/usr/bin/lm-studio`
+- the active install payload lives at `/opt/LM-Studio/lm-studio`
+- the stale AppImage path `/opt/lmstudio/LM-Studio-0.4.7-4-x64.AppImage` must not be the runtime authority
 
 ## Canonical config truth for this phase
 

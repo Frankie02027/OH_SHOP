@@ -487,6 +487,7 @@ def _docker_container_health(name: str) -> tuple[bool, str]:
 
 
 def cmd_capture_proof_context(output_path: str | None = None) -> int:
+    lm_studio_host = os.getenv("LM_STUDIO_HOST", "127.0.0.1")
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S %Z")
     lm_studio_port = os.getenv("LM_STUDIO_PORT", "1234")
     snapshot_id = os.getenv("PROOF_SNAPSHOT_ID", "").strip()
@@ -494,7 +495,7 @@ def cmd_capture_proof_context(output_path: str | None = None) -> int:
         ["docker", "version"], timeout=10
     )
     host_lm_ok, _, host_lm_detail = _fetch_json(
-        f"http://localhost:{lm_studio_port}/v1/models",
+        f"http://{lm_studio_host}:{lm_studio_port}/v1/models",
         timeout=5,
     )
 
@@ -529,7 +530,8 @@ def cmd_capture_proof_context(output_path: str | None = None) -> int:
     ).strip()
 
     host_lm_detail_text = (
-        host_lm_detail or f"http://localhost:{lm_studio_port}/v1/models"
+        host_lm_detail
+        or f"http://{lm_studio_host}:{lm_studio_port}/v1/models"
     )
 
     content = "\n".join(
@@ -1159,6 +1161,7 @@ def cmd_smoke_test_browser_tool(
 
 
 def cmd_verify() -> int:
+    lm_studio_host = os.getenv("LM_STUDIO_HOST", "127.0.0.1")
     lm_studio_port = os.getenv("LM_STUDIO_PORT", "1234")
     cycles = int(os.getenv("VERIFY_CYCLES", "6"))
     interval_seconds = int(os.getenv("VERIFY_INTERVAL", "10"))
@@ -1167,7 +1170,7 @@ def cmd_verify() -> int:
     if interval_seconds < 1:
         raise ValueError("VERIFY_INTERVAL must be >= 1")
     required_failures = 0
-    lm_host_url = f"http://localhost:{lm_studio_port}/v1/models"
+    lm_host_url = f"http://{lm_studio_host}:{lm_studio_port}/v1/models"
     lm_docker_url = (
         f"http://host.docker.internal:{lm_studio_port}/v1/models"
     )
