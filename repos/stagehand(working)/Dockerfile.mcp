@@ -22,11 +22,11 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 WORKDIR /app
 
-# Copy package manifest and tsconfig
-COPY packages/mcp/package.json packages/mcp/tsconfig.json ./
+# Copy package manifest, lockfile, and tsconfig
+COPY packages/mcp/package.json packages/mcp/package-lock.json packages/mcp/tsconfig.json ./
 
-# Install deps with npm (standalone project, no monorepo)
-RUN npm install
+# Install deps deterministically from the checked-in lockfile.
+RUN npm ci --no-audit --no-fund
 
 # Copy source
 COPY packages/mcp/src/ src/

@@ -1,6 +1,6 @@
 {
   "name": "@browserbasehq/stagehand-mcp",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "description": "MCP SHTTP server exposing Stagehand browser tools for OpenHands",
   "type": "module",

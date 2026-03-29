@@ -32,5 +32,5 @@ python3 /home/dev/OH_SHOP/scripts/agent_house.py verify
 
 - LM Studio must be intentionally running for live provider checks to pass.
 - `compose/docker-compose.yml` is the current compose baseline.
-- `compose/openhands.compose.yml` is deprecated and should not be used for normal bring-up.
+- the legacy `compose/openhands.compose.yml` subset has been removed; use `scripts/up.sh` or `compose/docker-compose.yml`.
 - a green health check does not prove `oh-browser-mcp` is registered in OpenHands or usable from a fresh session.

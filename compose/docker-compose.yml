@@ -24,9 +24,9 @@ services:
       # OpenHands uses Docker to spin up sandbox runtimes, so it needs the Docker socket.
       - /var/run/docker.sock:/var/run/docker.sock
       # Persist OpenHands state under OH_SHOP
-      - /home/dev/OH_SHOP/data/openhands:/.openhands
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/data/openhands:/.openhands
       # Only allow repos under OH_SHOP as workspace base
-      - /home/dev/OH_SHOP/repos:/opt/workspace_base
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/repos:/opt/workspace_base
     stdin_open: true
     tty: true
     healthcheck:
@@ -59,8 +59,8 @@ services:
         "python3 -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir docker >/dev/null && python3 -u /opt/oh_shop/scripts/chat_guard.py --db /.openhands/openhands.db --watch --interval 60 --openhands-url http://openhands:3000",
       ]
     volumes:
-      - /home/dev/OH_SHOP/data/openhands:/.openhands
-      - /home/dev/OH_SHOP/scripts:/opt/oh_shop/scripts:ro
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/data/openhands:/.openhands
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/scripts:/opt/oh_shop/scripts:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       openhands:
@@ -71,7 +71,7 @@ services:
   # OpenWebUI (the cockpit)
   # ----------------------------
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:main@sha256:bb3f0281554bf05a9d505ffb5a5f067ab53e13ac772eb4ea3077a92ddc64600e
     container_name: open-webui
     ports:
       - "127.0.0.1:3001:8080"
@@ -95,7 +95,7 @@ services:
     build:
       context: "../repos/stagehand(working)"
       dockerfile: Dockerfile.mcp
-    image: oh-stagehand-mcp:latest
+    image: oh-stagehand-mcp:0.3.0-runtime-patched
     container_name: stagehand-mcp
     ports:
       - "127.0.0.1:3020:3020"
@@ -119,7 +119,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - /home/dev/OH_SHOP/downloads:/data/downloads
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/downloads:/data/downloads
     healthcheck:
       test:
         [

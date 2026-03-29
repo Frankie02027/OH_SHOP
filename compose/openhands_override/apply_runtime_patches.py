@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch OpenHands V0/V1 prompts and routing to prefer internet tools for external resources."""
+"""Apply the canonical OpenHands app runtime patches for OH_SHOP."""
 
 from pathlib import Path
 import sys
@@ -119,31 +119,6 @@ APP_SERVER_SIGNATURE_REPLACEMENT = """    def _create_agent_with_context(
     ) -> Agent:
 """
 
-APP_SERVER_DEFAULT_TOOLS_SNIPPET = """        else:
-            agent = Agent(
-                llm=llm,
-                tools=get_default_tools(enable_browser=True),
-                system_prompt_kwargs={'cli_mode': False},
-                condenser=condenser,
-                mcp_config=mcp_config,
-            )
-"""
-
-APP_SERVER_DEFAULT_TOOLS_REPLACEMENT = """        else:
-            default_tools = (
-                []
-                if (not selected_repository and mcp_config)
-                else get_default_tools(enable_browser=True)
-            )
-            agent = Agent(
-                llm=llm,
-                tools=default_tools,
-                system_prompt_kwargs={'cli_mode': False},
-                condenser=condenser,
-                mcp_config=mcp_config,
-            )
-"""
-
 APP_SERVER_MCP_FILTER_ANCHOR = (
     "        llm, mcp_config = await self._configure_llm_and_mcp(user, llm_model)\n"
 )
@@ -201,6 +176,13 @@ APP_SERVER_TITLE_CALLBACK_REPLACEMENT = """            # Disable automatic title
             # errors during fresh-session MCP proof runs.
 """
 
+NATIVE_TOOL_CALLING_TARGET = """usage_id='agent',
+        )"""
+
+NATIVE_TOOL_CALLING_REPLACEMENT = """usage_id='agent',
+            native_tool_calling=False if (model and 'openhands-lm' in model) else True,
+        )"""
+
 
 def _patch_target(
     target: Path,
@@ -247,8 +229,6 @@ def _patch_app_server() -> tuple[bool, str]:
         replacements = (
             (APP_SERVER_CALL_SNIPPET, APP_SERVER_CALL_REPLACEMENT),
             (APP_SERVER_SIGNATURE_SNIPPET, APP_SERVER_SIGNATURE_REPLACEMENT),
-            (APP_SERVER_DEFAULT_TOOLS_SNIPPET,
-             APP_SERVER_DEFAULT_TOOLS_REPLACEMENT),
         )
         for old, new in replacements:
             if old not in text:
@@ -316,6 +296,33 @@ def _patch_app_server() -> tuple[bool, str]:
     return True, "applied app-server routing patch"
 
 
+def _patch_native_tool_calling() -> tuple[bool, str]:
+    target = APP_SERVER_TARGET
+    if not target.exists():
+        return False, f"target file not found: {target}"
+
+    text = target.read_text(encoding="utf-8")
+    if "native_tool_calling=False if (model and 'openhands-lm' in model) else True" in text:
+        return True, "native_tool_calling patch already present"
+
+    if NATIVE_TOOL_CALLING_TARGET not in text:
+        return False, "expected native_tool_calling block not found; refusing blind patch"
+
+    backup = target.with_suffix(target.suffix + ".bak_oh_shop_toolcall_v1")
+    if not backup.exists():
+        backup.write_text(text, encoding="utf-8")
+
+    target.write_text(
+        text.replace(
+            NATIVE_TOOL_CALLING_TARGET,
+            NATIVE_TOOL_CALLING_REPLACEMENT,
+            1,
+        ),
+        encoding="utf-8",
+    )
+    return True, "applied native_tool_calling patch"
+
+
 def _patch_skill_loader_target() -> tuple[bool, str]:
     target = APP_SERVER_SKILL_TARGET
     if not target.exists():
@@ -372,12 +379,20 @@ def main() -> int:
         print(app_server_msg, file=sys.stderr)
         return 1
 
+    tool_call_ok, tool_call_msg = _patch_native_tool_calling()
+    if not tool_call_ok:
+        print(tool_call_msg, file=sys.stderr)
+        return 1
+
     skill_ok, skill_msg = _patch_skill_loader_target()
     if not skill_ok:
         print(skill_msg, file=sys.stderr)
         return 1
 
-    print(f"{interactive_msg}; {system_msg}; {app_server_msg}; {skill_msg}.")
+    print(
+        f"{interactive_msg}; {system_msg}; {app_server_msg}; "
+        f"{tool_call_msg}; {skill_msg}."
+    )
     return 0
 
 

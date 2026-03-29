@@ -17,7 +17,6 @@ copy_if_exists() {
 
 copy_if_exists "$ROOT/data/openhands"
 copy_if_exists "$ROOT/compose/docker-compose.yml"
-copy_if_exists "$ROOT/compose/openhands.compose.yml"
 copy_if_exists "$HOME/.lmstudio/.internal/http-server-config.json"
 copy_if_exists "$HOME/.lmstudio/settings.json"
 copy_if_exists "$HOME/.lmstudio/.internal/app-install-location.json"
@@ -29,7 +28,6 @@ Created: $STAMP
 Included when present:
 - data/openhands
 - compose/docker-compose.yml
-- compose/openhands.compose.yml
 - LM Studio config files
 EOF
 

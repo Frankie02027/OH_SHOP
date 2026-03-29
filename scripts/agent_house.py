@@ -17,6 +17,8 @@ COMPOSE_FILE = ROOT / "compose" / "docker-compose.yml"
 PROOF_TEMPLATE = ROOT / "docs" / "templates" / "fresh_session_mcp_proof_run.md"
 OPENHANDS_SETTINGS_FILE = ROOT / "data" / "openhands" / "settings.json"
 OPENHANDS_URL = "http://localhost:3000"
+OH_SHOP_ROOT_ENV = "OH_SHOP_ROOT"
+AGENT_SERVER_IMAGE = "oh-shop/agent-server:1.11.4-runtime-patched"
 CORE_SERVICES = ["openhands", "open-webui", "stagehand-mcp"]
 CORE_CONTAINERS = {
     "OpenHands": "openhands-app",
@@ -59,6 +61,7 @@ def run_compose(args: list[str]) -> int:
     cmd = ["docker", "compose", "-f", str(COMPOSE_FILE), *args]
     env = os.environ.copy()
     env.setdefault("DOCKER_BRIDGE_GATEWAY", get_docker_bridge_gateway())
+    env.setdefault(OH_SHOP_ROOT_ENV, str(ROOT))
     return subprocess.call(cmd, env=env)
 
 
@@ -97,9 +100,11 @@ def cmd_up() -> int:
         [
             "docker",
             "build",
+            "-f",
+            str(ROOT / "compose" / "agent_server_override" / "Dockerfile"),
             "-t",
-            "oh-shop/agent-server:1.11.4-runtime-patched",
-            str(ROOT / "compose" / "agent_server_override"),
+            AGENT_SERVER_IMAGE,
+            str(ROOT),
         ]
     )
     if agent_server_rc != 0:

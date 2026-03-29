@@ -109,9 +109,11 @@ It should not be ignored when reconciling truth.
 ## Non-authoritative paths
 
 The following paths are not current runtime authority:
-- `compose/openhands.compose.yml`
 - `bridge/model_router/`
 - `bridge/openapi_server/`
 - `repos/OpenHands/`
+
+Removed non-authoritative runtime path:
+- the legacy `compose/openhands.compose.yml` subset was deleted during runtime normalization
 
 Historical docs may remain in `docs/`, but they must not outrank this file plus the runtime stabilization artifact set.
