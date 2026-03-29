@@ -1,0 +1,32 @@
+{
+  "id": "a59e0521-1025-48ed-8783-4f0503026b0b",
+  "timestamp": "2026-03-29T18:26:43.111561",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": ""
+    }
+  ],
+  "reasoning_content": "",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {},
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_get_html",
+  "tool_call_id": "962144611",
+  "tool_call": {
+    "id": "962144611",
+    "name": "browserbase_get_html",
+    "arguments": "{}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-j9hxf0nhtz8aclqwgmmg1r",
+  "security_risk": "UNKNOWN",
+  "critic_result": null,
+  "summary": "browserbase_get_html: {}",
+  "kind": "ActionEvent"
+}

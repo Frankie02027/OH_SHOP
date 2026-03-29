@@ -1,0 +1,26 @@
+{
+  "id": "a156f134-f5a3-4085-b4c9-236d73e4ae15",
+  "timestamp": "2026-03-29T18:26:36.801494",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "353194604",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_navigate' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Tab 0: Navigated to: https://www.weather.com/weather/today/l/ILXX0357:1:IL"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_navigate",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "c664d9cf-70ae-4d82-bfcc-4c0e3d4e0089",
+  "kind": "ObservationEvent"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "53390395-085c-4338-b6b4-1ec9bffb9b20",
+  "timestamp": "2026-03-29T18:26:11.238922",
+  "source": "environment",
+  "tool_name": "browserbase_fill",
+  "tool_call_id": "373008509",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_fill' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Fill failed: StagehandEvalError: Uncaught"
+      }
+    ],
+    "is_error": true,
+    "tool_name": "browserbase_fill",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "3c1126c3-0974-4bd9-be92-ba8d487e0d96",
+  "kind": "ObservationEvent"
+}

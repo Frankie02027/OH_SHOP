@@ -1,0 +1,29 @@
+{
+  "id": "113db776-1a07-40c4-bc86-e72fbb3486ae",
+  "timestamp": "2026-03-29T18:26:39.915250",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": ""
+    }
+  ],
+  "reasoning_content": "",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": null,
+  "tool_name": "browserbase_get_content",
+  "tool_call_id": "571941492",
+  "tool_call": {
+    "id": "571941492",
+    "name": "browserbase_get_content",
+    "arguments": "{}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-k6ghcqssz9i1z9ck8zx8n",
+  "security_risk": "UNKNOWN",
+  "critic_result": null,
+  "summary": null,
+  "kind": "ActionEvent"
+}

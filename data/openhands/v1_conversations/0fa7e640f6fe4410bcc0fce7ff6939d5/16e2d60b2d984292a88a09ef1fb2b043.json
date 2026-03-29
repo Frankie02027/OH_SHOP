@@ -1,0 +1,26 @@
+{
+  "id": "16e2d60b-2d98-4292-a88a-09ef1fb2b043",
+  "timestamp": "2026-03-29T18:26:01.886228",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_observe",
+  "tool_call_id": "531387030",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_observe' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Failed to observe: No object generated: response did not match schema."
+      }
+    ],
+    "is_error": true,
+    "tool_name": "browserbase_stagehand_observe",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "f353ef81-11d3-4d47-9206-b19c4bd6b669",
+  "kind": "ObservationEvent"
+}

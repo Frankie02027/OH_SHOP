@@ -1,0 +1,32 @@
+{
+  "id": "65f0c38d-2ccd-4db0-8f3e-f2d2e395d82b",
+  "timestamp": "2026-03-29T18:25:44.751857",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": "I need to find the current temperature in Burbank, IL. Let me search for this information using a web browser.\n"
+    }
+  ],
+  "reasoning_content": "",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {},
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_session_create",
+  "tool_call_id": "653130494",
+  "tool_call": {
+    "id": "653130494",
+    "name": "browserbase_session_create",
+    "arguments": "{}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-au54rv5r1ws6rk4e7odbmk",
+  "security_risk": "UNKNOWN",
+  "critic_result": null,
+  "summary": "browserbase_session_create: {}",
+  "kind": "ActionEvent"
+}
