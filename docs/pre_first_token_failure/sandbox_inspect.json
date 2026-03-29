@@ -1,0 +1,311 @@
+== detected_at 2026-03-29T11:51:54-05:00 ==
+name=oh-agent-server-xC0Bgbvjp2GAUZBX1wvFV
+[
+    {
+        "Id": "f1c7697604e418298950bb02689d28230ce624fcba5ead65a2713f2bb0d503cc",
+        "Created": "2026-03-29T16:51:53.483083665Z",
+        "Path": "python3",
+        "Args": [
+            "-m",
+            "openhands.agent_server",
+            "--port",
+            "8000"
+        ],
+        "State": {
+            "Status": "running",
+            "Running": true,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 46157,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "2026-03-29T16:51:53.579730875Z",
+            "FinishedAt": "0001-01-01T00:00:00Z"
+        },
+        "Image": "sha256:afdea92ea0044683f4c5c1fa826349a9dad2542c672f8a8f7a37de66e30a2801",
+        "ResolvConfPath": "/var/lib/docker/containers/f1c7697604e418298950bb02689d28230ce624fcba5ead65a2713f2bb0d503cc/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/f1c7697604e418298950bb02689d28230ce624fcba5ead65a2713f2bb0d503cc/hostname",
+        "HostsPath": "/var/lib/docker/containers/f1c7697604e418298950bb02689d28230ce624fcba5ead65a2713f2bb0d503cc/hosts",
+        "LogPath": "/var/lib/docker/containers/f1c7697604e418298950bb02689d28230ce624fcba5ead65a2713f2bb0d503cc/f1c7697604e418298950bb02689d28230ce624fcba5ead65a2713f2bb0d503cc-json.log",
+        "Name": "/oh-agent-server-xC0Bgbvjp2GAUZBX1wvFV",
+        "RestartCount": 0,
+        "Driver": "overlayfs",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "docker-default",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": null,
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "bridge",
+            "PortBindings": {
+                "8000/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "50031"
+                    }
+                ],
+                "8001/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "45851"
+                    }
+                ],
+                "8011/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "40989"
+                    }
+                ],
+                "8012/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "36899"
+                    }
+                ]
+            },
+            "RestartPolicy": {
+                "Name": "no",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": null,
+            "CapDrop": null,
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": null,
+            "DnsSearch": null,
+            "ExtraHosts": [
+                "host.docker.internal:host-gateway"
+            ],
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": false,
+            "SecurityOpt": null,
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 0,
+            "NanoCpus": 0,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": null,
+            "BlkioDeviceReadBps": null,
+            "BlkioDeviceWriteBps": null,
+            "BlkioDeviceReadIOps": null,
+            "BlkioDeviceWriteIOps": null,
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": null,
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 0,
+            "MemorySwap": 0,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": null,
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "MaskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/sys/devices/virtual/powercap",
+                "/sys/firmware"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ],
+            "Init": true
+        },
+        "Storage": {
+            "RootFS": {
+                "Snapshot": {
+                    "Name": "overlayfs"
+                }
+            }
+        },
+        "Mounts": [],
+        "Config": {
+            "Hostname": "f1c7697604e4",
+            "Domainname": "",
+            "User": "openhands",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "8000/tcp": {},
+                "8001/tcp": {},
+                "8002/tcp": {},
+                "8011/tcp": {},
+                "8012/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "OPENVSCODE_SERVER_ROOT=/openhands/.openvscode-server",
+                "OH_ENABLE_VNC=0",
+                "LOG_JSON=true",
+                "OH_CONVERSATIONS_PATH=/workspace/conversations",
+                "OH_BASH_EVENTS_DIR=/workspace/bash_events",
+                "PYTHONUNBUFFERED=1",
+                "ENV_LOG_LEVEL=20",
+                "OH_SESSION_API_KEYS_0=Mqm2JE3Uxhh9olL6Rbu7kWTL8om3XMEkVQpkTU0xwDb",
+                "OH_WEBHOOKS_0_BASE_URL=http://host.docker.internal:3000/api/v1/webhooks",
+                "AGENT_SERVER=8000",
+                "VSCODE=8001",
+                "WORKER_1=8011",
+                "WORKER_2=8012",
+                "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG=C.UTF-8",
+                "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+                "PYTHON_VERSION=3.12.12",
+                "PYTHON_SHA256=fb85a13414b028c49ba18bbd523c2d055a30b56b18b92ce454ea2c51edc656c4",
+                "POETRY_HOME=/usr/local",
+                "EDITOR=code",
+                "VISUAL=code",
+                "GIT_EDITOR=code --wait",
+                "NOVNC_WEB=/usr/share/novnc",
+                "NOVNC_PORT=8002",
+                "DISPLAY=:1",
+                "VNC_GEOMETRY=1280x800",
+                "CHROME_BIN=/usr/bin/chromium",
+                "PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium",
+                "CHROMIUM_FLAGS=--no-sandbox --disable-dev-shm-usage --disable-gpu",
+                "LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/lib:/usr/lib/x86_64-linux-gnu:"
+            ],
+            "Cmd": [
+                "--port",
+                "8000"
+            ],
+            "Image": "oh-shop/agent-server:1.11.4-runtime-patched",
+            "Volumes": null,
+            "WorkingDir": "/workspace/project",
+            "Entrypoint": [
+                "python3",
+                "-m",
+                "openhands.agent_server"
+            ],
+            "Labels": {
+                "org.opencontainers.image.authors": "Nikolai R Kristiansen <nikolaik@gmail.com>",
+                "sandbox_spec_id": "oh-shop/agent-server:1.11.4-runtime-patched"
+            }
+        },
+        "NetworkSettings": {
+            "SandboxID": "7fc8f84d41d3f7ada2234fcb02c6dedc6d6de8cf1d660bc834eb0364fa781d38",
+            "SandboxKey": "/var/run/docker/netns/7fc8f84d41d3",
+            "Ports": {
+                "8000/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "50031"
+                    },
+                    {
+                        "HostIp": "::",
+                        "HostPort": "50031"
+                    }
+                ],
+                "8001/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "45851"
+                    },
+                    {
+                        "HostIp": "::",
+                        "HostPort": "45851"
+                    }
+                ],
+                "8002/tcp": null,
+                "8011/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "40989"
+                    },
+                    {
+                        "HostIp": "::",
+                        "HostPort": "40989"
+                    }
+                ],
+                "8012/tcp": [
+                    {
+                        "HostIp": "0.0.0.0",
+                        "HostPort": "36899"
+                    },
+                    {
+                        "HostIp": "::",
+                        "HostPort": "36899"
+                    }
+                ]
+            },
+            "Networks": {
+                "bridge": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": null,
+                    "DriverOpts": null,
+                    "GwPriority": 0,
+                    "NetworkID": "0a6fd540c25451d5a3fb75645d8ebe4cad8fef916a92cf72d5a2a9df7dcbf940",
+                    "EndpointID": "7cf0c4a253921eff72076a0047fc0148370171c17372d283a9db80d835a19d78",
+                    "Gateway": "172.17.0.1",
+                    "IPAddress": "172.17.0.2",
+                    "MacAddress": "46:44:77:01:b4:e1",
+                    "IPPrefixLen": 16,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": null
+                }
+            }
+        },
+        "ImageManifestDescriptor": {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:8db8361421db5611238955460945efb44bd4311510a35600f88fdb6db5e7f64f",
+            "size": 5651,
+            "platform": {
+                "architecture": "amd64",
+                "os": "linux"
+            }
+        }
+    }
+]
