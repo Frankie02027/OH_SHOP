@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = ROOT / "data" / "openhands" / "openhands.db"
 DEFAULT_OPENHANDS_URL = os.getenv("CHAT_GUARD_OPENHANDS_URL",
                                   "http://openhands:3000")

@@ -8,14 +8,9 @@ Date context: 2026-03-29
 | `compose/openhands_override/Dockerfile` | `ACTIVE_RUNTIME` | OpenHands app build override | Keep | Canonical app image path. |
 | `compose/openhands_override/apply_runtime_patches.py` | `ACTIVE_COMPATIBILITY_DEBT` | OpenHands app patch authority | Keep | Active but patch debt. |
 | `compose/agent_server_override/Dockerfile` | `ACTIVE_COMPATIBILITY_DEBT` | sandbox agent-server repack | Keep | Still required to override the frozen upstream image. |
-| `scripts/agent_house.py` | `ACTIVE_OPS_WRAPPER` | canonical control plane | Keep | Single operational entrypoint. |
-| `scripts/up.sh` | `ACTIVE_OPS_WRAPPER` | startup wrapper | Keep | Canonical operator shortcut. |
-| `scripts/down.sh` | `ACTIVE_OPS_WRAPPER` | shutdown wrapper | Keep | Canonical operator shortcut. |
-| `scripts/verify.sh` | `ACTIVE_OPS_WRAPPER` | verification wrapper | Keep | Canonical verifier shortcut. |
-| `scripts/verify.py` | `ACTIVE_OPS_WRAPPER` | Python verifier wrapper | Keep | Lightweight helper. |
-| `scripts/backup_state.sh` | `ACTIVE_OPS_WRAPPER` | state backup helper | Keep | Legit operational tool. |
-| `scripts/chat_guard.py` | `ACTIVE_COMPATIBILITY_DEBT` | manual runtime cleanup helper | Keep | Still useful, but not baseline architecture. |
-| `scripts/lmstudio-docker-dnat.sh` | `ACTIVE_COMPATIBILITY_DEBT` | privileged Docker-to-host LM Studio workaround | Keep | Real manual workaround, not normal product runtime. |
+| `ops/garagectl.py` | `ACTIVE_OPS_WRAPPER` | canonical control plane | Keep | Single operational entrypoint. |
+| `ops/manual/chat_guard.py` | `ACTIVE_COMPATIBILITY_DEBT` | manual runtime cleanup helper | Keep | Still useful, but not baseline architecture. |
+| `ops/manual/lmstudio-docker-dnat.sh` | `ACTIVE_COMPATIBILITY_DEBT` | privileged Docker-to-host LM Studio workaround | Keep | Real manual workaround, not normal product runtime. |
 | `compat/openhands_sdk_overrides/` | `ACTIVE_COMPATIBILITY_DEBT` | shared converter overlays | Keep | Active and now isolated honestly. |
 | `vendor/stagehand_mcp/` | `ACTIVE_RUNTIME_SUPPORT` | extracted active browser-tool vendor slice | Keep | Current browser lane. |
 | `vendor/stagehand_mcp/src/server.ts` | `ACTIVE_COMPATIBILITY_DEBT` | Stagehand MCP server with LM Studio shims | Keep | Runtime-critical compatibility shim. |
@@ -47,7 +42,7 @@ Date context: 2026-03-29
 ## Direct rulings
 
 - `compose/` stays active because the canonical commands and runtime authority already center there.
-- `scripts/` stays active because it is the actual operator surface, not cosmetic wrapper noise.
+- `ops/` is now the only operator command surface.
 - `compat/` exists because hiding compatibility sludge under `compose/` was dishonest.
 - `vendor/` exists because the active Stagehand MCP slice is real runtime support, not a user workspace repo.
 - `workspace/` exists because `repos/` was an overloaded name that mixed workspace, vendor code, and junk.

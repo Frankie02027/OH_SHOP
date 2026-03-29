@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Agent House orchestration entrypoint for the canonical compose baseline."""
+"""OH_SHOP runtime controller entrypoint for the canonical compose baseline."""
 
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -14,11 +15,14 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_FILE = ROOT / "compose" / "docker-compose.yml"
-PROOF_TEMPLATE = ROOT / "docs" / "templates" / "fresh_session_mcp_proof_run.md"
+PROOF_TEMPLATE = (
+    ROOT / "docs" / "runtime" / "templates" / "fresh_session_mcp_proof_run.md"
+)
 OPENHANDS_SETTINGS_FILE = ROOT / "data" / "openhands" / "settings.json"
 OPENHANDS_URL = "http://localhost:3000"
 OH_SHOP_ROOT_ENV = "OH_SHOP_ROOT"
 AGENT_SERVER_IMAGE = "oh-shop/agent-server:1.11.4-runtime-patched"
+MANUAL_OPS_DIR = ROOT / "ops" / "manual"
 CORE_SERVICES = ["openhands", "open-webui", "stagehand-mcp"]
 CORE_CONTAINERS = {
     "OpenHands": "openhands-app",
@@ -124,17 +128,115 @@ def cmd_logs() -> int:
     return run_compose(["logs", "-f", "--tail", "100"])
 
 
+def cmd_status() -> int:
+    print("OH_SHOP runtime status")
+    print(f"- Repo root: {ROOT}")
+    print(f"- Compose file: {COMPOSE_FILE}")
+    print(f"- OpenHands URL: {OPENHANDS_URL}")
+    print()
+
+    for label, container in CORE_CONTAINERS.items():
+        running, running_detail = _docker_container_running(container)
+        if not running:
+            print(f"- {label}: not running ({running_detail})")
+            continue
+        healthy, health_detail = _docker_container_health(container)
+        health_text = health_detail if healthy else f"unhealthy:{health_detail}"
+        print(f"- {label}: running ({running_detail}); health={health_text}")
+
+    if OPENHANDS_SETTINGS_FILE.exists():
+        try:
+            settings = json.loads(
+                OPENHANDS_SETTINGS_FILE.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            settings = {}
+        llm_model = "unknown"
+        llm_base_url = "unknown"
+        mcp_url = "unknown"
+        if isinstance(settings, dict):
+            llm_model = str(
+                settings.get("llm_model")
+                or settings.get("llm_settings", {}).get("model")
+                or "unknown"
+            )
+            llm_base_url = str(
+                settings.get("llm_base_url")
+                or settings.get("llm_settings", {}).get("base_url")
+                or "unknown"
+            )
+            mcp_config = settings.get("mcp_config") or {}
+            if isinstance(mcp_config, dict):
+                shttp_servers = mcp_config.get("shttp_servers") or []
+                if isinstance(shttp_servers, list) and shttp_servers:
+                    first_server = shttp_servers[0]
+                    if isinstance(first_server, dict):
+                        mcp_url = str(first_server.get("url") or "unknown")
+                else:
+                    mcp_url = str(mcp_config.get("shttp_url") or "unknown")
+        print()
+        print("- Persisted OpenHands model:", llm_model)
+        print("- Persisted OpenHands base URL:", llm_base_url)
+        print("- Persisted MCP URL:", mcp_url)
+    return 0
+
+
 def cmd_reconcile_chats() -> int:
-    script = ROOT / "scripts" / "chat_guard.py"
+    script = MANUAL_OPS_DIR / "chat_guard.py"
     return subprocess.call(["python3", str(script)])
 
 
 def cmd_monitor_chats() -> int:
-    script = ROOT / "scripts" / "chat_guard.py"
+    script = MANUAL_OPS_DIR / "chat_guard.py"
     interval = os.getenv("CHAT_GUARD_INTERVAL", "60")
     return subprocess.call(
         ["python3", str(script), "--watch", "--interval", interval]
     )
+
+
+def _copy_if_exists(source: Path, destination: Path) -> None:
+    if not source.exists():
+        return
+    target = destination / source.name
+    if source.is_dir():
+        shutil.copytree(source, target, dirs_exist_ok=True)
+    else:
+        shutil.copy2(source, target)
+
+
+def cmd_backup_state() -> int:
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    backup_root = ROOT / "artifacts" / "backups"
+    destination = backup_root / stamp
+    destination.mkdir(parents=True, exist_ok=True)
+
+    _copy_if_exists(ROOT / "data" / "openhands", destination)
+    _copy_if_exists(ROOT / "compose" / "docker-compose.yml", destination)
+    _copy_if_exists(
+        Path.home() / ".lmstudio" / ".internal" / "http-server-config.json",
+        destination,
+    )
+    _copy_if_exists(Path.home() / ".lmstudio" / "settings.json", destination)
+    _copy_if_exists(
+        Path.home() / ".lmstudio" / ".internal" / "app-install-location.json",
+        destination,
+    )
+
+    readme = "\n".join(
+        [
+            "OH_SHOP state backup",
+            f"Created: {stamp}",
+            "",
+            "Included when present:",
+            "- data/openhands",
+            "- compose/docker-compose.yml",
+            "- LM Studio config files",
+            "",
+        ]
+    )
+    (destination / "README.txt").write_text(readme, encoding="utf-8")
+    print(f"Backup created at {destination}")
+    return 0
 
 
 def _write_output(path: Path, content: str) -> None:
@@ -515,7 +617,7 @@ def cmd_capture_proof_context(output_path: str | None = None) -> int:
     verify_env.setdefault("VERIFY_INTERVAL", "1")
     verify_cmd = [
         "python3",
-        str(ROOT / "scripts" / "agent_house.py"),
+        str(ROOT / "ops" / "garagectl.py"),
         "verify",
     ]
     verify_completed = subprocess.run(
@@ -608,7 +710,7 @@ def _smoke_markdown(
             "",
             f"- Captured at: {timestamp}",
             f"- Repo root: {ROOT}",
-            "- Command: python3 scripts/agent_house.py "
+            "- Command: python3 ops/garagectl.py "
             "smoke-test-browser-tool",
             f"- Title: {title}",
             f"- Start task id: {task_id or 'unknown'}",
@@ -1598,15 +1700,17 @@ def cmd_verify() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Agent House helper")
+    parser = argparse.ArgumentParser(description="OH_SHOP runtime controller")
     parser.add_argument(
         "command",
         choices=[
             "up",
             "down",
+            "status",
             "cleanup-sandboxes",
             "logs",
             "verify",
+            "backup-state",
             "capture-proof-context",
             "smoke-test-browser-tool",
             "reconcile-chats",
@@ -1632,6 +1736,8 @@ def main() -> int:
         return cmd_up()
     if args.command == "down":
         return cmd_down()
+    if args.command == "status":
+        return cmd_status()
     if args.command == "cleanup-sandboxes":
         ok, detail = _remove_openhands_sandboxes()
         print(detail)
@@ -1640,6 +1746,8 @@ def main() -> int:
         return cmd_logs()
     if args.command == "verify":
         return cmd_verify()
+    if args.command == "backup-state":
+        return cmd_backup_state()
     if args.command == "capture-proof-context":
         return cmd_capture_proof_context(args.output)
     if args.command == "smoke-test-browser-tool":

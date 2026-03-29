@@ -5,7 +5,7 @@ Date context: 2026-03-29
 The repo now has an honest surface.
 
 - `compose/` is the live runtime/build surface.
-- `scripts/` is the live ops surface.
+- `ops/` is the live command and manual-ops surface.
 - `compat/` is explicit compatibility debt.
 - `vendor/` holds the active Stagehand MCP slice.
 - `workspace/` is the only sandbox-exposed work tree.
@@ -15,9 +15,9 @@ The repo now has an honest surface.
 The biggest cleanup was removing the overloaded `repos/` mess. It used to mix a workspace root, copied upstream repos, toy junk, and the active browser vendor tree in one misleading place. That is gone.
 
 The canonical runtime survived the restructure:
-- `./scripts/up.sh` rebuilt successfully
-- `./scripts/verify.sh` passed layers 1-5 in steady state
-- `python3 scripts/agent_house.py smoke-test-browser-tool ...` passed and wrote `docs/repo_reaudit_restructure/restructure_smoke_check.md`
+- `python3 ops/garagectl.py up` rebuilt successfully
+- `python3 ops/garagectl.py verify` passed layers 1-5 in steady state
+- `python3 ops/garagectl.py smoke-test-browser-tool ...` passed and wrote `docs/repo_reaudit_restructure/restructure_smoke_check.md`
 
 What still remains as honest debt:
 - OpenHands patching is still real patch debt

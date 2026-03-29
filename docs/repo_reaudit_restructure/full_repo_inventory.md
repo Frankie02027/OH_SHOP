@@ -17,7 +17,7 @@ This inventory reflects the repo **after** the restructure, with notes where a s
 ├── data/
 ├── docs/
 ├── downloads/
-├── scripts/
+├── ops/
 ├── vendor/
 └── workspace/
 ```
@@ -39,15 +39,11 @@ compose/
     ├── Dockerfile
     └── apply_runtime_patches.py
 
-scripts/
-├── agent_house.py
-├── up.sh
-├── down.sh
-├── verify.sh
-├── verify.py
-├── backup_state.sh
-├── chat_guard.py
-└── lmstudio-docker-dnat.sh
+ops/
+├── garagectl.py
+└── manual/
+    ├── chat_guard.py
+    └── lmstudio-docker-dnat.sh
 
 compat/
 ├── README.md

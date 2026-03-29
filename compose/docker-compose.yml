@@ -56,11 +56,11 @@ services:
       [
         "sh",
         "-lc",
-        "python3 -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir docker >/dev/null && python3 -u /opt/oh_shop/scripts/chat_guard.py --db /.openhands/openhands.db --watch --interval 60 --openhands-url http://openhands:3000",
+        "python3 -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir docker >/dev/null && python3 -u /opt/oh_shop/ops/manual/chat_guard.py --db /.openhands/openhands.db --watch --interval 60 --openhands-url http://openhands:3000",
       ]
     volumes:
       - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/data/openhands:/.openhands
-      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/scripts:/opt/oh_shop/scripts:ro
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/ops:/opt/oh_shop/ops:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       openhands:

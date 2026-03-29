@@ -19,13 +19,13 @@ Use:
 
 ```bash
 cd /home/dev/OH_SHOP
-./scripts/verify.sh
+python3 ops/garagectl.py verify
 ```
 
 or:
 
 ```bash
-python3 /home/dev/OH_SHOP/scripts/agent_house.py verify
+python3 /home/dev/OH_SHOP/ops/garagectl.py verify
 ```
 
 ## Notes
@@ -34,5 +34,5 @@ python3 /home/dev/OH_SHOP/scripts/agent_house.py verify
 - the authoritative host launcher is `/usr/bin/lm-studio`
 - `lmstudio` should resolve to `/usr/bin/lm-studio`, not the legacy AppImage path under `/opt/lmstudio/`
 - `compose/docker-compose.yml` is the current compose baseline.
-- the legacy `compose/openhands.compose.yml` subset has been removed; use `scripts/up.sh` or `compose/docker-compose.yml`.
+- the legacy `compose/openhands.compose.yml` subset has been removed; use `python3 ops/garagectl.py up` or `compose/docker-compose.yml`.
 - a green health check does not prove `stagehand-mcp` is registered in OpenHands or usable from a fresh session.

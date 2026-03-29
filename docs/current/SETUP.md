@@ -37,15 +37,19 @@ The current runtime is not:
 ## Canonical paths
 
 - startup:
-  - `scripts/up.sh`
-  - `scripts/agent_house.py up`
+  - `python3 ops/garagectl.py up`
 - shutdown:
-  - `scripts/down.sh`
-  - `scripts/agent_house.py down`
+  - `python3 ops/garagectl.py down`
 - verify:
-  - `scripts/verify.sh`
-  - `scripts/verify.py`
-  - `scripts/agent_house.py verify`
+  - `python3 ops/garagectl.py verify`
+- status:
+  - `python3 ops/garagectl.py status`
+- logs:
+  - `python3 ops/garagectl.py logs`
+- smoke proof:
+  - `python3 ops/garagectl.py smoke-test-browser-tool`
+- backup:
+  - `python3 ops/garagectl.py backup-state`
 - compose authority:
   - `compose/docker-compose.yml`
 - OpenHands app override:
@@ -54,6 +58,10 @@ The current runtime is not:
   - `compose/agent_server_override/`
 - compatibility overrides:
   - `compat/openhands_sdk_overrides/`
+- controller:
+  - `ops/garagectl.py`
+- manual host/repair tools:
+  - `ops/manual/`
 - browser/tool lane:
   - `vendor/stagehand_mcp/`
 - workspace base:

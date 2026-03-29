@@ -4,6 +4,18 @@ Date context: 2026-03-29
 
 ## Moved or rehomed
 
+- `scripts/agent_house.py`
+  -> `ops/garagectl.py`
+  Reason: one real controller entrypoint replaces the wrapper-spam surface.
+
+- `scripts/chat_guard.py`
+  -> `ops/manual/chat_guard.py`
+  Reason: kept as a manual repair tool, not part of the main command surface.
+
+- `scripts/lmstudio-docker-dnat.sh`
+  -> `ops/manual/lmstudio-docker-dnat.sh`
+  Reason: privileged manual helper should not sit in the main controller surface.
+
 - `compose/shared_vendor_sdk/`
   -> `compat/openhands_sdk_overrides/`
   Reason: active compatibility overlays should not hide inside normal runtime folders.
@@ -106,6 +118,11 @@ Date context: 2026-03-29
 
 ## Deleted
 
+- `scripts/up.sh`
+- `scripts/down.sh`
+- `scripts/verify.sh`
+- `scripts/verify.py`
+- `scripts/backup_state.sh`
 - `plaintext.txt`
 - `compose/openhands_override/__pycache__/`
 - `scripts/__pycache__/`
@@ -117,6 +134,9 @@ Date context: 2026-03-29
   - `repos/stagehand(working)/.vscode/`
 
 ## Path references updated
+
+- `compose/docker-compose.yml`
+  - optional `chat-guard` now mounts `ops/` and calls `ops/manual/chat_guard.py`
 
 - `compose/docker-compose.yml`
   - sandbox workspace bind mount now points at `workspace/`
@@ -131,12 +151,13 @@ Date context: 2026-03-29
 - `docs/current/SETUP.md`
 - `docs/current/SECURITY.md`
 - `docs/current/TROUBLESHOOTING.md`
+- `docs/repo_reaudit_restructure/*`
 - `artifacts/benchmarks/benchmark_runner.py`
 - `.gitignore`
 
 ## Verification after restructure
 
 - `docker compose -f compose/docker-compose.yml config` passed.
-- `./scripts/up.sh` rebuilt successfully from the new `compat/`, `vendor/`, and `workspace/` paths.
-- `./scripts/verify.sh` passed layers 1-5 after the rebuilt stack reached steady-state health.
-- `python3 scripts/agent_house.py smoke-test-browser-tool ...` passed and wrote `docs/repo_reaudit_restructure/restructure_smoke_check.md`.
+- `python3 ops/garagectl.py up` rebuilt successfully from the new `compat/`, `vendor/`, and `workspace/` paths.
+- `python3 ops/garagectl.py verify` passed layers 1-5 after the rebuilt stack reached steady-state health.
+- `python3 ops/garagectl.py smoke-test-browser-tool ...` passed and wrote `docs/repo_reaudit_restructure/restructure_smoke_check.md`.

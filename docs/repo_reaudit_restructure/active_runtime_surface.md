@@ -18,14 +18,11 @@ Date context: 2026-03-29
 - `vendor/stagehand_mcp/src/smoke.ts`
 - `data/openhands/settings.json`
 
-## Active ops wrappers
+## Active command surface
 
-- `scripts/agent_house.py`
-- `scripts/up.sh`
-- `scripts/down.sh`
-- `scripts/verify.sh`
-- `scripts/verify.py`
-- `scripts/backup_state.sh`
+- `ops/garagectl.py`
+- `ops/manual/chat_guard.py`
+- `ops/manual/lmstudio-docker-dnat.sh`
 
 ## Active runtime support
 
@@ -40,8 +37,8 @@ Date context: 2026-03-29
 - `compose/agent_server_override/Dockerfile`
 - `compat/openhands_sdk_overrides/*`
 - `vendor/stagehand_mcp/src/server.ts`
-- `scripts/chat_guard.py`
-- `scripts/lmstudio-docker-dnat.sh`
+- `ops/manual/chat_guard.py`
+- `ops/manual/lmstudio-docker-dnat.sh`
 - `workspace/.openhands_instructions`
 
 ## Active docs

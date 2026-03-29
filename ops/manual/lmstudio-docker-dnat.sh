@@ -6,7 +6,7 @@
 # separately by UFW or the host firewall, not by this helper.
 #
 # Run at boot or after Docker restarts:
-#   sudo /home/dev/OH_SHOP/scripts/lmstudio-docker-dnat.sh
+#   sudo /home/dev/OH_SHOP/ops/manual/lmstudio-docker-dnat.sh
 set -euo pipefail
 
 for path in \
