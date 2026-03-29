@@ -13,9 +13,9 @@ RUN pip install --break-system-packages --no-cache-dir \
     python3 -c "import openhands.sdk.llm.mixins.fn_call_converter; print('SDK converter OK')"
 
 # Overlay the canonical shared converter overrides onto the pip-installed files
-COPY compose/shared_vendor_sdk/fn_call_converter.py \
+COPY compat/openhands_sdk_overrides/fn_call_converter.py \
      /usr/local/lib/python3.12/site-packages/openhands/sdk/llm/mixins/fn_call_converter.py
-COPY compose/shared_vendor_sdk/fn_call_converter_v0.py \
+COPY compat/openhands_sdk_overrides/fn_call_converter_v0.py \
      /usr/local/lib/python3.12/site-packages/openhands/sdk/llm/mixins/fn_call_converter_v0.py
 
 # Fix permissions and invalidate bytecode caches

@@ -1,0 +1,26 @@
+{
+  "id": "c04fdd79-906b-4761-a86b-dad44e30703a",
+  "timestamp": "2026-03-29T17:45:04.255875",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_observe",
+  "tool_call_id": "141524767",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_observe' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Tab 0 observations: [{\"description\":\"heading element with text 'Example Domain'\",\"method\":\"click\",\"arguments\":[],\"selector\":\"xpath=/html[1]/body[1]/div[1]/h1[1]\"}]"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_observe",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "7bc9a585-db28-4b4b-88e8-5be27bbb9c38",
+  "kind": "ObservationEvent"
+}

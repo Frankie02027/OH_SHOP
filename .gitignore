@@ -14,11 +14,10 @@ nohup.out
 .openhands/
 
 
-# Nested repos managed separately
-repos/stagehands(working)/node_modules/
-repos/stagehands(working)/.turbo/
-repos/stagehands(working)/.vscode/
-repos/stagehands(working)/.venv/
-repos/stagehands(working)/__pycache__/
-
+# Local vendor/workspace clutter
+vendor/stagehand_mcp/.turbo/
+vendor/stagehand_mcp/.vscode/
+vendor/stagehand_mcp/.venv/
+vendor/stagehand_mcp/__pycache__/
+archive/
 

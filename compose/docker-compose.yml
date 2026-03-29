@@ -25,8 +25,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Persist OpenHands state under OH_SHOP
       - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/data/openhands:/.openhands
-      # Only allow repos under OH_SHOP as workspace base
-      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/repos:/opt/workspace_base
+      # Only allow the dedicated workspace subtree under OH_SHOP as workspace base
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace:/opt/workspace_base
     stdin_open: true
     tty: true
     healthcheck:
@@ -93,8 +93,8 @@ services:
   # ----------------------------
   stagehand-mcp:
     build:
-      context: "../repos/stagehand(working)"
-      dockerfile: Dockerfile.mcp
+      context: "../vendor/stagehand_mcp"
+      dockerfile: Dockerfile
     image: oh-stagehand-mcp:0.3.0-runtime-patched
     container_name: stagehand-mcp
     ports:

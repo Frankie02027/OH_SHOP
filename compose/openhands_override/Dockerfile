@@ -2,9 +2,9 @@ ARG OPENHANDS_BASE_IMAGE=docker.openhands.dev/openhands/openhands:1.5.0@sha256:c
 FROM ${OPENHANDS_BASE_IMAGE}
 
 # Shared converter overrides used by both the app and sandbox images
-COPY compose/shared_vendor_sdk/fn_call_converter.py \
+COPY compat/openhands_sdk_overrides/fn_call_converter.py \
      /app/.venv/lib/python3.13/site-packages/openhands/sdk/llm/mixins/fn_call_converter.py
-COPY compose/shared_vendor_sdk/fn_call_converter_v0.py \
+COPY compat/openhands_sdk_overrides/fn_call_converter_v0.py \
      /app/openhands/llm/fn_call_converter.py
 
 # Apply the canonical OpenHands app patch set in one place.
