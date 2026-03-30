@@ -15,9 +15,12 @@
         "from_role": {
           "enum": ["jarvis", "robin"]
         },
+        "to_role": {
+          "const": "alfred"
+        },
         "reported_status": false
       },
-      "required": ["schema_version", "call_type", "task_id", "job_id", "from_role", "reported_at"]
+      "required": ["schema_version", "call_type", "task_id", "job_id", "from_role", "to_role", "reported_at"]
     }
   ],
   "unevaluatedProperties": false

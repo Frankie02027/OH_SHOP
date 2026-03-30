@@ -12,6 +12,9 @@
         "call_type": {
           "const": "task.create"
         },
+        "from_role": {
+          "const": "jarvis"
+        },
         "to_role": {
           "const": "alfred"
         },

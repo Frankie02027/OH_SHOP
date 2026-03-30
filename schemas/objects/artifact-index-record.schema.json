@@ -17,18 +17,7 @@
       "$ref": "../common/id-types.schema.json#/$defs/event_id"
     },
     "kind": {
-      "type": "string",
-      "enum": [
-        "screenshot",
-        "download",
-        "extract_json",
-        "log",
-        "diff",
-        "summary",
-        "report",
-        "payload_file",
-        "other"
-      ]
+      "$ref": "../common/artifact-kinds.schema.json"
     },
     "workspace_ref": {
       "anyOf": [
@@ -50,19 +39,27 @@
     "description": {
       "type": "string"
     },
-    "recorded_at": {
+    "created_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "mime_type": {
+      "type": "string"
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hash": {
+      "type": "string"
     }
   },
   "required": [
     "artifact_id",
-    "task_id",
-    "job_id",
     "kind",
     "workspace_ref",
     "reported_by",
-    "recorded_at"
+    "created_at"
   ],
   "additionalProperties": false
 }

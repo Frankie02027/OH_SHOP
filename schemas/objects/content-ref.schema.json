@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/content-ref.schema.json",
+  "title": "Garage Content Ref",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspace_ref": {
+      "$ref": "./workspace-ref.schema.json"
+    },
+    "artifact_ref": {
+      "$ref": "./artifact-ref.schema.json"
+    },
+    "payload_ref": {
+      "$ref": "./payload-ref.schema.json"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "required": ["kind"],
+  "anyOf": [
+    {
+      "required": ["path"]
+    },
+    {
+      "required": ["workspace_ref"]
+    },
+    {
+      "required": ["artifact_ref"]
+    },
+    {
+      "required": ["payload_ref"]
+    }
+  ],
+  "additionalProperties": false
+}

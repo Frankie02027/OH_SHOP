@@ -16,7 +16,7 @@
           "const": "jarvis"
         },
         "to_role": {
-          "enum": ["alfred", "robin"]
+          "const": "alfred"
         },
         "reported_status": false,
         "attempt_no": false

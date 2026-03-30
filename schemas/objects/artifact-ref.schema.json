@@ -8,18 +8,7 @@
       "$ref": "../common/id-types.schema.json#/$defs/artifact_id"
     },
     "kind": {
-      "type": "string",
-      "enum": [
-        "screenshot",
-        "download",
-        "extract_json",
-        "log",
-        "diff",
-        "summary",
-        "report",
-        "payload_file",
-        "other"
-      ]
+      "$ref": "../common/artifact-kinds.schema.json"
     },
     "workspace_ref": {
       "anyOf": [

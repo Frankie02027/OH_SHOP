@@ -16,7 +16,7 @@
           "enum": ["jarvis", "robin"]
         },
         "to_role": {
-          "enum": ["alfred", "jarvis"]
+          "const": "alfred"
         },
         "reported_status": {
           "enum": ["succeeded", "partial"]
@@ -28,6 +28,8 @@
         "task_id",
         "job_id",
         "from_role",
+        "to_role",
+        "reported_at",
         "reported_status"
       ],
       "anyOf": [
