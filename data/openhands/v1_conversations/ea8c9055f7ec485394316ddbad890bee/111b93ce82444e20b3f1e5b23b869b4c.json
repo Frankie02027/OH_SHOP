@@ -1,0 +1,27 @@
+{
+  "id": "111b93ce-8244-4e20-b3f1-e5b23b869b4c",
+  "timestamp": "2026-03-30T12:26:29.958650",
+  "source": "agent",
+  "llm_message": {
+    "role": "assistant",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": ""
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": "I see there are two browser tool sets available. I'll use `browser_navigate` which is the standard browser tool.\n\n<tool_call>\n<function=browser_navigate>\n<parameter=security_risk>\nLOW\n</parameter>\n<parameter=summary>\nNavigate to example.com using browser tool\n</parameter>\n<parameter=url>\nhttps://example.com\n</parameter>\n</function>\n</tool_call>",
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": "chatcmpl-gnmeg0b63djsuopls963t",
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

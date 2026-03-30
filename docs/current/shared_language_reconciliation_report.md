@@ -137,25 +137,25 @@ These rules were already aligned and remain aligned:
 
 ## What still remains unresolved
 
-### Runtime model authority remains blocked
+### Runtime model authority is now dynamic
 
-The runtime model mismatch is still open:
+The repo no longer treats one hardcoded model ID as long-term authority.
 
-- OpenHands is configured for `openai/qwen3-coder-30b-a3b-instruct`
-- Stagehand is configured for `qwen3-coder-30b-a3b-instruct`
-- LM Studio currently exposes different model IDs in `/v1/models`
+Current runtime rule:
 
-I did **not** change model settings in this pass because the winning canonical model string is still not obvious from repo authority alone.
+- `garagectl` detects the model currently loaded in LM Studio
+- OpenHands is synced to `openai/<loaded-model-id>`
+- `garagectl up` injects the same loaded model ID into `stagehand-mcp` boot-time env
+
+That closes the previous hardcoded-model mismatch.
 
 ### Runtime proof remains blocked
 
-Fresh smoke still fails at the runtime boundary:
+Fresh smoke still fails at a narrower runtime boundary:
 
-- sandbox starts
-- conversation reaches `running`
-- then flips to `error`
-- no assistant reply is captured
-- no tool observation is captured
+- the browser tool action occurs
+- then the run times out before a successful tool observation is captured
+- no final assistant reply is captured
 
 So broad Garage integration is still not ready.
 
@@ -186,7 +186,7 @@ because those rules now have:
 
 **STILL BLOCKED**
 
-The repo is not yet ready to use the browser smoke as a clean integration proof because the model authority mismatch is still unresolved.
+The repo is not yet ready to use the browser smoke as a clean integration proof because the browser/tool leg is still not finishing cleanly after action dispatch.
 
 ## Exact next approved coding move
 
@@ -205,3 +205,4 @@ Do **not** start:
 - broad Garage integration wiring
 
 until the runtime model authority mismatch is resolved and the browser proof passes.
+until the remaining browser/tool runtime boundary is resolved and the browser proof passes.

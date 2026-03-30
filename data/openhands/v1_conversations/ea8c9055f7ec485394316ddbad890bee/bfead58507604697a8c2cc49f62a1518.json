@@ -1,0 +1,9 @@
+{
+  "id": "bfead585-0760-4697-a8c2-cc49f62a1518",
+  "timestamp": "2026-03-30T12:26:28.778207",
+  "source": "agent",
+  "tool_name": "browserbase_navigate",
+  "tool_call_id": "185019936",
+  "error": "Tool 'browserbase_navigate' not found. Available: ['terminal', 'file_editor', 'task_tracker', 'browser_navigate', 'browser_click', 'browser_get_state', 'browser_get_content', 'browser_type', 'browser_scroll', 'browser_go_back', 'browser_list_tabs', 'browser_switch_tab', 'browser_close_tab', 'browser_get_storage', 'browser_set_storage', 'browserbase_stagehand_navigate', 'browserbase_stagehand_act', 'browserbase_stagehand_extract', 'browserbase_stagehand_observe', 'browserbase_screenshot', 'browserbase_stagehand_get_url', 'browserbase_session_create', 'browserbase_session_close', 'browserbase_get_config', 'browserbase_get_connect_url', 'browserbase_tabs_list', 'browserbase_tab_new', 'browserbase_tab_focus', 'browserbase_tab_close', 'browserbase_cookies_get', 'browserbase_cookies_set', 'browserbase_cookies_clear', 'browserbase_set_headers', 'browserbase_add_init_script', 'browserbase_evaluate', 'browserbase_click_selector', 'browserbase_fill', 'browserbase_keyboard_type', 'browserbase_keyboard_press', 'browserbase_mouse_click', 'browserbase_scroll', 'browserbase_wait_for_selector', 'browserbase_wait_for_timeout', 'browserbase_get_html', 'browserbase_stagehand_agent', 'finish', 'think']",
+  "kind": "AgentErrorEvent"
+}

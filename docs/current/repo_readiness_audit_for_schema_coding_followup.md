@@ -117,8 +117,8 @@ Those files remain useful, but they are no longer allowed to masquerade as canon
 
 | Blocker ID | Category | Status | Exact problem | Why it still blocks broader work |
 |---|---|---|---|---|
-| B03 | Runtime model authority | OPEN | OpenHands is configured for `openai/qwen3-coder-30b-a3b-instruct`, Stagehand uses `qwen3-coder-30b-a3b-instruct`, but LM Studio does not expose that exact usable model ID in `/v1/models`. | Live runtime proof remains unreliable. |
-| B04 | Browser proof failure | OPEN | Fresh browser smoke still goes `running -> error` before assistant reply or tool observation. | Runtime integration is not proven enough for broad Garage wiring. |
+| B03 | Runtime model authority | CLOSED | `garagectl` now detects the currently loaded LM Studio model, syncs OpenHands to `openai/<loaded-model-id>`, and injects the same model into `stagehand-mcp` at bring-up. One-cycle verify now passes Layers 1-5 with `qwen/qwen3.5-9b`. | No longer blocking ID/types work or verifier alignment. |
+| B04 | Browser proof failure | OPEN | Fresh browser smoke now gets past model authority sync, but still times out after the browser tool action and before a successful observation/final reply. Artifact: [browser_smoke_after_dynamic_model_sync.md](/home/dev/OH_SHOP/docs/current/browser_smoke_after_dynamic_model_sync.md). | Runtime integration is still not proven enough for broad Garage wiring. |
 | B05 | Agent-server build skew | OPEN / DEBT | The agent-server override still overlays `1.11.4` Python packages on a pinned base-image family. | Not an immediate blocker for `alfred/ids.py`, but still blocks clean runtime confidence. |
 
 ## 4. ID POLICY CODING DECISION
@@ -166,20 +166,22 @@ Do **not** start yet:
 
 ## 6. RUNTIME STATUS
 
-**Still blocked**
+**Partially improved**
 
 What I checked in this pass:
 
-- the configured OpenHands model is still `openai/qwen3-coder-30b-a3b-instruct`
-- the configured LM Studio base URL is still `http://host.docker.internal:1234/v1`
+- `garagectl` now detects the loaded LM Studio model via `lms ps`
+- OpenHands is synced to `openai/qwen/qwen3.5-9b`
+- `stagehand-mcp` was restarted with `STAGEHAND_MODEL=qwen/qwen3.5-9b`
+- one-cycle `verify` now passes Layers 1 through 5
 - the configured MCP path is still `http://host.docker.internal:3020/mcp`
-- the runtime/browser proof remains blocked because model authority is still unresolved
+- the runtime/browser proof remains blocked at the tool-observation boundary, not the old model-authority boundary
 
 Live settings evidence:
 
 ```json
 {
-  "llm_model": "openai/qwen3-coder-30b-a3b-instruct",
+  "llm_model": "openai/qwen/qwen3.5-9b",
   "llm_base_url": "http://host.docker.internal:1234/v1",
   "mcp_config": {
     "shttp_servers": [
@@ -203,11 +205,21 @@ Live LM Studio `/v1/models` evidence:
 ]
 ```
 
-I did **not** change runtime model settings in this pass.
+Live verifier result after dynamic sync:
 
-Reason:
+- Layers 1-5: PASS
+- Layer 6: still intentionally unproven
 
-- there is not yet one repo-authoritative winning model string that can be applied without guessing
+Smoke result after dynamic sync:
+
+- browser tool action was reached
+- final execution status: `stuck`
+- outcome classification: `provider/dependency failure`
+- detail: timed out after the browser tool action but before a successful observation was captured
+
+Current runtime blocker:
+
+- browser/tool execution still does not complete cleanly even after model authority is aligned
 
 ## 7. PATH NOTE
 

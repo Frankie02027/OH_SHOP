@@ -103,20 +103,18 @@ Current host launcher truth:
 
 - OpenHands provider/base URL:
   - `http://host.docker.internal:1234/v1`
-- OpenHands persisted model:
-  - `openai/qwen3-coder-30b-a3b-instruct`
 - Canonical MCP URL:
   - `http://host.docker.internal:3020/mcp`
 - Stagehand base URL:
   - `http://host.docker.internal:1234/v1`
-- Stagehand model:
-  - `qwen3-coder-30b-a3b-instruct`
 
 Important:
 - OpenHands runtime-critical values currently persist under `data/openhands/settings.json`
-- Stagehand runtime-critical values currently come from `compose/docker-compose.yml`
+- OpenHands `llm_model` is synced by `python3 ops/garagectl.py up`, `verify`, and `smoke-test-browser-tool` to the model currently loaded in LM Studio
+- Stagehand boot-time model is injected by `python3 ops/garagectl.py up` from the model currently loaded in LM Studio
+- the repo does not treat one hardcoded model ID as the long-term authority anymore
 - verifier expectations are not config authority by themselves
-- the configured OpenHands / Stagehand model string must also exist in LM Studio `/v1/models`; a matching base URL alone is not enough for readiness
+- LM Studio must have a loaded usable text model when the stack is brought up; `garagectl` uses that loaded model as runtime authority
 
 ## Runtime state classification
 

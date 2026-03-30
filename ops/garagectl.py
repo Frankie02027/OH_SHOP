@@ -31,6 +31,9 @@ CORE_CONTAINERS = {
 }
 OPENHANDS_SANDBOX_NAME_PREFIX = "oh-agent-server-"
 EXPECTED_MCP_URL = "http://host.docker.internal:3020/mcp"
+DEFAULT_LM_STUDIO_HOST = "127.0.0.1"
+DEFAULT_LM_STUDIO_PORT = "1234"
+DEFAULT_LM_STUDIO_API_KEY = "lm-studio"
 OPENHANDS_TOOL_CALL_PATCH_TARGET = (
     "/app/openhands/app_server/app_conversation/"
     "live_status_app_conversation_service.py"
@@ -69,6 +72,18 @@ def run_compose(args: list[str]) -> int:
     return subprocess.call(cmd, env=env)
 
 
+def _run_compose_with_env(
+    args: list[str], extra_env: dict[str, str] | None = None
+) -> int:
+    cmd = ["docker", "compose", "-f", str(COMPOSE_FILE), *args]
+    env = os.environ.copy()
+    env.setdefault("DOCKER_BRIDGE_GATEWAY", get_docker_bridge_gateway())
+    env.setdefault(OH_SHOP_ROOT_ENV, str(ROOT))
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.call(cmd, env=env)
+
+
 def _list_openhands_sandboxes() -> list[str]:
     ok, output = _run_capture(
         [
@@ -100,6 +115,13 @@ def _remove_openhands_sandboxes() -> tuple[bool, str]:
 
 
 def cmd_up() -> int:
+    sync_ok, sync_detail, loaded_model_id, _ = _sync_model_authority(
+        apply_live=False
+    )
+    status = "PASS" if sync_ok else "FAIL"
+    print(f"[{status}] LM Studio model authority sync - {sync_detail}")
+    if not sync_ok or not loaded_model_id:
+        return 1
     agent_server_rc = subprocess.call(
         [
             "docker",
@@ -113,7 +135,10 @@ def cmd_up() -> int:
     )
     if agent_server_rc != 0:
         return agent_server_rc
-    return run_compose(["up", "-d", "--build", *CORE_SERVICES])
+    return _run_compose_with_env(
+        ["up", "-d", "--build", *CORE_SERVICES],
+        {"STAGEHAND_MODEL": loaded_model_id},
+    )
 
 
 def cmd_down() -> int:
@@ -319,6 +344,183 @@ def _fetch_json(url: str, timeout: int = 5) -> tuple[bool, dict | None, str]:
         payload_type = type(payload).__name__
         return False, None, "unexpected JSON payload type: " + payload_type
     return True, payload, ""
+
+
+def _extract_loaded_model_ids_from_lms_ps(output: str) -> list[str]:
+    model_ids: list[str] = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("IDENTIFIER"):
+            continue
+        identifier = stripped.split()[0]
+        if identifier:
+            model_ids.append(identifier)
+    return model_ids
+
+
+def _host_lm_models_url() -> str:
+    lm_studio_host = os.getenv("LM_STUDIO_HOST", DEFAULT_LM_STUDIO_HOST)
+    lm_studio_port = os.getenv("LM_STUDIO_PORT", DEFAULT_LM_STUDIO_PORT)
+    return f"http://{lm_studio_host}:{lm_studio_port}/v1/models"
+
+
+def _docker_lm_base_url() -> str:
+    lm_studio_port = os.getenv("LM_STUDIO_PORT", DEFAULT_LM_STUDIO_PORT)
+    return f"http://host.docker.internal:{lm_studio_port}/v1"
+
+
+def _detect_loaded_lm_studio_model() -> tuple[bool, str | None, str]:
+    override = os.getenv("LM_STUDIO_ACTIVE_MODEL", "").strip()
+    if override:
+        return True, override, "using LM_STUDIO_ACTIVE_MODEL override"
+
+    ok, output = _run_capture(["lms", "ps"], timeout=10)
+    if ok:
+        loaded_models = _extract_loaded_model_ids_from_lms_ps(output)
+        if loaded_models:
+            detail = f"loaded via lms ps: {', '.join(loaded_models)}"
+            return True, loaded_models[0], detail
+
+    models_ok, payload, detail = _fetch_json(_host_lm_models_url(), timeout=5)
+    if not models_ok or payload is None:
+        return False, None, (
+            detail
+            or "failed to detect LM Studio model from lms ps or /v1/models"
+        )
+
+    available_ids: list[str] = []
+    data = payload.get("data")
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                model_id = item.get("id")
+                if isinstance(model_id, str) and model_id.strip():
+                    available_ids.append(model_id.strip())
+
+    candidate_ids = [
+        model_id
+        for model_id in available_ids
+        if "embedding" not in model_id.lower()
+    ]
+    if len(candidate_ids) == 1:
+        return (
+            True,
+            candidate_ids[0],
+            "using single non-embedding model reported by /v1/models",
+        )
+    if len(candidate_ids) > 1:
+        return (
+            False,
+            None,
+            (
+                "LM Studio reports multiple usable models and no loaded model "
+                "was discoverable via `lms ps`; load one model or set "
+                "LM_STUDIO_ACTIVE_MODEL"
+            ),
+        )
+    return False, None, "no usable LM Studio model detected"
+
+
+def _persist_openhands_model_settings(model_id: str) -> tuple[bool, str]:
+    payload: dict[str, Any] = {}
+    if OPENHANDS_SETTINGS_FILE.exists():
+        ok, existing_payload, detail = _load_json_file(OPENHANDS_SETTINGS_FILE)
+        if not ok or existing_payload is None:
+            return False, detail
+        payload = existing_payload
+
+    payload["llm_model"] = f"openai/{model_id}"
+    payload["llm_base_url"] = _docker_lm_base_url()
+    payload.setdefault("llm_api_key", DEFAULT_LM_STUDIO_API_KEY)
+
+    mcp_config = payload.get("mcp_config")
+    if not isinstance(mcp_config, dict):
+        mcp_config = {}
+    mcp_config["sse_servers"] = (
+        mcp_config.get("sse_servers")
+        if isinstance(mcp_config.get("sse_servers"), list)
+        else []
+    )
+    mcp_config["stdio_servers"] = (
+        mcp_config.get("stdio_servers")
+        if isinstance(mcp_config.get("stdio_servers"), list)
+        else []
+    )
+    mcp_config["shttp_servers"] = [
+        {
+            "url": EXPECTED_MCP_URL,
+            "api_key": None,
+        }
+    ]
+    payload["mcp_config"] = mcp_config
+
+    OPENHANDS_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    OPENHANDS_SETTINGS_FILE.write_text(
+        json.dumps(payload, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    return True, (
+        f"persisted OpenHands settings synced to openai/{model_id}"
+    )
+
+
+def _sync_live_openhands_settings(model_id: str) -> tuple[bool, str]:
+    running, detail = _docker_container_running("openhands-app")
+    if not running:
+        return True, (
+            "OpenHands container not running; persisted settings updated only"
+        )
+
+    payload = {
+        "llm_model": f"openai/{model_id}",
+        "llm_base_url": _docker_lm_base_url(),
+        "llm_api_key": DEFAULT_LM_STUDIO_API_KEY,
+        "mcp_config": {
+            "sse_servers": [],
+            "stdio_servers": [],
+            "shttp_servers": [
+                {
+                    "url": EXPECTED_MCP_URL,
+                    "api_key": None,
+                    "timeout": 60,
+                }
+            ],
+        },
+    }
+    ok, _, post_detail = _request_json_any(
+        f"{OPENHANDS_URL}/api/settings",
+        method="POST",
+        payload=payload,
+        timeout=10,
+    )
+    if not ok:
+        return False, post_detail or "failed to sync live OpenHands settings"
+    return True, f"live OpenHands settings synced to openai/{model_id}"
+
+
+def _sync_model_authority(
+    *, apply_live: bool
+) -> tuple[bool, str, str | None, str | None]:
+    ok, model_id, detection_detail = _detect_loaded_lm_studio_model()
+    if not ok or not model_id:
+        return False, detection_detail, None, None
+
+    persist_ok, persist_detail = _persist_openhands_model_settings(model_id)
+    if not persist_ok:
+        return False, persist_detail, None, None
+
+    live_detail = "live OpenHands sync not requested"
+    if apply_live:
+        live_ok, live_detail = _sync_live_openhands_settings(model_id)
+        if not live_ok:
+            return False, live_detail, model_id, f"openai/{model_id}"
+
+    detail = "; ".join(
+        part
+        for part in [detection_detail, persist_detail, live_detail]
+        if part
+    )
+    return True, detail, model_id, f"openai/{model_id}"
 
 
 def _fetch_conversation_events(
@@ -751,6 +953,12 @@ def cmd_smoke_test_browser_tool(
     prompt: str | None = None,
     timeout_seconds: int | None = None,
 ) -> int:
+    sync_ok, sync_detail, _, _ = _sync_model_authority(apply_live=True)
+    sync_status = "PASS" if sync_ok else "FAIL"
+    print(f"[{sync_status}] LM Studio model authority sync - {sync_detail}")
+    if not sync_ok:
+        return 1
+
     prompt_text = (prompt or DEFAULT_BROWSER_TOOL_PROOF_PROMPT).strip()
     timeout_seconds = timeout_seconds or int(
         os.getenv("SMOKE_TEST_TIMEOUT", "420")
@@ -1263,8 +1471,18 @@ def cmd_smoke_test_browser_tool(
 
 
 def cmd_verify() -> int:
-    lm_studio_host = os.getenv("LM_STUDIO_HOST", "127.0.0.1")
-    lm_studio_port = os.getenv("LM_STUDIO_PORT", "1234")
+    sync_ok, sync_detail, loaded_model_id, openhands_model = (
+        _sync_model_authority(apply_live=True)
+    )
+    sync_status = "PASS" if sync_ok else "FAIL"
+    print(
+        f"[{sync_status}] LM Studio model authority sync - {sync_detail}"
+    )
+    if not sync_ok:
+        return 1
+
+    lm_studio_host = os.getenv("LM_STUDIO_HOST", DEFAULT_LM_STUDIO_HOST)
+    lm_studio_port = os.getenv("LM_STUDIO_PORT", DEFAULT_LM_STUDIO_PORT)
     cycles = int(os.getenv("VERIFY_CYCLES", "6"))
     interval_seconds = int(os.getenv("VERIFY_INTERVAL", "10"))
     if cycles < 1:
@@ -1595,6 +1813,19 @@ def cmd_verify() -> int:
                 ),
             )
 
+            if openhands_model:
+                cycle_require(
+                    live_model == openhands_model,
+                    (
+                        "OpenHands live model matches "
+                        "LM Studio boot-time authority"
+                    ),
+                    (
+                        f"current={live_model!r}; "
+                        f"expected={openhands_model!r}"
+                    ),
+                )
+
             shttp_servers = live_settings_payload.get(
                 "mcp_config", {}
             ).get("shttp_servers", [])
@@ -1665,6 +1896,46 @@ def cmd_verify() -> int:
                     ),
                     str(OPENHANDS_SETTINGS_FILE),
                 )
+
+        running, stagehand_running_detail = _docker_container_running(
+            "stagehand-mcp"
+        )
+        if running and loaded_model_id:
+            stagehand_env_ok, stagehand_model_detail = _run_capture(
+                [
+                    "docker",
+                    "exec",
+                    "stagehand-mcp",
+                    "printenv",
+                    "STAGEHAND_MODEL",
+                ],
+                timeout=10,
+            )
+            stagehand_model_value = (
+                stagehand_model_detail.strip()
+                if stagehand_env_ok and stagehand_model_detail
+                else ""
+            )
+            cycle_require(
+                stagehand_model_value == loaded_model_id,
+                (
+                    "stagehand-mcp boot model matches "
+                    "LM Studio loaded model"
+                ),
+                (
+                    f"current={stagehand_model_value!r}; "
+                    f"expected={loaded_model_id!r}"
+                ),
+            )
+        else:
+            print_result(
+                "UNPROVEN",
+                "stagehand-mcp boot model matches LM Studio loaded model",
+                (
+                    "skipped because stagehand-mcp is not running "
+                    f"({stagehand_running_detail})"
+                ),
+            )
 
         print("Layer 6 - fresh-session tool invocation")
         print_result(

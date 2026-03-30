@@ -31,7 +31,8 @@ python3 /home/dev/OH_SHOP/ops/garagectl.py verify
 ## Notes
 
 - LM Studio must be intentionally running for live provider checks to pass.
-- the configured model ID must also be visible in `curl -sf http://127.0.0.1:1234/v1/models`; if the server is up but the configured model string is absent, layer 5 of the verifier and the browser smoke can still fail.
+- `garagectl` now syncs OpenHands to the model currently loaded in LM Studio; if LM Studio has no loaded usable text model, verification and smoke runs can still fail.
+- if you changed the loaded LM Studio model after the stack was already up, run `python3 ops/garagectl.py up` again so `stagehand-mcp` boots with the same model authority.
 - the authoritative host launcher is `/usr/bin/lm-studio`
 - `lmstudio` should resolve to `/usr/bin/lm-studio`, not the legacy AppImage path under `/opt/lmstudio/`
 - `compose/docker-compose.yml` is the current compose baseline.
