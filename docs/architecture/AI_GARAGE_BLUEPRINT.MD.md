@@ -1,5 +1,17 @@
 # AI Garage Blueprint Contract v0.3
 
+> Authority note:
+> This blueprint remains the high-level architectural direction document.
+> For concrete v0.1 role, language, shell, tracked-plan, handoff, and schema authority, use the newer contract stack in `docs/architecture/`, especially:
+> [ALFRED_MASTER_CONTRACT_v_0_2.md](/home/dev/OH_SHOP/docs/architecture/ALFRED_MASTER_CONTRACT_v_0_2.md),
+> [JARVIS_MASTER_CONTRACT_v_0_2.md](/home/dev/OH_SHOP/docs/architecture/JARVIS_MASTER_CONTRACT_v_0_2.md),
+> [ROBIN_MASTER_CONTRACT_v_0_2.md](/home/dev/OH_SHOP/docs/architecture/ROBIN_MASTER_CONTRACT_v_0_2.md),
+> [garage_universal_language_dictionary_v0_1.md](/home/dev/OH_SHOP/docs/architecture/garage_universal_language_dictionary_v0_1.md),
+> [LIBRARY_SCHEMA_CONTRACT_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/LIBRARY_SCHEMA_CONTRACT_v_0_1.md),
+> [TRACKED_PLAN_OBJECT_CONTRACT_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/TRACKED_PLAN_OBJECT_CONTRACT_v_0_1.md),
+> and [HANDOFF_ENVELOPE_CONTRACT_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/HANDOFF_ENVELOPE_CONTRACT_v_0_1.md).
+> This blueprint should not be used by itself to infer exact v0.1 machine tokens or object fields.
+
 ## 1. Project identity
 
 This document defines the expanded first serious infrastructure blueprint for the **AI Garage** project.
@@ -2117,4 +2129,3 @@ It is being described as a controlled AI workshop environment that must eventual
 
 That is the better direction for the contract.
 It keeps the original foundation, but it adds the missing durability, operational discipline, and long-run machine behavior that the garage will need if it is going to become a real system instead of just a cool demo.
-

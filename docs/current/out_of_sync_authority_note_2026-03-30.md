@@ -1,5 +1,9 @@
 # Out-of-Sync Authority Note — 2026-03-30
 
+> Superseded stage note:
+> This note captured the repo before the tracked-plan and handoff-envelope contract stage was closed.
+> For the newer stage position, use [contract_stage_review_after_plan_and_handoff.md](/home/dev/OH_SHOP/docs/current/contract_stage_review_after_plan_and_handoff.md).
+
 ## Purpose
 
 This note exists so stale documents stop acting like the current truth when newer repo files already supersede them.
@@ -41,7 +45,7 @@ The repo is now at:
 - post-role-contract stage
 - post-dictionary stage
 - post-library-schema-contract stage
-- ready for `TRACKED_PLAN_OBJECT_CONTRACT_v_0_1.md`
+- historical snapshot: this note predates the now-present tracked-plan and handoff-envelope contract stage
 
 ## Reading order recommendation
 

@@ -4,6 +4,17 @@ Date: 2026-03-30
 Repo: `/home/dev/OH_SHOP`
 Branch: `master`
 
+## Refresh Note
+
+This follow-up captured the repo at the point where:
+- model-authority sync had been fixed
+- the post-action browser/tool blocker was still believed open
+
+That runtime blocker is no longer current truth.
+[post_action_observation_path_investigation.md](/home/dev/OH_SHOP/docs/current/post_action_observation_path_investigation.md) records that the post-action observation/reply defect was isolated and fixed.
+
+This document is still useful as a record of the pre-fix readiness stage, but it should not be treated as the latest runtime-blocker authority.
+
 ## 1. EXECUTIVE VERDICT
 
 ### Universal library schema coding
@@ -54,8 +65,8 @@ Reason:
 **NOT READY**
 
 Reason:
-- the runtime model authority mismatch remains unresolved
-- the canonical browser smoke still fails before first useful reply/tool proof
+- this document predates the post-action observation-path fix
+- later contract-stage work still remained after this point even though the specific post-action runtime defect was closed
 
 ## 2. WHAT CHANGED SINCE THE ORIGINAL AUDIT
 
@@ -118,7 +129,7 @@ Those files remain useful, but they are no longer allowed to masquerade as canon
 | Blocker ID | Category | Status | Exact problem | Why it still blocks broader work |
 |---|---|---|---|---|
 | B03 | Runtime model authority | CLOSED | `garagectl` now detects the currently loaded LM Studio model, syncs OpenHands to `openai/<loaded-model-id>`, and injects the same model into `stagehand-mcp` at bring-up. One-cycle verify now passes Layers 1-5 with `qwen/qwen3.5-9b`. | No longer blocking ID/types work or verifier alignment. |
-| B04 | Browser proof failure | OPEN | Fresh browser smoke now gets past model authority sync, but still times out after the browser tool action and before a successful observation/final reply. Artifact: [browser_smoke_after_dynamic_model_sync.md](/home/dev/OH_SHOP/docs/current/browser_smoke_after_dynamic_model_sync.md). | Runtime integration is still not proven enough for broad Garage wiring. |
+| B04 | Browser proof failure | CLOSED / HISTORICAL | This document originally tracked the post-action browser proof failure as open. That defect was later investigated and fixed in [post_action_observation_path_investigation.md](/home/dev/OH_SHOP/docs/current/post_action_observation_path_investigation.md). | No longer a current blocker; preserve here only as historical stage context. |
 | B05 | Agent-server build skew | OPEN / DEBT | The agent-server override still overlays `1.11.4` Python packages on a pinned base-image family. | Not an immediate blocker for `alfred/ids.py`, but still blocks clean runtime confidence. |
 
 ## 4. ID POLICY CODING DECISION
@@ -166,7 +177,7 @@ Do **not** start yet:
 
 ## 6. RUNTIME STATUS
 
-**Partially improved**
+**Historical stage snapshot**
 
 What I checked in this pass:
 
@@ -175,7 +186,7 @@ What I checked in this pass:
 - `stagehand-mcp` was restarted with `STAGEHAND_MODEL=qwen/qwen3.5-9b`
 - one-cycle `verify` now passes Layers 1 through 5
 - the configured MCP path is still `http://host.docker.internal:3020/mcp`
-- the runtime/browser proof remains blocked at the tool-observation boundary, not the old model-authority boundary
+- the runtime/browser proof was later fixed; this section is preserved as a historical snapshot of the stage before that fix
 
 Live settings evidence:
 
@@ -217,9 +228,9 @@ Smoke result after dynamic sync:
 - outcome classification: `provider/dependency failure`
 - detail: timed out after the browser tool action but before a successful observation was captured
 
-Current runtime blocker:
+Historical runtime blocker at the time of this follow-up:
 
-- browser/tool execution still does not complete cleanly even after model authority is aligned
+- browser/tool execution had not yet been proven cleanly even after model authority was aligned
 
 ## 7. PATH NOTE
 

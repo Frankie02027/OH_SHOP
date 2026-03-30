@@ -190,14 +190,40 @@ The universal dictionary already defines the base shell fields.
 - `payload`
 - `payload_ref`
 
-## 6.2 Additional official linkage fields where needed
+## 6.2 Required envelope header fields
+The minimum required header fields for a serious official envelope are:
+- `schema_version`
+- `call_type`
+- `task_id`
+- `job_id`
+- `from_role`
+- `to_role`
+
+## 6.3 Optional envelope header fields
+Optional or call-dependent header fields include:
+- `parent_job_id`
+- `reported_status`
+- `reported_at`
+- `attempt_no`
+- `artifact_refs`
+- `workspace_refs`
+- `payload`
+- `payload_ref`
+
+Some calls will effectively require some of these optional fields by context.
+For example:
+- `result.submit` and `failure.report` should normally carry `reported_status`
+- retries should carry `attempt_no`
+- returns and delegated legs often need `parent_job_id`
+
+## 6.4 Additional official linkage fields where needed
 Depending on the specific call/object, the broader official record may also link:
 - `event_id`
 - `checkpoint_id`
 - optional `handoff_id`
 - optional `plan_version`
 
-## 6.3 Shell meaning
+## 6.5 Shell meaning
 The shell must stay:
 - small
 - boring
@@ -589,6 +615,48 @@ Potential runtime layers:
 - payload ref resolver
 - event recorder
 - checkpoint snapshotter
+
+---
+
+## 24.1 Good vs bad envelope usage
+
+### Good envelope usage
+
+Good envelope usage means:
+- the shell fields are present and boring
+- route/linkage fields are explicit
+- the worker-authored body carries meaning
+- refs are used instead of stuffing giant raw payloads into the shell
+- Alfred stamps and validates shell structure without rewriting the body
+
+Example good `child_job.request` posture:
+- shell says this is `child_job.request` from `jarvis` to `alfred`
+- shell links `task_id`, `job_id`, and `parent_job_id` correctly where relevant
+- body says what the child job actually means:
+  - objective
+  - constraints
+  - expected output
+  - success criteria
+
+Example good `result.submit` posture:
+- shell preserves same-`job_id` return discipline
+- shell carries `reported_status`
+- body carries:
+  - summary
+  - structured_result
+  - ambiguity_notes where needed
+- `artifact_refs` point to proof-bearing outputs
+
+### Bad envelope usage
+
+Bad envelope usage includes:
+- a giant single JSON blob with no shell/body distinction
+- a prose paragraph pretending to be route metadata
+- Alfred inventing or rewriting semantic meaning inside the body
+- Jarvis or Robin inventing official shell IDs locally
+- embedding large artifact bodies directly in the envelope when refs should be used
+- leaking OpenHands-local or Stagehand-local adapter internals into official Garage header fields
+- using a new ad hoc top-level field every time a weird case appears
 
 ---
 

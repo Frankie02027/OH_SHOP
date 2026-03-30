@@ -161,7 +161,15 @@ The tracked plan header is the umbrella object describing one official plan vers
 - `current_active_item`
 - `created_at`
 
-## 5.3 Recommended full header field set
+## 5.3 Optional header fields
+- `job_id`
+- `current_active_item`
+- `created_at`
+- `updated_at`
+- `summary`
+- `notes`
+
+## 5.4 Recommended full header field set
 - `task_id`
 - `job_id`
 - `plan_version`
@@ -174,7 +182,7 @@ The tracked plan header is the umbrella object describing one official plan vers
 - `notes`
 - `items`
 
-## 5.4 Header meaning
+## 5.5 Header meaning
 - `task_id` = umbrella mission this plan belongs to
 - `job_id` = job context under which this plan version was authored or recorded
 - `plan_version` = monotonically increasing version label
@@ -221,7 +229,13 @@ A plan item is one structured unit of intended work under the tracked plan.
 - `description`
 - `status`
 
-## 7.2 Recommended standard item fields
+## 7.2 Optional item fields
+- `depends_on`
+- `verification_rule`
+- `evidence_refs`
+- `notes`
+
+## 7.3 Recommended standard item fields
 - `item_id`
 - `title`
 - `description`
@@ -231,7 +245,7 @@ A plan item is one structured unit of intended work under the tracked plan.
 - `evidence_refs`
 - `notes`
 
-## 7.3 Item meaning
+## 7.4 Item meaning
 - `item_id` = stable item label within the plan version
 - `title` = short human-readable item title
 - `description` = what the item actually means

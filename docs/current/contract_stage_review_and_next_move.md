@@ -1,5 +1,9 @@
 # Contract Stage Review and Next Move
 
+> Superseded note:
+> This file captured the repo at the stage just before the tracked-plan and handoff-envelope contracts were tightened and confirmed.
+> Use [contract_stage_review_after_plan_and_handoff.md](/home/dev/OH_SHOP/docs/current/contract_stage_review_after_plan_and_handoff.md) as the newer contract-stage authority.
+
 Date: 2026-03-30
 Repo: `Frankie02027/OH_SHOP`
 
