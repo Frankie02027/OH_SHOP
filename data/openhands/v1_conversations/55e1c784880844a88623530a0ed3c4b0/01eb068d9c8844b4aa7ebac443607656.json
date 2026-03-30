@@ -1,0 +1,21 @@
+{
+  "id": "01eb068d-9c88-44b4-aa7e-bac443607656",
+  "timestamp": "2026-03-30T13:24:16.369904",
+  "source": "environment",
+  "tool_name": "browserbase_evaluate",
+  "tool_call_id": "toolu_03",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Error calling MCP tool browserbase_evaluate: MCP error -32602: Invalid tools/call result: [\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [\n      [\n        {\n          \"expected\": \"string\",\n          \"code\": \"invalid_type\",\n          \"path\": [\n            \"text\"\n          ],\n          \"message\": \"Invalid input: expected string, received undefined\"\n        }\n      ],\n      [\n        {\n          \"code\": \"invalid_value\",\n          \"values\": [\n            \"image\"\n          ],\n          \"path\": [\n            \"type\"\n          ],\n          \"message\": \"Invalid input: expected \\\"image\\\"\"\n        },\n        {\n          \"expected\": \"string\",\n          \"code\": \"invalid_type\",\n          \"path\": [\n            \"data\"\n          ],\n          \"message\": \"Invalid input: expected string, received undefined\"\n        },\n        {\n          \"expected\": \"string\",\n          \"code\": \"invalid_type\",\n          \"path\": [\n            \"mimeType\"\n          ],\n          \"message\": \"Invalid input: expected string, received undefined\"\n        }\n      ],\n      [\n        {\n          \"code\": \"invalid_value\",\n          \"values\": [\n            \"audio\"\n          ],\n          \"path\": [\n            \"type\"\n          ],\n          \"message\": \"Invalid input: expected \\\"audio\\\"\"\n        },\n        {\n          \"expected\": \"string\",\n          \"code\": \"invalid_type\",\n          \"path\": [\n            \"data\"\n          ],\n          \"message\": \"Invalid input: expected string, received undefined\"\n        },\n        {\n          \"expected\": \"string\",\n          \"code\": \"invalid_type\",\n          \"path\": [\n            \"mimeType\"\n          ],\n          \"message\": \"Invalid input: expected string, received undefined\"\n        }\n      ],\n      [\n        {\n          \"expected\": \"string\",\n          \"code\": \"invalid_type\",\n          \"path\": [\n            \"name\"\n          ],\n          \"message\": \"Invalid input: expected string, received undefined\"\n        },\n        {\n          \"expected\": \"string\",\n          \"code\": \"invalid_type\",\n          \"path\": [\n            \"uri\"\n          ],\n          \"message\": \"Invalid input: expected string, received undefined\"\n        },\n        {\n          \"code\": \"invalid_value\",\n          \"values\": [\n            \"resource_link\"\n          ],\n          \"path\": [\n            \"type\"\n          ],\n          \"message\": \"Invalid input: expected \\\"resource_link\\\"\"\n        }\n      ],\n      [\n        {\n          \"code\": \"invalid_value\",\n          \"values\": [\n            \"resource\"\n          ],\n          \"path\": [\n            \"type\"\n          ],\n          \"message\": \"Invalid input: expected \\\"resource\\\"\"\n        },\n        {\n          \"code\": \"invalid_union\",\n          \"errors\": [\n            [\n              {\n                \"expected\": \"object\",\n                \"code\": \"invalid_type\",\n                \"path\": [],\n                \"message\": \"Invalid input: expected object, received undefined\"\n              }\n            ],\n            [\n              {\n                \"expected\": \"object\",\n                \"code\": \"invalid_type\",\n                \"path\": [],\n                \"message\": \"Invalid input: expected object, received undefined\"\n              }\n            ]\n          ],\n          \"path\": [\n            \"resource\"\n          ],\n          \"message\": \"Invalid input\"\n        }\n      ]\n    ],\n    \"path\": [\n      \"content\",\n      0\n    ],\n    \"message\": \"Invalid input\"\n  }\n]"
+      }
+    ],
+    "is_error": true,
+    "tool_name": "browserbase_evaluate",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "5434aed8-f0c4-45c2-ab0f-9a773a59ee77",
+  "kind": "ObservationEvent"
+}

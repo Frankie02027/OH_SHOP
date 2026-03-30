@@ -1,0 +1,26 @@
+{
+  "id": "67ba0471-9934-4b66-b7a5-6d74410b1bec",
+  "timestamp": "2026-03-30T13:24:25.729663",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_agent",
+  "tool_call_id": "toolu_05",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_agent' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"success\": false,\n  \"message\": \"Failed to execute task: Expected 'none' | 'auto' | 'required', received object\",\n  \"completed\": false,\n  \"actionsCount\": 1,\n  \"actions\": [\n    {\n      \"type\": \"goto\",\n      \"reasoning\": \"\\n\\n\",\n      \"taskCompleted\": false,\n      \"url\": \"https://example.com/\",\n      \"success\": true,\n      \"pageUrl\": \"https://example.com/\",\n      \"timestamp\": 1774877065116\n    }\n  ]\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_agent",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "c4b4b561-cc82-4a21-a0b0-fbb145d6e7c3",
+  "kind": "ObservationEvent"
+}

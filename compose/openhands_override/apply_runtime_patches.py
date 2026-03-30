@@ -180,7 +180,20 @@ NATIVE_TOOL_CALLING_TARGET = """usage_id='agent',
         )"""
 
 NATIVE_TOOL_CALLING_REPLACEMENT = """usage_id='agent',
-            native_tool_calling=False if (model and 'openhands-lm' in model) else True,
+            native_tool_calling=not (
+                (model and 'openhands-lm' in model)
+                or (
+                    isinstance(base_url, str)
+                    and any(
+                        host in base_url
+                        for host in (
+                            'host.docker.internal:1234',
+                            '127.0.0.1:1234',
+                            'localhost:1234',
+                        )
+                    )
+                )
+            ),
         )"""
 
 
@@ -302,8 +315,21 @@ def _patch_native_tool_calling() -> tuple[bool, str]:
         return False, f"target file not found: {target}"
 
     text = target.read_text(encoding="utf-8")
-    if "native_tool_calling=False if (model and 'openhands-lm' in model) else True" in text:
+    if NATIVE_TOOL_CALLING_REPLACEMENT.strip() in text:
         return True, "native_tool_calling patch already present"
+
+    legacy_patch = (
+        "native_tool_calling=False if (model and 'openhands-lm' in model) else True,"
+    )
+    if legacy_patch in text:
+        backup = target.with_suffix(target.suffix + ".bak_oh_shop_toolcall_v1")
+        if not backup.exists():
+            backup.write_text(text, encoding="utf-8")
+        target.write_text(
+            text.replace(legacy_patch, NATIVE_TOOL_CALLING_REPLACEMENT.strip(), 1),
+            encoding="utf-8",
+        )
+        return True, "updated native_tool_calling patch"
 
     if NATIVE_TOOL_CALLING_TARGET not in text:
         return False, "expected native_tool_calling block not found; refusing blind patch"

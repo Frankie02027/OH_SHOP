@@ -1,0 +1,22 @@
+{
+  "id": "2eb91a4b-325b-4835-a356-347301da2a19",
+  "timestamp": "2026-03-30T13:24:21.100626",
+  "source": "environment",
+  "tool_name": "browser_get_state",
+  "tool_call_id": "toolu_04",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Browser operation failed: 1 validation error for TextContent\ntext\n  Input should be a valid string [type=string_type, input_value=('{\\n  \"url\": \"about:blan...  \"y\": 0\\n  }\\n}', None), input_type=tuple]\n    For further information visit https://errors.pydantic.dev/2.12/v/string_type"
+      }
+    ],
+    "is_error": true,
+    "screenshot_data": null,
+    "full_output_save_dir": "/workspace/conversations/55e1c784880844a88623530a0ed3c4b0/observations",
+    "kind": "BrowserObservation"
+  },
+  "action_id": "21e246c3-6830-4796-8961-0c27f5a23d2a",
+  "kind": "ObservationEvent"
+}

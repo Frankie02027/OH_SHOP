@@ -1,0 +1,26 @@
+{
+  "id": "26e2b85c-f7b5-4108-805c-29eb4066ec3c",
+  "timestamp": "2026-03-30T13:24:30.051669",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_agent",
+  "tool_call_id": "toolu_08",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_agent' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"success\": false,\n  \"message\": \"Failed to execute task: Invalid type for 'input'.\",\n  \"completed\": false,\n  \"actionsCount\": 1,\n  \"actions\": [\n    {\n      \"type\": \"ariaTree\",\n      \"reasoning\": \"\\n\\n\",\n      \"taskCompleted\": false,\n      \"pageUrl\": \"https://example.com/\",\n      \"timestamp\": 1774877070046\n    }\n  ]\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_agent",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "c90dcdc9-6c5a-4193-b623-6bfe754e5fe6",
+  "kind": "ObservationEvent"
+}

@@ -1,0 +1,34 @@
+{
+  "id": "f140b087-eb6b-4cbb-afce-d76322be1b48",
+  "timestamp": "2026-03-30T13:24:15.141258",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": ""
+    }
+  ],
+  "reasoning_content": "The browser has successfully navigated to https://example.com. Now I need to extract the page title using the Stagehand extract tool.\n",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {
+      "instruction": "Extract the exact page title from the current page"
+    },
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_stagehand_extract",
+  "tool_call_id": "toolu_02",
+  "tool_call": {
+    "id": "toolu_02",
+    "name": "browserbase_stagehand_extract",
+    "arguments": "{\"instruction\": \"Extract the exact page title from the current page\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-n2qas4jhdcrghl7rxwsxlc",
+  "security_risk": "UNKNOWN",
+  "critic_result": null,
+  "summary": "browserbase_stagehand_extract: {\"instruction\": \"Extract the exact page title from the current page\"}",
+  "kind": "ActionEvent"
+}

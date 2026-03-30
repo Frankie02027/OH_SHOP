@@ -625,7 +625,7 @@ def _has_runtime_events(items: Any) -> bool:
         if not isinstance(event, dict):
             continue
         kind = event.get("kind")
-        if kind in {"ActionEvent", "ObservationEvent"}:
+        if kind in {"ActionEvent", "ObservationEvent", "AgentErrorEvent"}:
             return True
         if kind == "MessageEvent" and event.get("source") == "agent":
             return True
@@ -634,17 +634,21 @@ def _has_runtime_events(items: Any) -> bool:
 
 def _extract_browser_tool_events(
     items: Any,
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str, str, str]:
+) -> tuple[
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    str,
+    str,
+    str,
+    bool,
+]:
     if not isinstance(items, list):
-        return None, None, "", "", ""
+        return None, None, "", "", "", False
 
     def _is_browser_tool_name(name: object) -> bool:
         if not isinstance(name, str):
             return False
-        return (
-            name.startswith("browserbase_")
-            or "stagehand" in name
-        )
+        return name.startswith("browserbase_") or "stagehand" in name
 
     tool_action = next(
         (
@@ -663,13 +667,13 @@ def _extract_browser_tool_events(
     if isinstance(tool_action, dict):
         tool_call_id = tool_action.get("tool_call_id")
 
-    observation_event = next(
+    tool_result_event = next(
         (
             event
             for event in items
             if (
                 isinstance(event, dict)
-                and event.get("kind") == "ObservationEvent"
+                and event.get("kind") in {"ObservationEvent", "AgentErrorEvent"}
                 and event.get("tool_call_id") == tool_call_id
             )
         ),
@@ -712,17 +716,28 @@ def _extract_browser_tool_events(
                 break
 
     observation_text = ""
-    if isinstance(observation_event, dict):
-        observation_text = _content_text(
-            observation_event.get("observation", {}).get("content")
-        )
+    tool_result_is_error = False
+    if isinstance(tool_result_event, dict):
+        if tool_result_event.get("kind") == "ObservationEvent":
+            observation_text = _content_text(
+                tool_result_event.get("observation", {}).get("content")
+            )
+            tool_result_is_error = bool(
+                tool_result_event.get("observation", {}).get("is_error")
+            )
+        else:
+            error_text = tool_result_event.get("error")
+            if isinstance(error_text, str):
+                observation_text = error_text.strip()
+            tool_result_is_error = True
 
     return (
         tool_action,
-        observation_event,
+        tool_result_event,
         assistant_text,
         observation_text,
         assistant_source,
+        tool_result_is_error,
     )
 
 
@@ -1200,7 +1215,7 @@ def cmd_smoke_test_browser_tool(
     events_payload: dict[str, Any] | None = None
     events_detail = ""
     tool_action: dict[str, Any] | None = None
-    observation_event: dict[str, Any] | None = None
+    tool_result_event: dict[str, Any] | None = None
     assistant_text = ""
     observation_text = ""
     assistant_source = ""
@@ -1258,26 +1273,21 @@ def cmd_smoke_test_browser_tool(
             items = payload.get("items")
             (
                 tool_action,
-                observation_event,
+                tool_result_event,
                 assistant_text,
                 observation_text,
                 assistant_source,
+                tool_result_is_error,
             ) = _extract_browser_tool_events(items)
-            if observation_event is not None and observation_seen_at is None:
+            if tool_result_event is not None and observation_seen_at is None:
                 observation_seen_at = time.monotonic()
             if assistant_text and assistant_seen_at is None:
                 assistant_seen_at = time.monotonic()
 
-            observation_error = bool(
-                isinstance(observation_event, dict)
-                and observation_event.get(
-                    "observation", {}
-                ).get("is_error")
-            )
             if (
                 tool_action
-                and observation_event
-                and not observation_error
+                and tool_result_event
+                and not tool_result_is_error
                 and assistant_text
             ):
                 if execution_status == "finished":
@@ -1352,10 +1362,11 @@ def cmd_smoke_test_browser_tool(
 
     (
         tool_action,
-        observation_event,
+        tool_result_event,
         assistant_text,
         observation_text,
         assistant_source,
+        tool_result_is_error,
     ) = _extract_browser_tool_events(items)
 
     if tool_action is None:
@@ -1384,19 +1395,22 @@ def cmd_smoke_test_browser_tool(
         )
 
     if (
-        observation_event is None
-        or observation_event.get(
-            "observation", {}
-        ).get("is_error")
+        tool_result_event is None
+        or tool_result_is_error
     ):
         detail = (
             "browser tool observation was missing "
             "or marked as an error"
         )
-        if observation_event is None and execution_status != "finished":
+        if tool_result_event is None and execution_status != "finished":
             detail = (
                 "timed out after the browser tool action "
                 "but before a successful observation was captured"
+            )
+        elif observation_text:
+            detail = (
+                "browser tool result after the action was an error: "
+                f"{observation_text}"
             )
         return emit_result(
             "provider/dependency failure",
@@ -1729,8 +1743,13 @@ def cmd_verify() -> int:
                     f"text = Path("
                     f"{OPENHANDS_TOOL_CALL_PATCH_TARGET!r}"
                     ").read_text(); "
-                    "target = \"native_tool_calling=False if (model and 'openhands-lm' in model) else True\"; "
-                    "raise SystemExit(0 if target in text else 1)"
+                    "targets = ["
+                    "\"native_tool_calling=not (\", "
+                    "\"host.docker.internal:1234\", "
+                    "\"127.0.0.1:1234\", "
+                    "\"localhost:1234\""
+                    "]; "
+                    "raise SystemExit(0 if all(target in text for target in targets) else 1)"
                 ),
             ],
             timeout=10,
