@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/common/plan-item-states.schema.json",
+  "title": "Garage Plan Item State",
+  "type": "string",
+  "enum": [
+    "todo",
+    "in_progress",
+    "needs_child_job",
+    "done_unverified",
+    "verified",
+    "blocked",
+    "abandoned"
+  ]
+}

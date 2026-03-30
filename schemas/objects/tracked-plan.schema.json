@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/tracked-plan.schema.json",
+  "title": "Garage Tracked Plan",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "plan_version": {
+      "$ref": "../common/id-types.schema.json#/$defs/plan_version"
+    },
+    "created_by": {
+      "$ref": "../common/roles.schema.json"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "plan_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "blocked",
+        "completed",
+        "abandoned",
+        "superseded"
+      ]
+    },
+    "current_active_item": {
+      "$ref": "../common/id-types.schema.json#/$defs/item_id"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "./plan-item.schema.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": ["task_id", "plan_version", "created_by", "plan_status", "items"],
+  "additionalProperties": false
+}

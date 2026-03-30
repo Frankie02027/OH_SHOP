@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/common/call-envelope.schema.json",
+  "title": "Garage Call Envelope",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "call_type": {
+      "$ref": "./call-types.schema.json"
+    },
+    "task_id": {
+      "$ref": "./id-types.schema.json#/$defs/task_id"
+    },
+    "job_id": {
+      "$ref": "./id-types.schema.json#/$defs/job_id"
+    },
+    "parent_job_id": {
+      "type": ["string", "null"],
+      "pattern": "^T[0-9]{6}\\.J[0-9]{3}$"
+    },
+    "from_role": {
+      "$ref": "./roles.schema.json"
+    },
+    "to_role": {
+      "$ref": "./roles.schema.json"
+    },
+    "reported_status": {
+      "anyOf": [
+        {
+          "$ref": "./worker-reported-status.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reported_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "plan_version": {
+      "$ref": "./id-types.schema.json#/$defs/plan_version"
+    },
+    "checkpoint_id": {
+      "$ref": "./id-types.schema.json#/$defs/checkpoint_id"
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "../objects/artifact-ref.schema.json"
+      }
+    },
+    "workspace_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "../objects/workspace-ref.schema.json"
+      }
+    },
+    "payload": {
+      "type": "object"
+    },
+    "payload_ref": {
+      "$ref": "../objects/payload-ref.schema.json"
+    }
+  },
+  "$defs": {
+    "payload_or_ref_required": {
+      "anyOf": [
+        {
+          "required": ["payload"]
+        },
+        {
+          "required": ["payload_ref"]
+        }
+      ]
+    }
+  }
+}

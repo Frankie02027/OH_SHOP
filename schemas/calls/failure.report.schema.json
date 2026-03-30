@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/calls/failure.report.schema.json",
+  "title": "Garage failure.report Call",
+  "allOf": [
+    {
+      "$ref": "../common/call-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "call_type": {
+          "const": "failure.report"
+        },
+        "from_role": {
+          "enum": ["jarvis", "robin"]
+        },
+        "to_role": {
+          "enum": ["alfred", "jarvis"]
+        },
+        "reported_status": {
+          "enum": ["blocked", "failed"]
+        }
+      },
+      "required": [
+        "schema_version",
+        "call_type",
+        "task_id",
+        "job_id",
+        "from_role",
+        "reported_status"
+      ],
+      "anyOf": [
+        {
+          "required": ["payload"],
+          "properties": {
+            "payload": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                },
+                "failure_bucket": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": ["object", "array", "string"]
+                },
+                "continuation_hints": {
+                  "type": "string"
+                }
+              },
+              "required": ["summary", "failure_bucket"],
+              "additionalProperties": true
+            }
+          }
+        },
+        {
+          "required": ["payload_ref"]
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

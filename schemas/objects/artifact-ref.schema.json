@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/artifact-ref.schema.json",
+  "title": "Garage Artifact Ref",
+  "type": "object",
+  "properties": {
+    "artifact_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/artifact_id"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "screenshot",
+        "download",
+        "extract_json",
+        "log",
+        "diff",
+        "summary",
+        "report",
+        "payload_file",
+        "other"
+      ]
+    },
+    "workspace_ref": {
+      "anyOf": [
+        {
+          "$ref": "./workspace-ref.schema.json"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ]
+    },
+    "reported_by": {
+      "$ref": "../common/roles.schema.json"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mime_type": {
+      "type": "string"
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hash": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "source_job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "source_event_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/event_id"
+    }
+  },
+  "required": ["artifact_id", "kind", "workspace_ref", "reported_by"],
+  "additionalProperties": false
+}

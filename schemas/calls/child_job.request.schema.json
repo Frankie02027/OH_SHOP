@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/calls/child_job.request.schema.json",
+  "title": "Garage child_job.request Call",
+  "allOf": [
+    {
+      "$ref": "../common/call-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "call_type": {
+          "const": "child_job.request"
+        },
+        "from_role": {
+          "const": "jarvis"
+        },
+        "to_role": {
+          "enum": ["alfred", "robin"]
+        },
+        "reported_status": false,
+        "attempt_no": false
+      },
+      "required": ["schema_version", "call_type", "task_id", "job_id", "from_role", "to_role"],
+      "anyOf": [
+        {
+          "required": ["payload"],
+          "properties": {
+            "payload": {
+              "type": "object",
+              "properties": {
+                "objective": {
+                  "type": "string"
+                },
+                "reason_for_handoff": {
+                  "type": "string"
+                },
+                "constraints": {
+                  "type": ["array", "object", "string"]
+                },
+                "expected_output": {
+                  "type": ["array", "object", "string"]
+                },
+                "success_criteria": {
+                  "type": ["array", "object", "string"]
+                },
+                "notes": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "objective",
+                "reason_for_handoff",
+                "constraints",
+                "expected_output",
+                "success_criteria"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        {
+          "required": ["payload_ref"]
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

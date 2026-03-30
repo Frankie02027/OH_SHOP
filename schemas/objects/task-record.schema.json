@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/task-record.schema.json",
+  "title": "Garage Task Record",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "task_state": {
+      "$ref": "../common/task-states.schema.json"
+    },
+    "plan_version": {
+      "$ref": "../common/id-types.schema.json#/$defs/plan_version"
+    },
+    "job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "checkpoint_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/checkpoint_id"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["task_id", "task_state", "created_at", "updated_at"],
+  "additionalProperties": false
+}

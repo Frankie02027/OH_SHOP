@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/plan-item.schema.json",
+  "title": "Garage Plan Item",
+  "type": "object",
+  "properties": {
+    "item_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/item_id"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "$ref": "../common/plan-item-states.schema.json"
+    },
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/id-types.schema.json#/$defs/item_id"
+      },
+      "uniqueItems": true
+    },
+    "verification_rule": {
+      "$ref": "#/$defs/verification_rule"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence_ref"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": ["item_id", "title", "description", "status"],
+  "additionalProperties": false,
+  "$defs": {
+    "verification_rule": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "artifact_exists",
+            "artifact_matches_kind",
+            "result_present",
+            "summary_present",
+            "test_pass",
+            "manual_review_required",
+            "evidence_bundle_present",
+            "downstream_item_confirms",
+            "no_extra_requirement"
+          ]
+        },
+        "params": {
+          "type": "object"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "evidence_ref": {
+      "anyOf": [
+        {
+          "$ref": "./artifact-ref.schema.json"
+        },
+        {
+          "$ref": "./workspace-ref.schema.json"
+        },
+        {
+          "$ref": "./payload-ref.schema.json"
+        }
+      ]
+    }
+  }
+}

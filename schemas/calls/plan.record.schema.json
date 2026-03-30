@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/calls/plan.record.schema.json",
+  "title": "Garage plan.record Call",
+  "allOf": [
+    {
+      "$ref": "../common/call-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "call_type": {
+          "const": "plan.record"
+        },
+        "from_role": {
+          "const": "jarvis"
+        },
+        "reported_status": false,
+        "attempt_no": false,
+        "plan_version": {
+          "$ref": "../common/id-types.schema.json#/$defs/plan_version"
+        }
+      },
+      "required": ["schema_version", "call_type", "task_id", "from_role", "plan_version"],
+      "anyOf": [
+        {
+          "required": ["payload"],
+          "properties": {
+            "payload": {
+              "$ref": "../objects/tracked-plan.schema.json"
+            }
+          }
+        },
+        {
+          "required": ["payload_ref"]
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

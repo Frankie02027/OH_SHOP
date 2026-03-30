@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/common/worker-reported-status.schema.json",
+  "title": "Garage Worker Reported Status",
+  "type": "string",
+  "enum": ["succeeded", "partial", "blocked", "failed"]
+}

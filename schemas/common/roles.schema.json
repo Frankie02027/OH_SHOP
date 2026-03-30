@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/common/roles.schema.json",
+  "title": "Garage Role",
+  "type": "string",
+  "enum": ["jarvis", "robin", "alfred"]
+}

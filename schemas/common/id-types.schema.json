@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/common/id-types.schema.json",
+  "title": "Garage ID Types",
+  "$defs": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^T[0-9]{6}$"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^T[0-9]{6}\\.J[0-9]{3}$"
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^T[0-9]{6}\\.E[0-9]{4}$"
+    },
+    "checkpoint_id": {
+      "type": "string",
+      "pattern": "^T[0-9]{6}\\.C[0-9]{3}$"
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^T[0-9]{6}\\.J[0-9]{3}\\.A[0-9]{3}$"
+    },
+    "plan_id": {
+      "type": "string",
+      "pattern": "^T[0-9]{6}\\.P[0-9]{3}$"
+    },
+    "handoff_id": {
+      "type": "string",
+      "pattern": "^T[0-9]{6}\\.H[0-9]{3}$"
+    },
+    "item_id": {
+      "type": "string",
+      "pattern": "^I[0-9]{3}$"
+    },
+    "plan_version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

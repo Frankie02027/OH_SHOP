@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/common/call-types.schema.json",
+  "title": "Garage Call Type",
+  "type": "string",
+  "enum": [
+    "task.create",
+    "plan.record",
+    "job.start",
+    "child_job.request",
+    "result.submit",
+    "failure.report",
+    "checkpoint.create",
+    "continuation.record"
+  ]
+}

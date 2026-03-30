@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/checkpoint-record.schema.json",
+  "title": "Garage Checkpoint Record",
+  "type": "object",
+  "properties": {
+    "checkpoint_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/checkpoint_id"
+    },
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "payload_ref": {
+      "$ref": "./payload-ref.schema.json"
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "./artifact-ref.schema.json"
+      }
+    },
+    "workspace_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "./workspace-ref.schema.json"
+      }
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["checkpoint_id", "task_id", "recorded_at"],
+  "additionalProperties": false
+}

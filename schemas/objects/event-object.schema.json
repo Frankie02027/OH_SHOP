@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/event-object.schema.json",
+  "title": "Garage Event Object",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_type": {
+      "$ref": "../common/event-types.schema.json"
+    },
+    "event_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/event_id"
+    },
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "parent_job_id": {
+      "type": ["string", "null"],
+      "pattern": "^T[0-9]{6}\\.J[0-9]{3}$"
+    },
+    "checkpoint_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/checkpoint_id"
+    },
+    "plan_version": {
+      "$ref": "../common/id-types.schema.json#/$defs/plan_version"
+    },
+    "from_role": {
+      "$ref": "../common/roles.schema.json"
+    },
+    "to_role": {
+      "$ref": "../common/roles.schema.json"
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reported_status": {
+      "$ref": "../common/worker-reported-status.schema.json"
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "./artifact-ref.schema.json"
+      }
+    },
+    "workspace_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "./workspace-ref.schema.json"
+      }
+    },
+    "payload_ref": {
+      "$ref": "./payload-ref.schema.json"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "../events/task.created.schema.json"
+    },
+    {
+      "$ref": "../events/plan.recorded.schema.json"
+    },
+    {
+      "$ref": "../events/job.created.schema.json"
+    },
+    {
+      "$ref": "../events/job.started.schema.json"
+    },
+    {
+      "$ref": "../events/job.dispatched.schema.json"
+    },
+    {
+      "$ref": "../events/job.returned.schema.json"
+    },
+    {
+      "$ref": "../events/job.blocked.schema.json"
+    },
+    {
+      "$ref": "../events/job.failed.schema.json"
+    },
+    {
+      "$ref": "../events/checkpoint.created.schema.json"
+    },
+    {
+      "$ref": "../events/continuation.recorded.schema.json"
+    },
+    {
+      "$ref": "../events/artifact.registered.schema.json"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/calls/job.start.schema.json",
+  "title": "Garage job.start Call",
+  "allOf": [
+    {
+      "$ref": "../common/call-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "call_type": {
+          "const": "job.start"
+        },
+        "from_role": {
+          "enum": ["jarvis", "robin"]
+        },
+        "reported_status": false
+      },
+      "required": ["schema_version", "call_type", "task_id", "job_id", "from_role", "reported_at"]
+    }
+  ],
+  "unevaluatedProperties": false
+}

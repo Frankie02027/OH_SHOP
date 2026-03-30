@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/events/plan.recorded.schema.json",
+  "title": "Garage plan.recorded Event",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "event_type": {
+      "const": "plan.recorded"
+    },
+    "event_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/event_id"
+    },
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "plan_version": {
+      "$ref": "../common/id-types.schema.json#/$defs/plan_version"
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload_ref": {
+      "$ref": "../objects/payload-ref.schema.json"
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_type",
+    "event_id",
+    "task_id",
+    "plan_version",
+    "recorded_at"
+  ],
+  "additionalProperties": false
+}

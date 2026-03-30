@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/events/task.created.schema.json",
+  "title": "Garage task.created Event",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "event_type": {
+      "const": "task.created"
+    },
+    "event_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/event_id"
+    },
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "from_role": {
+      "$ref": "../common/roles.schema.json"
+    },
+    "to_role": {
+      "$ref": "../common/roles.schema.json"
+    },
+    "payload_ref": {
+      "$ref": "../objects/payload-ref.schema.json"
+    }
+  },
+  "required": ["schema_version", "event_type", "event_id", "task_id", "recorded_at"],
+  "additionalProperties": false
+}

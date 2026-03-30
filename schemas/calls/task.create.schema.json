@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/calls/task.create.schema.json",
+  "title": "Garage task.create Call",
+  "allOf": [
+    {
+      "$ref": "../common/call-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "call_type": {
+          "const": "task.create"
+        },
+        "to_role": {
+          "const": "alfred"
+        },
+        "task_id": false,
+        "job_id": false,
+        "parent_job_id": false,
+        "reported_status": false,
+        "attempt_no": false,
+        "artifact_refs": false,
+        "workspace_refs": false
+      },
+      "required": ["schema_version", "call_type", "from_role", "to_role"],
+      "anyOf": [
+        {
+          "required": ["payload"],
+          "properties": {
+            "payload": {
+              "type": "object",
+              "minProperties": 1
+            }
+          }
+        },
+        {
+          "required": ["payload_ref"]
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

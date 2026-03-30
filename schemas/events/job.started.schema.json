@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/events/job.started.schema.json",
+  "title": "Garage job.started Event",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "event_type": {
+      "const": "job.started"
+    },
+    "event_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/event_id"
+    },
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["schema_version", "event_type", "event_id", "task_id", "job_id", "recorded_at"],
+  "additionalProperties": false
+}

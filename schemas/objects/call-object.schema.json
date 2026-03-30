@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/call-object.schema.json",
+  "title": "Garage Call Object",
+  "oneOf": [
+    {
+      "$ref": "../calls/task.create.schema.json"
+    },
+    {
+      "$ref": "../calls/plan.record.schema.json"
+    },
+    {
+      "$ref": "../calls/job.start.schema.json"
+    },
+    {
+      "$ref": "../calls/child_job.request.schema.json"
+    },
+    {
+      "$ref": "../calls/result.submit.schema.json"
+    },
+    {
+      "$ref": "../calls/failure.report.schema.json"
+    },
+    {
+      "$ref": "../calls/checkpoint.create.schema.json"
+    },
+    {
+      "$ref": "../calls/continuation.record.schema.json"
+    }
+  ]
+}

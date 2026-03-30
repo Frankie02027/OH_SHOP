@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/common/event-types.schema.json",
+  "title": "Garage Event Type",
+  "type": "string",
+  "enum": [
+    "task.created",
+    "plan.recorded",
+    "job.created",
+    "job.started",
+    "job.dispatched",
+    "job.returned",
+    "job.blocked",
+    "job.failed",
+    "checkpoint.created",
+    "continuation.recorded",
+    "artifact.registered"
+  ]
+}

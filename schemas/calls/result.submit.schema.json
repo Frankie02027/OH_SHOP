@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/calls/result.submit.schema.json",
+  "title": "Garage result.submit Call",
+  "allOf": [
+    {
+      "$ref": "../common/call-envelope.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "call_type": {
+          "const": "result.submit"
+        },
+        "from_role": {
+          "enum": ["jarvis", "robin"]
+        },
+        "to_role": {
+          "enum": ["alfred", "jarvis"]
+        },
+        "reported_status": {
+          "enum": ["succeeded", "partial"]
+        }
+      },
+      "required": [
+        "schema_version",
+        "call_type",
+        "task_id",
+        "job_id",
+        "from_role",
+        "reported_status"
+      ],
+      "anyOf": [
+        {
+          "required": ["payload"],
+          "properties": {
+            "payload": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                },
+                "structured_result": {
+                  "type": ["object", "array", "string", "number", "boolean", "null"]
+                },
+                "ambiguity_notes": {
+                  "type": ["array", "string"]
+                },
+                "continuation_hints": {
+                  "type": "string"
+                }
+              },
+              "required": ["summary", "structured_result"],
+              "additionalProperties": true
+            }
+          }
+        },
+        {
+          "required": ["payload_ref"]
+        }
+      ]
+    }
+  ],
+  "unevaluatedProperties": false
+}

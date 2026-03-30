@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/continuation-record.schema.json",
+  "title": "Garage Continuation Record",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "checkpoint_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/checkpoint_id"
+    },
+    "payload_ref": {
+      "$ref": "./payload-ref.schema.json"
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "./artifact-ref.schema.json"
+      }
+    },
+    "workspace_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "./workspace-ref.schema.json"
+      }
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["task_id", "payload_ref", "recorded_at"],
+  "additionalProperties": false
+}

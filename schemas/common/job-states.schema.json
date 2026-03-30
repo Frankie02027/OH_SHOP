@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/common/job-states.schema.json",
+  "title": "Garage Job State",
+  "type": "string",
+  "enum": [
+    "queued",
+    "dispatched",
+    "running",
+    "returned",
+    "completed",
+    "blocked",
+    "failed",
+    "cancelled"
+  ]
+}

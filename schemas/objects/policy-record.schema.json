@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/policy-record.schema.json",
+  "title": "Garage Policy Record",
+  "type": "object",
+  "properties": {
+    "policy_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["global", "alfred", "jarvis", "robin", "task_override"]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "inactive", "superseded", "archived"]
+    },
+    "content_ref": {
+      "$ref": "./policy-content-ref.schema.json"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "effective_from": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "effective_to": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "supersedes_policy_key": {
+      "type": "string"
+    },
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "approved_by": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": ["policy_key", "scope", "version", "status", "content_ref"],
+  "additionalProperties": false
+}

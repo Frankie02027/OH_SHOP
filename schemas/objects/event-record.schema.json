@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/event-record.schema.json",
+  "title": "Garage Event Record",
+  "allOf": [
+    {
+      "$ref": "./event-object.schema.json"
+    }
+  ],
+  "unevaluatedProperties": false
+}

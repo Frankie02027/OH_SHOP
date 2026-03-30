@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oh-shop.local/schemas/objects/job-record.schema.json",
+  "title": "Garage Job Record",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/task_id"
+    },
+    "job_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/job_id"
+    },
+    "parent_job_id": {
+      "type": ["string", "null"],
+      "pattern": "^T[0-9]{6}\\.J[0-9]{3}$"
+    },
+    "from_role": {
+      "$ref": "../common/roles.schema.json"
+    },
+    "to_role": {
+      "$ref": "../common/roles.schema.json"
+    },
+    "job_state": {
+      "$ref": "../common/job-states.schema.json"
+    },
+    "attempt_no": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reported_status": {
+      "$ref": "../common/worker-reported-status.schema.json"
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "./artifact-ref.schema.json"
+      }
+    },
+    "workspace_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "./workspace-ref.schema.json"
+      }
+    },
+    "payload_ref": {
+      "$ref": "./payload-ref.schema.json"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["task_id", "job_id", "job_state", "attempt_no", "created_at", "updated_at"],
+  "additionalProperties": false
+}
