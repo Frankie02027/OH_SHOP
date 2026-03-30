@@ -31,6 +31,7 @@ python3 /home/dev/OH_SHOP/ops/garagectl.py verify
 ## Notes
 
 - LM Studio must be intentionally running for live provider checks to pass.
+- the configured model ID must also be visible in `curl -sf http://127.0.0.1:1234/v1/models`; if the server is up but the configured model string is absent, layer 5 of the verifier and the browser smoke can still fail.
 - the authoritative host launcher is `/usr/bin/lm-studio`
 - `lmstudio` should resolve to `/usr/bin/lm-studio`, not the legacy AppImage path under `/opt/lmstudio/`
 - `compose/docker-compose.yml` is the current compose baseline.

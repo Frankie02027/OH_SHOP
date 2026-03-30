@@ -1,5 +1,13 @@
 # Jarvis Workbench Examples v0.1
 
+> Authority note:
+> These are supporting examples, not canonical machine-language authority.
+> For current official token names, ID rules, retry rules, and return rules, use:
+> [garage_universal_language_dictionary_v0_1.md](/home/dev/OH_SHOP/docs/architecture/garage_universal_language_dictionary_v0_1.md),
+> [ai_garage_library_and_policy_contract_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/ai_garage_library_and_policy_contract_v_0_1.md),
+> and [ALFRED_MASTER_CONTRACT_v_0_2.md](/home/dev/OH_SHOP/docs/architecture/ALFRED_MASTER_CONTRACT_v_0_2.md).
+> Example-era names in this file are illustrative only and should not be used to define enums or storage keys.
+
 The following examples illustrate how the contract defined in `JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md` works in practice.  They show representative data structures and flows for common situations.  These are not comprehensive but should be concrete enough to serve as reference models.  Prose explanations accompany the structured payloads; the real implementation will exchange JSON.
 
 ## 1. Simple Local Coding Task

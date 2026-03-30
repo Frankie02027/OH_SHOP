@@ -1,5 +1,14 @@
 # Jarvis Workbench and Progression Contract v0.1
 
+> Authority note:
+> This document remains useful for Jarvis workbench behavior, object-shape examples, and progression concepts.
+> It is **not** the primary authority for exact machine-checkable Garage token names.
+> For canonical `call_type`, `event_type`, ID, retry, and return rules, use:
+> [garage_universal_language_dictionary_v0_1.md](/home/dev/OH_SHOP/docs/architecture/garage_universal_language_dictionary_v0_1.md),
+> [ai_garage_library_and_policy_contract_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/ai_garage_library_and_policy_contract_v_0_1.md),
+> and [ALFRED_MASTER_CONTRACT_v_0_2.md](/home/dev/OH_SHOP/docs/architecture/ALFRED_MASTER_CONTRACT_v_0_2.md).
+> Any older example tokens in this file should be treated as historical/supporting terminology, not current machine-language authority.
+
 This document defines the first‑generation contract for how the Jarvis worker role operates inside an **AI Garage**.  It specifies how Jarvis plans locally in the OpenHands workbench, how that plan becomes official state under Alfred’s control, and how Jarvis interacts with the Robin browser worker.  It fills gaps left by the OpenHands deep research pass by providing explicit object shapes, lifecycle states and policies.  It does **not** implement Alfred itself, design the Ledger schema or cover UI concerns.
 
 ## 1. Purpose

@@ -4,6 +4,11 @@
 
 Working draft. This is not a final truth document. It is the first serious contract for the Garage's shared operating language, tracked-plan discipline, and policy layers.
 
+For concrete machine-checkable token names in v0.1, [garage_universal_language_dictionary_v0_1.md](/home/dev/OH_SHOP/docs/architecture/garage_universal_language_dictionary_v0_1.md) is the primary authority.
+
+This document should stay aligned with that dictionary.
+It may explain why the language is shaped this way, but it should not silently compete with the dictionary on exact `call_type`, `event_type`, or status vocabulary.
+
 This contract is intentionally focused on:
 - the shared language between Alfred, Jarvis, and Robin
 - the minimum library of calls/events/statuses
@@ -175,17 +180,26 @@ The Garage should begin with a deliberately small call library.
 
 ### 5.1 Required core calls
 1. `task.create`
-2. `assignment.dispatch`
-3. `assignment.accept`
+2. `plan.record`
+3. `job.start`
 4. `child_job.request`
-5. `context.request`
-6. `checkpoint.create`
+5. `checkpoint.create`
+6. `continuation.record`
 7. `result.submit`
 8. `failure.report`
 
-### 5.2 Likely near-term additions
-9. `task.cancel`
-10. `human_input.request`
+### 5.2 Optional aliases / deferred additions
+- `assignment.dispatch`
+  - optional alias / derived surface
+  - may remain implicit inside `child_job.request` for v0.1
+- `assignment.accept`
+  - optional alias / derived surface
+  - not part of the minimum required core library
+- `context.request`
+  - deferred from the core v0.1 library
+  - only promote it later if context fetch becomes a stable first-class Garage interaction rather than a payload concern
+- `task.cancel`
+- `human_input.request`
 
 ### 5.3 Design note
 The Garage should **not** create a new top-level call for every tiny situation.
@@ -206,28 +220,28 @@ Those should usually be represented as:
 
 Events are facts, not commands.
 
-### 6.1 Recommended v0.1 events
+### 6.1 Recommended core v0.1 events
 - `task.created`
-- `assignment.dispatched`
-- `assignment.accepted`
-- `run.started`
-- `run.blocked`
+- `plan.recorded`
+- `job.created`
+- `job.started`
+- `job.dispatched`
+- `job.returned`
+- `job.blocked`
+- `job.failed`
 - `checkpoint.created`
-- `result.submitted`
-- `result.accepted`
-- `run.completed`
-- `run.failed`
-- `task.cancelled`
-- `task.completed`
-- `task.failed`
-- `plan.created`
-- `plan.revised`
+- `continuation.recorded`
+- `artifact.registered`
+
+### 6.2 Supporting tracked-plan / UI events
+These may exist as derived or UI-facing events without becoming the core cross-role event vocabulary:
+
 - `plan.item.started`
 - `plan.item.done_unverified`
 - `plan.item.verified`
 - `plan.item.blocked`
 
-### 6.2 Design note
+### 6.3 Design note
 Events should stay boring, factual, and append-only. They are for history and auditability, not storytelling.
 
 ---
@@ -236,16 +250,26 @@ Events should stay boring, factual, and append-only. They are for history and au
 
 Statuses should stay small and boring.
 
-### 7.1 Task / job statuses
-- `queued`
+### 7.1 Task states
+- `created`
 - `running`
-- `blocked`
 - `waiting_on_child`
+- `resuming`
 - `completed`
 - `failed`
 - `cancelled`
 
-### 7.2 Plan item statuses
+### 7.2 Job states
+- `queued`
+- `dispatched`
+- `running`
+- `returned`
+- `completed`
+- `blocked`
+- `failed`
+- `cancelled`
+
+### 7.3 Plan item states
 - `todo`
 - `in_progress`
 - `blocked`
@@ -254,7 +278,7 @@ Statuses should stay small and boring.
 - `verified`
 - `abandoned`
 
-### 7.3 Design note
+### 7.4 Design note
 Statuses are state labels, not calls.
 
 ---
@@ -606,7 +630,7 @@ Jarvis and Robin write the meaningful semantic body. Alfred validates, records, 
 
 - whether `handoff_id` should be AI-visible in v1 or kept internal unless needed
 - whether plan items should always belong to a job or may sometimes belong directly to the task
-- whether `assignment.accept` should be required for all worker legs or only when explicit acknowledgement matters
+- whether `assignment.dispatch` / `assignment.accept` should ever graduate from optional aliases into required first-class calls
 - exactly how much Alfred should normalize or rewrite malformed worker payloads versus rejecting them
 - whether policy text should live mostly in SQLite text fields or mostly as versioned markdown artifacts with SQLite indexing
 
@@ -625,4 +649,3 @@ It should be built around:
 - proof-based progression
 - Alfred as validator/router/recorder
 - Jarvis and Robin as the semantic authors of dynamic handoffs and returns
-

@@ -116,6 +116,7 @@ Important:
 - OpenHands runtime-critical values currently persist under `data/openhands/settings.json`
 - Stagehand runtime-critical values currently come from `compose/docker-compose.yml`
 - verifier expectations are not config authority by themselves
+- the configured OpenHands / Stagehand model string must also exist in LM Studio `/v1/models`; a matching base URL alone is not enough for readiness
 
 ## Runtime state classification
 

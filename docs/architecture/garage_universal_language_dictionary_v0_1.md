@@ -17,6 +17,15 @@ This is the first practical dictionary for:
 
 Its purpose is to make Jarvis, Robin, and Alfred speak the same machine language.
 
+For concrete machine-checkable token names in v0.1, this file is the **primary authority**.
+
+Other docs may explain, justify, or apply the language, but they should not silently redefine:
+- core `call_type` names
+- core `event_type` names
+- official state/status tokens
+- ID ownership rules
+- retry / return / new-job rules
+
 ---
 
 ## 1. Core principle

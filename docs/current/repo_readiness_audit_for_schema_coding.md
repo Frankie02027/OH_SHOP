@@ -1,5 +1,9 @@
 # Repo Readiness Audit for Schema Coding
 
+> Follow-up note:
+> This report captured the branch state before the Alfred authority gap and shared-language mismatch were reconciled.
+> For the current post-reconciliation status, see [repo_readiness_audit_for_schema_coding_followup.md](/home/dev/OH_SHOP/docs/current/repo_readiness_audit_for_schema_coding_followup.md) and [shared_language_reconciliation_report.md](/home/dev/OH_SHOP/docs/current/shared_language_reconciliation_report.md).
+
 Date: 2026-03-30
 Repo: `/home/dev/OH_SHOP`
 Branch: `master`
