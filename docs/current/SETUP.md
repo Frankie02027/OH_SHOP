@@ -5,16 +5,18 @@ Workspace root: `/home/dev/OH_SHOP`
 
 ## Status
 
-This file describes the current runtime truth for the stabilization phase.
+This file describes the current runtime truth for the scaffold as it exists now.
 It also reflects the post-normalization repo restructure that separated runtime, workspace, vendor, compatibility, and archive surfaces.
 
-For the governing contract and supporting records, use:
-- `docs/runtime/runtime_stabilization_contract_v_0.md`
-- `docs/runtime/stabilization/baseline_snapshot.md`
-- `docs/runtime/stabilization/config_authority.md`
-- `docs/runtime/stabilization/patch_ledger.md`
-- `docs/runtime/stabilization/version_authority.md`
-- `docs/runtime/stabilization/quarantine_list.md`
+Use these as the current runtime-facing authority surface:
+- `docs/current/SETUP.md`
+- `docs/current/TROUBLESHOOTING.md`
+- `docs/current/SECURITY.md`
+- `ops/README.md`
+- `compose/docker-compose.yml`
+
+Historical stabilization, normalization, and investigation records were quarantined under:
+- `docs/archive/runtime/`
 
 This is not an AI Garage implementation document.
 It does not claim Alfred, Ledger, memory, baton-pass, or Phase C bridge work as current runtime behavior.

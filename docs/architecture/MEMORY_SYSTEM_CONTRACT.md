@@ -1,5 +1,10 @@
 # OpenHands Persistent Memory System - Design Contract
 
+> **Historical proposal / not current authority.**
+> This document describes an older OpenHands-centric memory idea.
+> It is not the current AI Garage authority for Ledger, continuation, or durable state.
+> For current architecture direction, use `docs/architecture/AI_GARAGE_BLUEPRINT.MD.md`, `docs/architecture/JARVIS_MASTER_CONTRACT_v_0_1.md`, and the shared policy contract.
+
 > **Status**: PROPOSAL - Awaiting approval before implementation  
 > **Date**: 2026-03-22  
 > **Author**: Copilot  

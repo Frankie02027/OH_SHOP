@@ -1,5 +1,8 @@
 # ROBIN Master Contract Merge Notes v0.1
 
+> These merge notes now accompany [ROBIN_MASTER_CONTRACT_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/ROBIN_MASTER_CONTRACT_v_0_1.md).
+> The older path `docs/architecture/robin_initial_contract_v_0.md` is historical only and no longer serves as live authority.
+
 ## 1. Source documents used
 
 Primary authority inputs used for this consolidation:

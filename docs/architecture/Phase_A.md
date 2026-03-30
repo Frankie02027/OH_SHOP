@@ -3,7 +3,7 @@
 > **Historical / non-authoritative document.**
 > This file is a Phase A execution log from the earlier Ollama-era setup.
 > It is retained as implementation history, not as current setup guidance.
-> For the active operational baseline, use [SETUP.md](/home/dev/OH_SHOP/docs/SETUP.md).
+> For the active operational baseline, use [SETUP.md](/home/dev/OH_SHOP/docs/current/SETUP.md).
 
 Date: 2026-03-05 (America/Chicago)  
 Workspace root: `/home/dev/OH_SHOP`  

@@ -20,4 +20,5 @@ vendor/stagehand_mcp/.vscode/
 vendor/stagehand_mcp/.venv/
 vendor/stagehand_mcp/__pycache__/
 archive/
-
+!docs/archive/
+!docs/archive/**

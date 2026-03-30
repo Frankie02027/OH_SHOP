@@ -35,9 +35,9 @@ Do not mark this template complete just because `/health`, `/ready`, or `python3
 ## Manual MCP Registration Entered
 
 - OpenHands MCP Server Type:
-  - `SSE`
+  - `Streamable HTTP`
 - OpenHands MCP URL entered:
-  - `http://host.docker.internal:3010/sse`
+  - `http://host.docker.internal:3020/mcp`
 - Any deviation from the expected values:
 
 ## Fresh Session Used
@@ -52,14 +52,14 @@ Do not mark this template complete just because `/health`, `/ready`, or `python3
 Recommended diagnostic prompt:
 
 ```text
-Use the web_research tool to find the current temperature in Burbank, IL. Cite the source you used and say explicitly that you used web_research.
+Use the Stagehand browser tools to open https://example.com and tell me the exact page title. Say explicitly that you used a browser tool.
 ```
 
 This prompt does not guarantee success. It only gives the run a standard diagnostic shape.
 
 ## Observed Tool Availability
 
-- Did `web_research` appear available to the agent? `yes` / `no` / `unclear`
+- Did the Stagehand browser tool lane appear available to the agent? `yes` / `no` / `unclear`
 - What made that clear:
 
 ## Outcome Classification
@@ -77,9 +77,11 @@ Choose one:
 - If failure, brief reason:
 - If failure, which boundary failed first:
   - registration
+  - tool availability
   - integration
   - provider/dependency
-  - model behavior
+  - browser execution
+  - final reply capture
   - unclear
 
 ## Artifact / Log Locations
