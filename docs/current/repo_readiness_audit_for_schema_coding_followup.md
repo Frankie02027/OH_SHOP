@@ -108,8 +108,8 @@ Optional alias / deferred surface:
 
 Added explicit authority notes to:
 
-- [JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md)
-- [JARVIS_WORKBENCH_EXAMPLES_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/JARVIS_WORKBENCH_EXAMPLES_v_0_1.md)
+- [JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md](/home/dev/OH_SHOP/docs/archive/architecture/jarvis/JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md)
+- [JARVIS_WORKBENCH_EXAMPLES_v_0_1.md](/home/dev/OH_SHOP/docs/archive/architecture/jarvis/JARVIS_WORKBENCH_EXAMPLES_v_0_1.md)
 
 Those files remain useful, but they are no longer allowed to masquerade as canonical machine-token authority.
 

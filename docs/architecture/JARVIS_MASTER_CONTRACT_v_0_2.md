@@ -22,6 +22,18 @@ This rewrite exists because the older Jarvis material, while directionally stron
 
 This is therefore an expanded authority draft, not a historical note.
 
+This file is also the **consolidated Jarvis file**.
+
+It is intended to absorb the useful material from:
+
+- `docs/archive/architecture/jarvis/JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md`
+- `docs/archive/architecture/jarvis/JARVIS_WORKBENCH_EXAMPLES_v_0_1.md`
+- `docs/archive/architecture/jarvis/JARVIS_ROLE_AND_WORK_STYLE_POLICY_v_0_1.md`
+- `docs/archive/architecture/jarvis/JARVIS_ROLE_AND_WORK_STYLE_EXAMPLES_v_0_1.md`
+- `docs/archive/architecture/jarvis/JARVIS_MASTER_CONTRACT_MERGE_NOTES_v_0_1.md`
+
+After this consolidation, those older Jarvis files should be treated as supporting or historical inputs, not as parallel authority.
+
 ---
 
 ## 1. Purpose
@@ -958,3 +970,744 @@ Jarvis should:
 - never bluff completion, certainty, or continuity
 
 That is the v0.2 Jarvis position.
+
+---
+
+## 31. Consolidated authority position
+
+This file is meant to be the single Jarvis document someone can read if they do not want to bounce across five separate Jarvis files.
+
+That means this document now intentionally contains:
+
+- Jarvis role identity
+- Jarvis workbench stance
+- Jarvis operating behavior
+- local-versus-official boundary rules
+- proof, pivot, failure, checkpoint, and continuation rules
+- the main official object-reference material Jarvis needs
+- the main example set needed to interpret the policy in practice
+- the consolidation position previously spread across merge notes
+
+The older Jarvis files still have value as source material, but they should not be treated as separate equal authorities after this file.
+
+### 31.1 Consolidated source contribution summary
+
+The earlier Jarvis files contributed the following major pieces:
+
+- `JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md`
+- archived at `docs/archive/architecture/jarvis/JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md`
+  - the strongest object-shape and lifecycle material
+  - the local-versus-official boundary table
+  - the child-job request and return-envelope reference
+
+- `JARVIS_ROLE_AND_WORK_STYLE_POLICY_v_0_1.md`
+- archived at `docs/archive/architecture/jarvis/JARVIS_ROLE_AND_WORK_STYLE_POLICY_v_0_1.md`
+  - the strongest hard-boundary behavioral rules
+  - proof, delegation, uncertainty, pivot, failure, and continuation discipline
+
+- `JARVIS_WORKBENCH_EXAMPLES_v_0_1.md`
+- archived at `docs/archive/architecture/jarvis/JARVIS_WORKBENCH_EXAMPLES_v_0_1.md`
+  - the most concrete object-bearing examples
+  - step/progression examples
+
+- `JARVIS_ROLE_AND_WORK_STYLE_EXAMPLES_v_0_1.md`
+- archived at `docs/archive/architecture/jarvis/JARVIS_ROLE_AND_WORK_STYLE_EXAMPLES_v_0_1.md`
+  - the strongest threshold examples for local versus Robin work
+  - the cleanest weak-proof, blocked-state, and checkpoint/resume examples
+
+- `JARVIS_MASTER_CONTRACT_MERGE_NOTES_v_0_1.md`
+- archived at `docs/archive/architecture/jarvis/JARVIS_MASTER_CONTRACT_MERGE_NOTES_v_0_1.md`
+  - the explanation of what was absorbed, tightened, and deferred
+
+### 31.2 What was removed as duplication
+
+The earlier files repeated the same points in several places:
+
+- OpenHands is Jarvis’s workbench
+- Jarvis is not Alfred
+- Jarvis is not Robin
+- local success is not official progression
+- proof is required before completion claims
+- Robin is mandatory for browser-shaped work
+- pivots must be surfaced explicitly
+- continuation notes must be operational, not decorative
+
+This file keeps those points once, at the strongest available wording level.
+
+### 31.3 What remains deferred even after consolidation
+
+This file still does not settle:
+
+- Alfred implementation internals
+- Ledger schema
+- Robin internal execution policy
+- final API/tool implementation details
+- final UI behavior
+- storage layout and indexing details
+
+That is deliberate.
+
+---
+
+## 32. Official Jarvis reference objects and lifecycle surface
+
+This section consolidates the object and lifecycle material that previously lived mainly in the workbench/progression contract.
+
+These objects are here so the Jarvis contract can stand on its own.
+They should still be interpreted consistently with the shared Garage dictionary and Alfred contract.
+
+### 32.1 Jarvis-local versus Alfred-official boundary
+
+| Category | Jarvis local only | Official through Alfred |
+| --- | --- | --- |
+| Scratch notes | Personal reasoning notes, partial hypotheses, rough decomposition, private working notes | Never official by default |
+| Local checklist | Temporary step tracking for convenience | Not authoritative until promoted into an official plan or status change |
+| Draft decomposition | Mutable local draft steps and possible approaches | Official only after plan submission or revision |
+| Evidence staging | Local files, logs, screenshots, outputs, and staged artifacts | Official only after being referenced in a claim, checkpoint, or return envelope |
+| Official plan | None | Created by Alfred when Jarvis submits the plan |
+| Official step state | None | Tracked by Alfred through the approved lifecycle |
+| Official checkpoint | None | Exists only after Alfred records it |
+| Official child job | None | Exists only after Alfred stamps and routes it |
+| Official verification state | None | Exists only after Alfred records the verification outcome |
+
+### 32.2 Initial plan object
+
+When Jarvis is ready to commit the first plan for a task, Jarvis should call `plan.submit` with a JSON-serialisable object having the following structure. Fields are required unless marked optional.
+
+#### 32.2.1 Top-level fields
+
+- `task_id` (string)
+  - the identifier for the parent task, assigned by Alfred when the task was created
+- `author_role` (string)
+  - must be `jarvis`
+- `title` (string)
+  - human-readable title of the overall mission
+- `objective` (string)
+  - short sentence describing what the mission aims to achieve
+- `plan_description` (string, optional)
+  - prose description of the approach and key considerations
+- `items` (array of plan items)
+  - ordered list of steps
+- `execution_mode` (string)
+  - the execution-mode value Alfred should enforce for this mission
+
+#### 32.2.2 Plan item fields
+
+Each element of `items` should contain:
+
+- `item_id` (string)
+  - temporary identifier created by Jarvis before Alfred normalizes it
+- `title` (string)
+  - brief name of the step
+- `description` (string)
+  - clear description of what Jarvis intends to do
+- `status` (string)
+  - initial value must be `todo`
+- `depends_on` (array of strings, optional)
+  - list of predecessor item IDs that must be verified first
+- `verification_rule` (string)
+  - concise rule describing how completion will be verified
+- `evidence_hint` (string, optional)
+  - note about what kinds of artifacts or receipts are expected
+- `notes` (string, optional)
+  - any other clarifications Jarvis wants attached to the official step
+
+#### 32.2.3 Fields added by Alfred
+
+When Alfred accepts the plan, Alfred should:
+
+- assign `plan_id`
+- assign `plan_version`
+- normalize `item_id` values into globally unique stable IDs
+- stamp `created_at` and `submitted_at`
+- record the author metadata
+- persist the plan as the official baseline
+
+#### 32.2.4 Draft versus official
+
+Jarvis may iterate on the plan privately, but only the version submitted to Alfred becomes official.
+After submission, Jarvis must not modify official step meaning locally without submitting a pivot request.
+Jarvis may keep a personal expanded copy of the plan, but Alfred’s recorded version is canonical.
+
+### 32.3 Step lifecycle model
+
+The following state machine governs each plan item. Alfred enforces valid transitions; Jarvis can only request certain transitions and must supply evidence where required.
+
+#### 32.3.1 States
+
+- `todo`
+  - initial state; the step exists but work has not started
+- `in_progress`
+  - Jarvis is actively working on the step in OpenHands
+- `needs_robin`
+  - Jarvis has determined the step requires web or visual work and has requested the child leg
+- `done_unverified`
+  - Jarvis has completed the work locally and has submitted a `step.complete_claim`
+- `verified`
+  - Alfred or the authorized verification lane has accepted the claim and evidence
+- `blocked`
+  - the step cannot proceed due to missing input, policy boundary, or unresolved dependency
+- `failed`
+  - Jarvis reports that the step cannot be completed under the current plan
+
+#### 32.3.2 Transitions and permissions
+
+| From -> To | Who may request | Evidence required | Notes |
+| --- | --- | --- | --- |
+| `todo` -> `in_progress` | Jarvis via `step.start` | None | Signals that work is starting |
+| `in_progress` -> `needs_robin` | Jarvis via `child_job.request` | Structured child-job request | Alfred creates a child job and pauses Jarvis’s job |
+| `in_progress` -> `done_unverified` | Jarvis via `step.complete_claim` | Claim summary plus evidence refs | Jarvis asserts completion; Alfred verifies later |
+| `needs_robin` -> `done_unverified` | Alfred automatically upon Robin return | Return-envelope evidence | Jarvis resumes upon dispatch |
+| `done_unverified` -> `verified` | Alfred or operator via `verification.record` | Must satisfy `verification_rule` and evidence | Only Alfred or the verification lane may set this |
+| `in_progress` -> `blocked` | Jarvis via `failure.report` | Failure bucket and notes | Example: missing dependency or ambiguous spec |
+| `needs_robin` -> `blocked` | Alfred via policy | N/A | Example: repeated child-job failure or policy trigger |
+| `blocked` -> `in_progress` | Jarvis via `resume.note_submit` | Continuation note explaining how to unblock | Used after pause or operator intervention |
+| Any valid active state -> `failed` | Jarvis via `failure.report` or Alfred via policy | Failure reason and evidence | Terminal for the step and possibly the task |
+
+Jarvis must provide evidence and a clear claim before Alfred can verify a step.
+Evidence may include file hashes, test outputs, screenshots, logs, extracted structured data, or other receipts that match the verification rule.
+
+### 32.4 Step-complete claim object
+
+When Jarvis believes a step is finished, Jarvis should call `step.complete_claim` with a structured payload containing:
+
+- `task_id` (string)
+  - parent task ID
+- `plan_version` (string)
+  - current active plan version
+- `step_id` (string)
+  - globally unique official identifier for the plan item
+- `claim_summary` (string)
+  - concise description of what was done and why Jarvis believes the step is complete
+- `evidence_refs` (array of strings)
+  - references to artifacts stored in the sandbox or broker path
+- `verification_rule_applied` (string)
+  - copy of the step’s verification rule
+- `continuation_note` (string)
+  - structured note summarizing state for the next step
+- `ready_for_verification` (boolean)
+  - whether Jarvis asserts the step is ready for verification now
+
+Alfred appends this claim to the official record, sets the step to `done_unverified`, and awaits verification.
+Jarvis must not treat the step as verified until Alfred or the verification lane confirms it.
+
+### 32.5 Checkpoint proposal object
+
+A checkpoint provides a resumable anchor capturing the job’s state. The checkpoint proposal should contain:
+
+- `task_id` (string)
+- `plan_version` (string)
+- `current_step_id` (string or `null`)
+- `completed_steps` (array of step IDs)
+- `blocked_steps` (array of step IDs, optional)
+- `key_artifact_refs` (array of strings, optional)
+- `resume_point` (string)
+- `reason` (string)
+
+Alfred records the checkpoint, assigns a unique `checkpoint_id`, and should require that a checkpoint exist before baton passes or other fragile transition boundaries where resumability matters.
+
+### 32.6 Pivot / plan revision object
+
+If Jarvis determines that the original plan should change, Jarvis must submit a pivot request via `plan.revise`.
+
+#### 32.6.1 Pivot object fields
+
+- `task_id` (string)
+- `current_plan_version` (string)
+- `proposed_plan_version` (string)
+- `pivot_type` (string)
+  - allowed values include:
+    - `reorder_steps`
+    - `add_steps`
+    - `remove_steps`
+    - `modify_step`
+    - `goal_change`
+    - `scope_expansion`
+    - `scope_reduction`
+    - `external_access_change`
+    - `destructive_action`
+- `changes` (array)
+  - structured list of the actual changes
+- `goal_changed` (boolean)
+- `scope_changed` (boolean)
+- `destructive` (boolean)
+- `external_access_changed` (boolean)
+- `evidence_refs` (array of strings, optional)
+- `human_review_requested` (boolean, optional)
+- `justification` (string)
+- `proposed_plan` (object)
+  - the full new plan object, not just a vague diff
+
+#### 32.6.2 Risk classes and Alfred policy
+
+- low-risk revisions
+  - reorder steps, add clarifying notes, or make small structural changes without altering goal, scope, access, or destructive profile
+- medium-risk revisions
+  - materially change route or proof shape without changing goal ownership or major risk posture
+- high-risk revisions
+  - anything with `goal_changed`, `scope_changed`, `destructive`, or `external_access_changed` set `true`, or any explicit human-review request
+
+Alfred should apply deterministic policy based on these declared fields.
+Jarvis must not under-label a high-risk pivot to make it slide through.
+
+### 32.7 Robin child-job request object
+
+Jarvis delegates web and visual tasks to Robin via `child_job.request`. The request should contain:
+
+- `task_id` (string)
+- `parent_job_id` (string)
+- `objective` (string)
+- `reason` (string)
+- `constraints` (object, optional)
+- `allowed_domains` (array of strings)
+- `downloads_allowed` (boolean)
+- `expected_output` (object)
+- `success_criteria` (string or array)
+- `artifact_expectations` (array of strings, optional)
+- `retry_budget` (integer)
+- `continuation_hints` (string, optional)
+
+Alfred should stamp `child_job_id`, set policy scope, ensure a checkpoint exists where required, and route the child job to Robin.
+Jarvis should not send vague browser errands when this object is supposed to define a bounded child job.
+
+### 32.8 Robin return envelope
+
+When Robin finishes a child job, the return envelope should contain:
+
+- `task_id` (string)
+- `parent_job_id` (string)
+- `child_job_id` (string)
+- `result_status` (string)
+  - `succeeded`, `partial`, `blocked`, or `failed`
+- `summary` (string)
+- `structured_result` (object)
+- `visited_urls` (array of strings, optional)
+- `artifacts` (array of strings)
+- `ambiguity_notes` (string, optional)
+- `failure_bucket` (string, optional)
+- `continuation_hints` (string, optional)
+
+Alfred stores the envelope, attaches artifacts, and either dispatches Jarvis for resumption or applies failure policy.
+Jarvis should treat this as structured parent-task input, not as random prose.
+
+### 32.9 Minimum Alfred call/event surface Jarvis depends on
+
+To support this contract without turning Alfred into an AI, the control plane only needs a small set of calls and event types.
+
+#### 32.9.1 Calls
+
+- `task.create(request_body)`
+- `plan.submit(initial_plan)`
+- `plan.revise(pivot_body)`
+- `step.start(step_id)`
+- `step.complete_claim(claim_body)`
+- `checkpoint.propose(checkpoint_body)`
+- `child_job.request(child_job_request)`
+- `result.submit(return_envelope)`
+- `failure.report(failure_body)`
+- `verification.record(record_body)`
+- `resume.note_submit(note_body)`
+
+#### 32.9.2 Events / state notifications
+
+- `task.created`
+- `plan.submitted`
+- `plan.revised`
+- `step.started`
+- `step.claimed`
+- `step.done_unverified`
+- `step.verified`
+- `checkpoint.created`
+- `child_job.requested`
+- `job.dispatched`
+- `result.submitted`
+- `failure.reported`
+- `job.blocked`
+- `job.failed`
+- `job.resumed`
+- `job.completed`
+
+Each event should include timestamps, actor, job IDs, and references to relevant artifacts or pivot bodies.
+The point of this surface is to keep Alfred deterministic and narrow.
+
+### 32.10 Human review triggers Jarvis must respect
+
+Jarvis should assume human review is required when the task crosses into:
+
+- goal change
+- scope expansion
+- destructive action
+- external access change
+- import/export policy change
+- reduced verification requirements
+- repeated failed pivots or retries
+- explicit policy override request
+- any high-risk pivot flags
+
+In practical terms, that means human review should be expected for:
+
+- changing what the mission is
+- broadening what the mission now covers
+- deleting or overwriting important files or causing irreversible side effects
+- introducing new external domains or changed outside-world behavior
+- lowering the proof bar
+- repeated instability that suggests the workflow is no longer routine
+
+Jarvis should not behave as though human review triggers are advisory decoration.
+They are part of the official control boundary.
+
+---
+
+## 33. Integrated Jarvis example set
+
+This section consolidates the earlier Jarvis example files into one practical set.
+
+### 33.1 Straightforward local coding task
+
+Task:
+
+`Add a helper function to normalize phone numbers and add unit tests.`
+
+Correct Jarvis behavior:
+
+1. Draft local scratch plan.
+2. Promote the official plan.
+3. Start the current official step.
+4. Edit code locally.
+5. Run tests locally.
+6. Collect proof:
+   - diff
+   - command run
+   - test output
+7. Submit completion claim.
+8. Wait for verification before proceeding.
+
+What stays local:
+
+- scratch notes
+- exploratory failed attempts
+- partial implementation thoughts
+
+What gets promoted:
+
+- official plan
+- step start
+- completion claim
+- continuation note
+
+Exact example initial plan payload:
+
+```json
+{
+  "task_id": "T1001",
+  "author_role": "jarvis",
+  "title": "Simple Adder Script",
+  "objective": "Create and test a Python script that adds two numbers",
+  "plan_description": "Break the task into file creation, implementation, testing, and reporting.",
+  "execution_mode": "open",
+  "items": [
+    {"item_id": "step1", "title": "Create file", "description": "Create adder.py in the workspace", "status": "todo", "verification_rule": "File adder.py exists in workspace", "notes": "Use the file system tools"},
+    {"item_id": "step2", "title": "Implement add function", "description": "Define add(a, b) that returns a+b", "status": "todo", "depends_on": ["step1"], "verification_rule": "Function definition exists and passes tests"},
+    {"item_id": "step3", "title": "Implement main logic", "description": "Read two numbers and print sum", "status": "todo", "depends_on": ["step2"], "verification_rule": "Script prints correct sum for inputs"},
+    {"item_id": "step4", "title": "Test script", "description": "Run adder.py with sample inputs", "status": "todo", "depends_on": ["step3"], "verification_rule": "Test output matches expected"},
+    {"item_id": "step5", "title": "Notify operator", "description": "Summarise the work and final result", "status": "todo", "depends_on": ["step4"], "verification_rule": "Message summarises completion and test results"}
+  ]
+}
+```
+
+### 33.2 Local CLI/network task that does not require Robin
+
+Task:
+
+`Check the installed fastapi version, compare it to the package metadata available from PyPI, and update the dependency note if needed.`
+
+Why it stays local:
+
+- terminal-driven
+- text-based
+- direct retrieval
+- no browser interaction
+- no rendered-page interpretation
+
+Correct proof package:
+
+- local version output
+- fetched metadata
+- resulting file diff
+
+### 33.3 Web-dependent task that clearly requires Robin
+
+Task:
+
+`Go through the vendor support portal, find the live firmware download link, confirm the rendered version label shown in the browser UI, and capture evidence.`
+
+Why it crosses the line:
+
+- click path
+- rendered UI interpretation
+- likely scroll and navigation chain
+- visually grounded proof
+
+Correct Jarvis behavior:
+
+1. Do local prep.
+2. Define expected output and artifact needs.
+3. Submit the Robin child-job request through Alfred.
+4. Wait.
+5. Resume only after structured return.
+
+Wrong behavior:
+
+- pretending CLI retrieval is equivalent when rendered browser state is the real evidence source
+
+Exact example official plan payload:
+
+```json
+{
+  "task_id": "T2001",
+  "author_role": "jarvis",
+  "title": "Update README with Widget Z release date",
+  "objective": "Retrieve the official release date of Widget Z from Acme Corp's website and record it in README.md",
+  "execution_mode": "guided",
+  "items": [
+    {"item_id": "s1", "title": "Research release date", "description": "Use web search to find the official release date of Widget Z from acme.example.com", "status": "todo", "verification_rule": "Structured result contains release_date", "notes": "Requires Robin"},
+    {"item_id": "s2", "title": "Update README", "description": "Edit README.md to include the release date", "status": "todo", "depends_on": ["s1"], "verification_rule": "README.md contains release date"},
+    {"item_id": "s3", "title": "Commit changes", "description": "Commit README.md with updated date", "status": "todo", "depends_on": ["s2"], "verification_rule": "Git log shows commit with updated README"}
+  ]
+}
+```
+
+Exact example child-job request payload:
+
+```json
+{
+  "task_id": "T2001",
+  "parent_job_id": "J2001-jarvis-leg-1",
+  "objective": "Retrieve the official release date of Widget Z from acme.example.com",
+  "reason": "The information is only available on the manufacturer's website.",
+  "constraints": {"seconds": 60, "max_pages": 5, "no_logins": true},
+  "allowed_domains": ["acme.example.com"],
+  "downloads_allowed": false,
+  "expected_output": {"release_date": "string"},
+  "success_criteria": ["release_date is in ISO format", "At least one supporting screenshot"],
+  "artifact_expectations": ["screenshot_product_page"],
+  "retry_budget": 2,
+  "continuation_hints": "Return the release_date in the structured_result."
+}
+```
+
+Exact example Robin return envelope:
+
+```json
+{
+  "task_id": "T2001",
+  "parent_job_id": "J2001-jarvis-leg-1",
+  "child_job_id": "J2001-robin-leg-1",
+  "result_status": "succeeded",
+  "summary": "Found release date on the product page.",
+  "structured_result": {"release_date": "2026-02-15"},
+  "visited_urls": ["https://acme.example.com/products/widget-z"],
+  "artifacts": ["artifact://J2001-robin-leg-1/screenshot_product_page.png"],
+  "continuation_hints": "Use structured_result.release_date in your README update."
+}
+```
+
+### 33.4 Weak-evidence completion claim
+
+Task:
+
+`Fix the export bug and prove the CSV output is correct.`
+
+Weak state:
+
+- code changed
+- app run once
+- no captured export artifact
+- no contents validated
+
+Correct Jarvis behavior:
+
+- do not submit completion yet
+- generate the export
+- capture the produced file
+- validate contents
+- attach real proof
+- only then claim completion
+
+### 33.5 Pivot scenario
+
+Task:
+
+`Implement document ingestion by scraping the public docs site page by page.`
+
+Discovery:
+
+- a clean downloadable JSON index exists and satisfies the same goal more reliably
+
+Correct pivot framing:
+
+- current goal unchanged
+- approach changes materially
+- new path is more reliable
+- proof quality improves
+- external access impact must be stated explicitly
+
+Wrong behavior:
+
+- silently rewriting the official plan and acting as though nothing changed
+
+Exact example pivot payload:
+
+```json
+{
+  "task_id": "T3001",
+  "current_plan_version": "1",
+  "proposed_plan_version": "2",
+  "pivot_type": "modify_step",
+  "changes": [
+    {
+      "step_id": "step2",
+      "new_title": "Use standard csv module",
+      "new_description": "Leverage the built-in csv module instead of writing a custom parser.",
+      "new_verification_rule": "Parser uses built-in csv module; tests pass"
+    }
+  ],
+  "goal_changed": false,
+  "scope_changed": false,
+  "destructive": false,
+  "external_access_changed": false,
+  "evidence_refs": ["artifact://T3001/logs/discovery_note.md"],
+  "justification": "Built-in csv module reduces complexity and risk.",
+  "proposed_plan": {
+    "task_id": "T3001",
+    "author_role": "jarvis",
+    "title": "Add CSV export",
+    "objective": "Provide CSV export functionality using standard library",
+    "execution_mode": "guided",
+    "items": [
+      {"item_id": "step1", "title": "Analyse requirements", "description": "Confirm fields for export", "status": "todo", "verification_rule": "Requirements doc exists"},
+      {"item_id": "step2", "title": "Use standard csv module", "description": "Implement export using built-in csv module", "status": "todo", "depends_on": ["step1"], "verification_rule": "Exported CSV matches specification"},
+      {"item_id": "step3", "title": "Integrate into application", "description": "Call csv export function in app", "status": "todo", "depends_on": ["step2"], "verification_rule": "Application writes CSV correctly"},
+      {"item_id": "step4", "title": "Write tests and verify", "description": "Implement tests for CSV export", "status": "todo", "depends_on": ["step3"], "verification_rule": "Tests pass"}
+    ]
+  }
+}
+```
+
+### 33.6 Blocked/failure scenario
+
+Task:
+
+`Build the native extension and run the verification suite.`
+
+Failure:
+
+- required system library missing
+- retries failing
+- current environment cannot honestly satisfy prerequisites
+
+Correct Jarvis behavior:
+
+- report blocked or failed state
+- include evidence refs such as build logs
+- say whether retry is viable
+- say whether pivot is recommended
+- say whether operator input is required
+
+Wrong behavior:
+
+- mark the step done anyway
+- skip to downstream steps
+- hide the failure in local scratch notes
+
+Exact example failure report payload:
+
+```json
+{
+  "task_id": "T4001",
+  "plan_version": "1",
+  "step_id": "compile",
+  "failure_bucket": "missing_dependency",
+  "summary": "Compilation failed due to missing libfoo",
+  "evidence_refs": ["artifact://T4001/build_log.txt"],
+  "details": "Makefile indicates libfoo is required but not present.  Cannot proceed without operator intervention or pivot."
+}
+```
+
+### 33.7 Checkpoint/resume scenario
+
+Task:
+
+`Refactor the ingestion pipeline, then wait for Robin to verify the live rendered output on the public site.`
+
+Correct Jarvis behavior before handoff:
+
+- complete the local refactor
+- update tests
+- stage evidence
+- propose checkpoint at the baton-pass boundary
+- leave a continuation note that includes:
+  - plan version
+  - completed verified steps
+  - current pending step
+  - checkpoint reason
+  - evidence refs
+  - exact Robin dependency
+  - next recommended action
+  - validated assumptions
+  - remaining risks
+
+Example continuation note:
+
+```text
+Plan version: 3
+Verified steps: ingest_refactor, local_tests
+Current pending step: rendered_site_verification
+Checkpoint reason: pre-Robin baton pass
+Evidence refs: test_run_2026_03_29.txt, refactor_diff.patch
+Validated assumptions: local parser accepts current schema
+Open question: live site rendering still needs confirmation
+Next recommended action: dispatch Robin to verify rendered public output and capture screenshot evidence
+```
+
+Exact example checkpoint payload:
+
+```json
+{
+  "task_id": "T5001",
+  "plan_version": "1",
+  "current_step_id": null,
+  "completed_steps": ["step1", "step2"],
+  "blocked_steps": [],
+  "key_artifact_refs": ["artifact://T5001/output/processed_data.csv"],
+  "resume_point": "Start analysis with processed_data.csv",
+  "reason": "Preparing to hand off web lookup to Robin; want a safe restore point."
+}
+```
+
+Exact example resume note payload:
+
+```json
+{
+  "task_id": "T5001",
+  "job_id": "J5001-jarvis-leg-1",
+  "checkpoint_id": "CP5001",
+  "note": "Resuming analysis after pause.  Processed data is loaded; starting step3."
+}
+```
+
+---
+
+## 34. Final consolidation position
+
+If someone asks for the Jarvis file that has everything, this is that file.
+
+Use this document first for:
+
+- Jarvis role meaning
+- Jarvis behavior
+- Jarvis boundary rules
+- Jarvis object-reference needs
+- Jarvis example interpretation
+
+Treat the earlier Jarvis files as supporting sources unless and until they are removed or archived.

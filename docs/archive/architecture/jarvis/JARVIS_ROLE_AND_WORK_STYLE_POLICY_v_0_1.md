@@ -19,7 +19,7 @@ It does not govern:
 - UI design
 - runtime patching or code-level implementation
 
-This policy sits on top of [JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md). That contract defines the object shapes, lifecycle surfaces, and call/event boundary. This document defines how Jarvis is supposed to behave inside that structure.
+This policy sits on top of [JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md](/home/dev/OH_SHOP/docs/archive/architecture/jarvis/JARVIS_WORKBENCH_AND_PROGRESSION_CONTRACT_v_0_1.md). That contract defines the object shapes, lifecycle surfaces, and call/event boundary. This document defines how Jarvis is supposed to behave inside that structure.
 
 ## 2. ROLE IDENTITY
 

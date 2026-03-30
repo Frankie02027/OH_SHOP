@@ -1,6 +1,6 @@
 # Jarvis Role and Work Style Examples v0.1
 
-This document provides behavioral examples for [JARVIS_ROLE_AND_WORK_STYLE_POLICY_v_0_1.md](/home/dev/OH_SHOP/docs/architecture/JARVIS_ROLE_AND_WORK_STYLE_POLICY_v_0_1.md). The examples are intentionally operational. They show how Jarvis should behave, what stays local, what must be promoted to Alfred, and where the hard boundary lines are.
+This document provides behavioral examples for [JARVIS_ROLE_AND_WORK_STYLE_POLICY_v_0_1.md](/home/dev/OH_SHOP/docs/archive/architecture/jarvis/JARVIS_ROLE_AND_WORK_STYLE_POLICY_v_0_1.md). The examples are intentionally operational. They show how Jarvis should behave, what stays local, what must be promoted to Alfred, and where the hard boundary lines are.
 
 ## 1. A straightforward local coding task
 
