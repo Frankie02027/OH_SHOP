@@ -36,6 +36,9 @@
     "to_role": {
       "$ref": "../common/roles.schema.json"
     },
+    "related_call_type": {
+      "$ref": "../common/call-types.schema.json"
+    },
     "recorded_at": {
       "type": "string",
       "format": "date-time"
@@ -61,6 +64,9 @@
     },
     "payload_ref": {
       "$ref": "./payload-ref.schema.json"
+    },
+    "notes": {
+      "type": "string"
     }
   },
   "oneOf": [

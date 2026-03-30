@@ -27,8 +27,11 @@
       "type": "integer",
       "minimum": 1
     },
-    "reported_status": {
+    "last_reported_status": {
       "$ref": "../common/worker-reported-status.schema.json"
+    },
+    "latest_event_id": {
+      "$ref": "../common/id-types.schema.json#/$defs/event_id"
     },
     "artifact_refs": {
       "type": "array",
@@ -54,6 +57,6 @@
       "format": "date-time"
     }
   },
-  "required": ["task_id", "job_id", "job_state", "attempt_no", "created_at", "updated_at"],
+  "required": ["task_id", "job_id", "job_state", "created_at"],
   "additionalProperties": false
 }

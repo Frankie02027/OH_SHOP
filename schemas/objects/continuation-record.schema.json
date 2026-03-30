@@ -13,8 +13,11 @@
     "checkpoint_id": {
       "$ref": "../common/id-types.schema.json#/$defs/checkpoint_id"
     },
-    "payload_ref": {
-      "$ref": "./payload-ref.schema.json"
+    "plan_version": {
+      "$ref": "../common/id-types.schema.json#/$defs/plan_version"
+    },
+    "content_ref": {
+      "$ref": "./content-ref.schema.json"
     },
     "artifact_refs": {
       "type": "array",
@@ -28,11 +31,11 @@
         "$ref": "./workspace-ref.schema.json"
       }
     },
-    "recorded_at": {
+    "created_at": {
       "type": "string",
       "format": "date-time"
     }
   },
-  "required": ["task_id", "payload_ref", "recorded_at"],
+  "required": ["task_id", "content_ref", "created_at"],
   "additionalProperties": false
 }

@@ -613,7 +613,10 @@ Pointer to a created/found output object.
 {
   "artifact_id": "T000001.J002.A001",
   "kind": "screenshot",
-  "workspace_ref": "/workspace/robin/tasks/T000001/jobs/J002/output/page.png",
+  "workspace_ref": {
+    "role": "robin",
+    "path": "/workspace/robin/tasks/T000001/jobs/J002/output/page.png"
+  },
   "reported_by": "robin"
 }
 ```

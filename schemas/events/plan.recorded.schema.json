@@ -22,6 +22,9 @@
     "plan_version": {
       "$ref": "../common/id-types.schema.json#/$defs/plan_version"
     },
+    "related_call_type": {
+      "const": "plan.record"
+    },
     "recorded_at": {
       "type": "string",
       "format": "date-time"
@@ -36,6 +39,7 @@
     "event_id",
     "task_id",
     "plan_version",
+    "related_call_type",
     "recorded_at"
   ],
   "additionalProperties": false

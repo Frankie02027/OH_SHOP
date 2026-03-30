@@ -11,15 +11,7 @@
       "$ref": "../common/artifact-kinds.schema.json"
     },
     "workspace_ref": {
-      "anyOf": [
-        {
-          "$ref": "./workspace-ref.schema.json"
-        },
-        {
-          "type": "string",
-          "minLength": 1
-        }
-      ]
+      "$ref": "./workspace-ref.schema.json"
     },
     "reported_by": {
       "$ref": "../common/roles.schema.json"

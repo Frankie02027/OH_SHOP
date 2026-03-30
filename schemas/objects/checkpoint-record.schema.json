@@ -13,26 +13,48 @@
     "job_id": {
       "$ref": "../common/id-types.schema.json#/$defs/job_id"
     },
-    "payload_ref": {
-      "$ref": "./payload-ref.schema.json"
+    "plan_version": {
+      "$ref": "../common/id-types.schema.json#/$defs/plan_version"
     },
-    "artifact_refs": {
-      "type": "array",
-      "items": {
-        "$ref": "./artifact-ref.schema.json"
-      }
+    "current_active_item": {
+      "$ref": "../common/id-types.schema.json#/$defs/item_id"
     },
-    "workspace_refs": {
-      "type": "array",
-      "items": {
-        "$ref": "./workspace-ref.schema.json"
-      }
+    "key_ref_bundle": {
+      "type": "object",
+      "properties": {
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "./artifact-ref.schema.json"
+          }
+        },
+        "workspace_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "./workspace-ref.schema.json"
+          }
+        },
+        "payload_ref": {
+          "$ref": "./payload-ref.schema.json"
+        },
+        "content_ref": {
+          "$ref": "./content-ref.schema.json"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
     },
-    "recorded_at": {
+    "reason": {
+      "type": "string"
+    },
+    "resume_point": {
+      "type": ["object", "string"]
+    },
+    "created_at": {
       "type": "string",
       "format": "date-time"
     }
   },
-  "required": ["checkpoint_id", "task_id", "recorded_at"],
+  "required": ["checkpoint_id", "task_id", "created_at"],
   "additionalProperties": false
 }

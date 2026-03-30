@@ -10,14 +10,20 @@
     "task_state": {
       "$ref": "../common/task-states.schema.json"
     },
-    "plan_version": {
+    "current_plan_version": {
       "$ref": "../common/id-types.schema.json#/$defs/plan_version"
     },
-    "job_id": {
+    "current_job_id": {
       "$ref": "../common/id-types.schema.json#/$defs/job_id"
     },
-    "checkpoint_id": {
+    "latest_checkpoint_id": {
       "$ref": "../common/id-types.schema.json#/$defs/checkpoint_id"
+    },
+    "latest_continuation_ref": {
+      "$ref": "./content-ref.schema.json"
+    },
+    "summary_ref": {
+      "$ref": "./content-ref.schema.json"
     },
     "created_at": {
       "type": "string",
@@ -28,6 +34,6 @@
       "format": "date-time"
     }
   },
-  "required": ["task_id", "task_state", "created_at", "updated_at"],
+  "required": ["task_id", "task_state", "created_at"],
   "additionalProperties": false
 }

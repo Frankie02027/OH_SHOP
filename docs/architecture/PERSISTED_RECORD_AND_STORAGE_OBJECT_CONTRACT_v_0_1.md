@@ -274,6 +274,7 @@ Represents one durable append-only factual history record.
 ## 9.5 Meaning
 The event record is the durable append-only history spine.
 It must stay factual and must not become a semantically rewritten diary blob.
+For v0.1, `event-record` is intentionally field-aligned with `event-object`; the distinction is durable role, not a second divergent payload shape.
 
 ---
 

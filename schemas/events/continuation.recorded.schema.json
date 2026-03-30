@@ -19,6 +19,9 @@
     "job_id": {
       "$ref": "../common/id-types.schema.json#/$defs/job_id"
     },
+    "related_call_type": {
+      "const": "continuation.record"
+    },
     "recorded_at": {
       "type": "string",
       "format": "date-time"
@@ -39,6 +42,6 @@
       "$ref": "../objects/payload-ref.schema.json"
     }
   },
-  "required": ["schema_version", "event_type", "event_id", "task_id", "recorded_at"],
+  "required": ["schema_version", "event_type", "event_id", "task_id", "related_call_type", "recorded_at"],
   "additionalProperties": false
 }

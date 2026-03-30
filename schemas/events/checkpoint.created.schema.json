@@ -22,6 +22,9 @@
     "checkpoint_id": {
       "$ref": "../common/id-types.schema.json#/$defs/checkpoint_id"
     },
+    "related_call_type": {
+      "const": "checkpoint.create"
+    },
     "recorded_at": {
       "type": "string",
       "format": "date-time"
@@ -48,6 +51,7 @@
     "event_id",
     "task_id",
     "checkpoint_id",
+    "related_call_type",
     "recorded_at"
   ],
   "additionalProperties": false

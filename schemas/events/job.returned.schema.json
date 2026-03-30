@@ -19,6 +19,9 @@
     "job_id": {
       "$ref": "../common/id-types.schema.json#/$defs/job_id"
     },
+    "related_call_type": {
+      "const": "result.submit"
+    },
     "reported_status": {
       "enum": ["succeeded", "partial"]
     },
@@ -48,6 +51,7 @@
     "event_id",
     "task_id",
     "job_id",
+    "related_call_type",
     "reported_status",
     "recorded_at"
   ],

@@ -19,6 +19,9 @@
     "job_id": {
       "$ref": "../common/id-types.schema.json#/$defs/job_id"
     },
+    "related_call_type": {
+      "const": "job.start"
+    },
     "attempt_no": {
       "type": "integer",
       "minimum": 1
@@ -28,6 +31,6 @@
       "format": "date-time"
     }
   },
-  "required": ["schema_version", "event_type", "event_id", "task_id", "job_id", "recorded_at"],
+  "required": ["schema_version", "event_type", "event_id", "task_id", "job_id", "related_call_type", "recorded_at"],
   "additionalProperties": false
 }

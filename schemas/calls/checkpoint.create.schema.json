@@ -15,10 +15,13 @@
         "from_role": {
           "enum": ["jarvis", "alfred"]
         },
+        "to_role": {
+          "const": "alfred"
+        },
         "reported_status": false,
         "attempt_no": false
       },
-      "required": ["schema_version", "call_type", "task_id", "from_role"],
+      "required": ["schema_version", "call_type", "task_id", "from_role", "to_role"],
       "anyOf": [
         {
           "required": ["payload"],
