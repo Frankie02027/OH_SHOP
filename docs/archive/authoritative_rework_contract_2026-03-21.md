@@ -3,9 +3,9 @@
 > Historical contract. This file is no longer the runtime authority for the stabilization phase.
 > Its March 2026 service map and browser-lane claims are stale where they describe `SearxNG` and `oh-browser-mcp` as current.
 > Current runtime authority now lives in:
-> - `docs/SETUP.md`
-> - `docs/runtime_stabilization_contract_v_0.md`
-> - `docs/runtime_stabilization/`
+> - `docs/current/SETUP.md`
+> - `docs/current/TROUBLESHOOTING.md`
+> - `docs/current/SECURITY.md`
 
 ## Purpose
 
@@ -191,7 +191,7 @@ During the rework itself, the default posture should be:
 
 - host `openhands` CLI
 - `docs/open_hands_open_web_ui_local_agent_house_contract_v_1.md`
-- `docs/Phase_A.md`
+- the old Phase A implementation log
 - `docs/phase_1_consolidated_oh_shop.md`
 - `docs/phase_2_review_pack_artifacts.md`
 - `artifacts/ollama_model_inventory_2026-03-06.txt`
@@ -266,7 +266,7 @@ Make the docs tell one operational story.
 
 2. Add clear historical banners to:
    - `docs/open_hands_open_web_ui_local_agent_house_contract_v_1.md`
-   - `docs/Phase_A.md`
+   - the old Phase A implementation log
    - `docs/phase_1_consolidated_oh_shop.md`
    - `docs/phase_2_review_pack_artifacts.md` if needed to clarify future-only status
 

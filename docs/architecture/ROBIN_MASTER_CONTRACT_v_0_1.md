@@ -1,7 +1,7 @@
 # ROBIN Master Contract v0.1
 
 > This is the active Robin role authority for the current repo.
-> It supersedes the older misnamed path `docs/architecture/robin_initial_contract_v_0.md`, which is retained only as a historical forwarder.
+> It supersedes the older misnamed Robin draft that previously occupied that role slot.
 
 ## 1. Purpose
 

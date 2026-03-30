@@ -429,7 +429,7 @@ Key deliverables per milestone are already aligned with the repo’s stabilizati
 | Upstream drift breaks patches | OpenHands override builds from `:latest` and patches internals fileciteturn79file0L1-L1 | High | High | Pin versions/digests; version-gate patchset |
 | Docker socket privilege | Compose mounts docker.sock fileciteturn76file0L1-L1 | Medium | High | Document threat model; consider socket proxy or dedicated daemon context |
 | Weak health signals | Stagehand `/healthz` shallow fileciteturn83file0L1-L1 | Medium | Medium | Add `/readyz` with real dependency checks |
-| Config drift between persisted settings vs “expected” values | Repo has explicit config authority and drift reconciliation problems fileciteturn90file0L1-L1 | Medium | Medium | Keep `config_authority.md` current; assert via verify |
+| Config drift between persisted settings vs “expected” values | Repo has explicit config authority and drift reconciliation problems fileciteturn90file0L1-L1 | Medium | Medium | Keep current runtime docs aligned and assert via verify |
 | Tool surface too broad | Stagehand MCP exposes cookies/eval/connect URL fileciteturn83file0L1-L1 | Medium | Medium–High | Gate or remove high-risk tools; default-deny |
 
 ### “Smarter way” to keep this project sane long-term

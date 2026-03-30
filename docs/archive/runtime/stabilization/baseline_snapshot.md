@@ -3,7 +3,7 @@
 Date context: 2026-03-27
 
 Governing contract used for this phase:
-- `docs/runtime_stabilization_contract_v_0.md`
+- the former runtime stabilization contract
 - Note: the requested filename `docs/runtime_stabilization_contract_v0.1.md` does not exist in this repo. The existing file above contains the title `Runtime Stabilization Contract v0.1` and was used as the governing contract.
 
 ## Baseline freeze scope
@@ -37,7 +37,7 @@ docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | rg '^(oh-shop/agent-
 Observed:
 - working directory: `/home/dev/OH_SHOP`
 - git status showed one untracked file:
-  - `docs/runtime_stabilization_contract_v_0.md`
+  - the former runtime stabilization contract
 - Docker stack state at capture time: down
 - `docker ps` result: no running containers
 - relevant local images present:

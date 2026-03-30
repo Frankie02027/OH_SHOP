@@ -84,14 +84,13 @@ Date context: 2026-03-29
   - `docs/runtime_normalization/`
   - `docs/runtime_stabilization/`
   - `docs/pre_first_token_failure/`
-  - `docs/runtime_stabilization_contract_v_0.md`
   - `docs/templates/`
   -> `docs/runtime/...`
 
 - architecture docs:
   - `docs/AI_GARAGE_BLUEPRINT.MD.md`
-  - `docs/MEMORY_SYSTEM_CONTRACT.md`
-  - `docs/Phase_A.md`
+  - the old OpenHands memory proposal
+  - the old Phase A implementation log
   - `docs/ai_garage_library_and_policy_contract_v_0_1.md`
   -> `docs/architecture/`
 

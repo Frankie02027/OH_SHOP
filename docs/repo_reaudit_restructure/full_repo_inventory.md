@@ -85,8 +85,8 @@ downloads/
 docs/
 ├── architecture/
 │   ├── AI_GARAGE_BLUEPRINT.MD.md
-│   ├── MEMORY_SYSTEM_CONTRACT.md
-│   ├── Phase_A.md
+│   ├── old OpenHands memory proposal
+│   ├── old Phase A implementation log
 │   └── ai_garage_library_and_policy_contract_v_0_1.md
 ├── archive/
 │   ├── authoritative_rework_contract_2026-03-21.md
@@ -110,7 +110,6 @@ docs/
 │   ├── openhands_handoff_2026-03-22.md
 │   └── stack_audit_2026-03-21.md
 ├── runtime/
-│   ├── runtime_stabilization_contract_v_0.md
 │   ├── normalization/
 │   ├── stabilization/
 │   │   └── final_reply_investigation/

@@ -413,7 +413,7 @@ TOOL PATH:
 
 - **`docs/open_hands_open_web_ui_local_agent_house_contract_v_1.md`** — mission document. Valid mission, stale details.
 - **`docs/phase_1_consolidated_oh_shop.md`** — correct about oh-browser-mcp, stale on Ollama.
-- **`docs/Phase_A.md`** — historical execution log. Archive.
+- **old Phase A implementation log** — historical execution log. Archive.
 - **`docs/phase_2_review_pack_artifacts.md`** — future spec. Not blocking.
 - **`artifacts/ollama_model_inventory_2026-03-06.txt`** — historical. Shows the drift moment.
 

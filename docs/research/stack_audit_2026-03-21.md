@@ -96,7 +96,7 @@ Primary repo files:
 - `docs/SETUP.md`
 - `docs/open_hands_open_web_ui_local_agent_house_contract_v_1.md`
 - `docs/phase_1_consolidated_oh_shop.md`
-- `docs/Phase_A.md`
+- the old Phase A implementation log
 - `docs/phase_2_review_pack_artifacts.md`
 - `compose/docker-compose.yml`
 - `compose/openhands.compose.yml`
