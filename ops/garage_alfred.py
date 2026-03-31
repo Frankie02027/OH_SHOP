@@ -329,6 +329,184 @@ class GarageAlfredProcessor:
         )
         return dict(preflight) if isinstance(preflight, dict) else None
 
+    def submit_prepared_next_call(
+        self,
+        *,
+        task_id: str | None = None,
+        prepared_call: dict[str, Any] | None = None,
+        supplied_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_task_id = self._resolve_submit_task_id(task_id, prepared_call)
+        if not isinstance(resolved_task_id, str):
+            return {
+                "decision_kind": "unavailable_in_slice",
+                "allowed_to_submit": False,
+                "reason": "task_id is required to re-check a prepared next call",
+                "prepared_call": None,
+                "submit_result": None,
+                "fresh_preflight": None,
+                "stale_or_blocked": False,
+                "missing_required_fields": (),
+                "context_only": False,
+                "unavailable_in_slice": True,
+            }
+
+        effective_supplied_fields = self._effective_submit_supplied_fields(
+            resolved_task_id,
+            prepared_call=prepared_call,
+            supplied_fields=supplied_fields,
+        )
+        fresh_preflight = self.prepare_next_call_from_draft(
+            resolved_task_id,
+            supplied_fields=effective_supplied_fields,
+        )
+        if not isinstance(fresh_preflight, dict):
+            return {
+                "decision_kind": "unavailable_in_slice",
+                "allowed_to_submit": False,
+                "reason": "fresh next-call preflight is unavailable for the current task state",
+                "prepared_call": None,
+                "submit_result": None,
+                "fresh_preflight": None,
+                "stale_or_blocked": False,
+                "missing_required_fields": (),
+                "context_only": False,
+                "unavailable_in_slice": True,
+            }
+
+        fresh_prepared_call = fresh_preflight.get("prepared_call")
+        requested_matches_fresh = self._requested_prepared_call_matches_fresh(
+            prepared_call=prepared_call,
+            fresh_prepared_call=fresh_prepared_call,
+        )
+        if prepared_call is not None and not requested_matches_fresh:
+            return self._build_submit_prepared_call_decision(
+                decision_kind="stale_prepared_call",
+                allowed_to_submit=False,
+                reason=(
+                    "prepared next call no longer matches fresh current-state preflight "
+                    "and must be regenerated before submission"
+                ),
+                fresh_preflight=fresh_preflight,
+                submit_result=None,
+                stale_or_blocked=True,
+            )
+
+        preflight_kind = str(fresh_preflight.get("preflight_kind") or "unavailable_in_slice")
+        if preflight_kind != "ready_to_submit":
+            return self._build_submit_prepared_call_decision(
+                decision_kind=preflight_kind,
+                allowed_to_submit=False,
+                reason=str(
+                    fresh_preflight.get("reason")
+                    or "prepared next call is not submittable in the current slice"
+                ),
+                fresh_preflight=fresh_preflight,
+                submit_result=None,
+                stale_or_blocked=preflight_kind == "policy_blocked",
+            )
+
+        if not isinstance(fresh_prepared_call, dict):
+            return self._build_submit_prepared_call_decision(
+                decision_kind="not_ready_missing_fields",
+                allowed_to_submit=False,
+                reason="fresh preflight did not produce an honest prepared next call object",
+                fresh_preflight=fresh_preflight,
+                submit_result=None,
+                stale_or_blocked=False,
+            )
+
+        submit_result = self.process_call(dict(fresh_prepared_call))
+        return self._build_submit_prepared_call_decision(
+            decision_kind="submitted",
+            allowed_to_submit=True,
+            reason="prepared next call passed fresh revalidation and was processed",
+            fresh_preflight=fresh_preflight,
+            submit_result=submit_result,
+            stale_or_blocked=False,
+        )
+
+    def _effective_submit_supplied_fields(
+        self,
+        task_id: str,
+        *,
+        prepared_call: dict[str, Any] | None,
+        supplied_fields: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if isinstance(supplied_fields, dict):
+            return dict(supplied_fields)
+        if not isinstance(prepared_call, dict):
+            return None
+        current_draft = self._read_current_next_call_draft(task_id)
+        if not isinstance(current_draft, dict):
+            return None
+        known_fields = dict(current_draft.get("known_fields") or {})
+        derived: dict[str, Any] = {}
+        for field_name, field_value in prepared_call.items():
+            if field_name not in known_fields or known_fields.get(field_name) != field_value:
+                derived[field_name] = field_value
+        return derived or None
+
+    def _read_current_next_call_draft(self, task_id: str) -> dict[str, Any] | None:
+        if self._state_reader is None:
+            return None
+        summary_reader = getattr(self._state_reader, "latest_task_state_summary", None)
+        if not callable(summary_reader):
+            return None
+        summary = summary_reader(task_id)
+        if not isinstance(summary, dict):
+            return None
+        draft = summary.get("next_call_draft")
+        return dict(draft) if isinstance(draft, dict) else None
+
+    @staticmethod
+    def _resolve_submit_task_id(
+        task_id: str | None,
+        prepared_call: dict[str, Any] | None,
+    ) -> str | None:
+        if isinstance(task_id, str):
+            return task_id
+        if isinstance(prepared_call, dict) and isinstance(prepared_call.get("task_id"), str):
+            return str(prepared_call["task_id"])
+        return None
+
+    @staticmethod
+    def _requested_prepared_call_matches_fresh(
+        *,
+        prepared_call: dict[str, Any] | None,
+        fresh_prepared_call: Any,
+    ) -> bool:
+        if prepared_call is None:
+            return True
+        return isinstance(fresh_prepared_call, dict) and dict(prepared_call) == dict(
+            fresh_prepared_call
+        )
+
+    @staticmethod
+    def _build_submit_prepared_call_decision(
+        *,
+        decision_kind: str,
+        allowed_to_submit: bool,
+        reason: str,
+        fresh_preflight: dict[str, Any],
+        submit_result: GarageProcessingResult | None,
+        stale_or_blocked: bool,
+    ) -> dict[str, Any]:
+        return {
+            "decision_kind": decision_kind,
+            "allowed_to_submit": allowed_to_submit,
+            "reason": reason,
+            "prepared_call": fresh_preflight.get("prepared_call"),
+            "submit_result": submit_result,
+            "fresh_preflight": dict(fresh_preflight),
+            "stale_or_blocked": stale_or_blocked,
+            "missing_required_fields": tuple(
+                fresh_preflight.get("missing_required_fields") or ()
+            ),
+            "context_only": bool(fresh_preflight.get("context_only")),
+            "unavailable_in_slice": bool(fresh_preflight.get("unavailable_in_slice")),
+        }
+
     @staticmethod
     def _resolve_result_task_id(
         validated_call: dict[str, Any],

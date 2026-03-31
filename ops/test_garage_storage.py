@@ -3596,6 +3596,384 @@ class GarageStorageAdapterTests(unittest.TestCase):
             preflight["disallowed_supplied_fields"],
         )
 
+    def test_submit_prepared_job_start_succeeds_when_fresh_state_still_allows_it(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        continuation = processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        prepared_call = continuation.result["post_call_guidance"]["next_call_preflight"][
+            "prepared_call"
+        ]
+
+        decision = processor.submit_prepared_next_call(prepared_call=prepared_call)
+        storage.close()
+
+        self.assertEqual("submitted", decision["decision_kind"])
+        self.assertTrue(decision["allowed_to_submit"])
+        self.assertFalse(decision["stale_or_blocked"])
+        self.assertIsNotNone(decision["submit_result"])
+        self.assertEqual("job.start", decision["submit_result"].call_type)
+        self.assertEqual("active-item", decision["submit_result"].result["post_call_guidance"]["dominant_target_kind"])
+
+    def test_submit_prepared_job_start_rejects_stale_call_after_posture_changes(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        continuation = processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        prepared_call = continuation.result["post_call_guidance"]["next_call_preflight"][
+            "prepared_call"
+        ]
+        processor.process_call(make_job_start_call())
+
+        decision = processor.submit_prepared_next_call(prepared_call=prepared_call)
+        storage.close()
+
+        self.assertEqual("stale_prepared_call", decision["decision_kind"])
+        self.assertFalse(decision["allowed_to_submit"])
+        self.assertTrue(decision["stale_or_blocked"])
+        self.assertIsNone(decision["submit_result"])
+        self.assertEqual("unavailable_in_slice", decision["fresh_preflight"]["preflight_kind"])
+        self.assertTrue(decision["unavailable_in_slice"])
+
+    def test_submit_prepared_proof_continuation_requires_real_content_before_submission(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need artifact proof",
+                        "description": "Still needs an official artifact ref.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(make_checkpoint_create_call(plan_version=1))
+
+        denied = processor.submit_prepared_next_call(task_id="T000001")
+        submitted = processor.submit_prepared_next_call(
+            task_id="T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/continuation.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        storage.close()
+
+        self.assertEqual("not_ready_missing_fields", denied["decision_kind"])
+        self.assertFalse(denied["allowed_to_submit"])
+        self.assertEqual(("payload_ref",), denied["missing_required_fields"])
+        self.assertIsNone(denied["submit_result"])
+        self.assertEqual("submitted", submitted["decision_kind"])
+        self.assertTrue(submitted["allowed_to_submit"])
+        self.assertEqual("continuation.record", submitted["submit_result"].call_type)
+        self.assertEqual(
+            "proof-gathering",
+            submitted["submit_result"].result["post_call_guidance"]["dominant_target_kind"],
+        )
+
+    def test_submit_prepared_review_context_call_stays_context_only(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        decision = processor.submit_prepared_next_call(
+            task_id="T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        storage.close()
+
+        self.assertEqual("context_only_not_submittable", decision["decision_kind"])
+        self.assertFalse(decision["allowed_to_submit"])
+        self.assertTrue(decision["context_only"])
+        self.assertIsNone(decision["submit_result"])
+
+    def test_submit_prepared_blocked_evidence_call_stays_context_only(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect blocked evidence",
+                        "description": "Capture failure evidence for the blocked step.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_failure_report_call(
+                reported_status="blocked",
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        decision = processor.submit_prepared_next_call(
+            task_id="T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/blocked.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        storage.close()
+
+        self.assertEqual("context_only_not_submittable", decision["decision_kind"])
+        self.assertFalse(decision["allowed_to_submit"])
+        self.assertTrue(decision["context_only"])
+        self.assertIsNone(decision["submit_result"])
+
+    def test_submit_prepared_child_job_start_rejects_when_child_leg_is_stale(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run child leg",
+                        "description": "Delegate the blocking child work.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        child = processor.process_call(make_child_job_request_call())
+        prepared_call = child.result["post_call_guidance"]["next_call_preflight"]["prepared_call"]
+        child_job_id = child.result["job_id"]
+        processor.process_call(make_job_start_call(job_id=child_job_id))
+
+        decision = processor.submit_prepared_next_call(prepared_call=prepared_call)
+        storage.close()
+
+        self.assertEqual("stale_prepared_call", decision["decision_kind"])
+        self.assertFalse(decision["allowed_to_submit"])
+        self.assertTrue(decision["stale_or_blocked"])
+        self.assertIsNone(decision["submit_result"])
+        self.assertEqual("unavailable_in_slice", decision["fresh_preflight"]["preflight_kind"])
+
+    def test_submit_prepared_call_does_not_fabricate_active_leg_path(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(make_job_start_call())
+
+        decision = processor.submit_prepared_next_call(task_id="T000001")
+        storage.close()
+
+        self.assertEqual("unavailable_in_slice", decision["decision_kind"])
+        self.assertFalse(decision["allowed_to_submit"])
+        self.assertTrue(decision["unavailable_in_slice"])
+        self.assertIsNone(decision["submit_result"])
+
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
             self.root,
