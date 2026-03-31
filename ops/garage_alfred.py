@@ -82,6 +82,14 @@ class AlfredStateReader(Protocol):
         supplied_fields: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None: ...
 
+    def summarize_next_call_preflight(
+        self,
+        task_id: str,
+        supplied_fields: dict[str, Any] | None = None,
+        *,
+        default_reported_at: str | None = None,
+    ) -> dict[str, Any] | None: ...
+
 
 @dataclass(frozen=True)
 class GarageOfficialBundle:
@@ -261,6 +269,13 @@ class GarageAlfredProcessor:
         next_call_hint = refreshed_task_summary.get("next_call_hint")
         next_call_draft = refreshed_task_summary.get("next_call_draft")
         next_call_draft_readiness = refreshed_task_summary.get("next_call_draft_readiness")
+        preflight_reader = getattr(self._state_reader, "summarize_next_call_preflight", None)
+        next_call_preflight = None
+        if callable(preflight_reader):
+            next_call_preflight = preflight_reader(
+                task_id,
+                default_reported_at=self._now(),
+            )
         return {
             "task_id": task_id,
             "posture_transition": posture_transition,
@@ -272,6 +287,7 @@ class GarageAlfredProcessor:
             "next_call_hint": next_call_hint,
             "next_call_draft": next_call_draft,
             "next_call_draft_readiness": next_call_draft_readiness,
+            "next_call_preflight": next_call_preflight,
             "execution_allowed": refreshed_task_summary.get("execution_allowed"),
             "execution_held": refreshed_task_summary.get("execution_held"),
             "execution_hold_kind": refreshed_task_summary.get("execution_hold_kind"),
@@ -295,6 +311,23 @@ class GarageAlfredProcessor:
             return None
         readiness = reader(task_id, supplied_fields=supplied_fields)
         return dict(readiness) if isinstance(readiness, dict) else None
+
+    def prepare_next_call_from_draft(
+        self,
+        task_id: str,
+        supplied_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        if self._state_reader is None:
+            return None
+        reader = getattr(self._state_reader, "summarize_next_call_preflight", None)
+        if not callable(reader):
+            return None
+        preflight = reader(
+            task_id,
+            supplied_fields=supplied_fields,
+            default_reported_at=self._now(),
+        )
+        return dict(preflight) if isinstance(preflight, dict) else None
 
     @staticmethod
     def _resolve_result_task_id(

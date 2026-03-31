@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from ops.garage_boundaries import GarageBoundaryError, validate_inbound_garage_call
 from ops.garage_alfred import (
     Clock,
     GarageAlfredProcessor,
@@ -919,6 +920,31 @@ class GarageStorageAdapter:
             supplied_fields=supplied_fields,
         )
 
+    def summarize_next_call_preflight(
+        self,
+        task_id: str,
+        supplied_fields: dict[str, Any] | None = None,
+        *,
+        default_reported_at: str | None = None,
+    ) -> dict[str, Any] | None:
+        task_policy = self.effective_task_policy_summary(task_id)
+        if not isinstance(task_policy, dict):
+            return None
+        next_call_draft = self.summarize_next_call_draft(task_id)
+        if not isinstance(next_call_draft, dict):
+            return None
+        draft_readiness = self._classify_next_call_draft_readiness(
+            next_call_draft=next_call_draft,
+            supplied_fields=supplied_fields,
+        )
+        return self._classify_next_call_preflight(
+            task_id=task_id,
+            task_policy=task_policy,
+            next_call_draft=next_call_draft,
+            draft_readiness=draft_readiness,
+            default_reported_at=default_reported_at,
+        )
+
     def summarize_immediate_follow_up_behavior(
         self,
         task_id: str,
@@ -1483,6 +1509,191 @@ class GarageStorageAdapter:
             "context_only": context_only,
             "unavailable_in_slice": unavailable_in_slice,
         }
+
+    def _classify_next_call_preflight(
+        self,
+        *,
+        task_id: str,
+        task_policy: dict[str, Any],
+        next_call_draft: dict[str, Any],
+        draft_readiness: dict[str, Any],
+        default_reported_at: str | None = None,
+    ) -> dict[str, Any]:
+        call_type = draft_readiness.get("call_type")
+        context_only = bool(draft_readiness.get("context_only"))
+        unavailable_in_slice = bool(draft_readiness.get("unavailable_in_slice"))
+        missing_required_fields = tuple(draft_readiness.get("missing_required_fields") or ())
+        accepted_supplied_fields = tuple(
+            draft_readiness.get("accepted_supplied_fields") or ()
+        )
+        ignored_supplied_fields = tuple(
+            draft_readiness.get("ignored_supplied_fields") or ()
+        )
+        disallowed_supplied_fields = tuple(
+            draft_readiness.get("disallowed_supplied_fields") or ()
+        )
+        merged_known_fields = dict(draft_readiness.get("merged_known_fields") or {})
+        prepared_call = self._prepare_next_call_from_readiness(
+            call_type=str(call_type) if isinstance(call_type, str) else None,
+            merged_known_fields=merged_known_fields,
+            default_reported_at=default_reported_at,
+        )
+        remaining_missing_fields = self._remaining_missing_prepared_fields(
+            required_fields=missing_required_fields,
+            prepared_call=prepared_call,
+        )
+
+        preflight_kind = "unavailable_in_slice"
+        policy_block_reason = None
+        reason = next_call_draft.get("reason") or "no honest prepared next call is available"
+        ready_to_submit = False
+
+        if unavailable_in_slice:
+            preflight_kind = "unavailable_in_slice"
+            prepared_call = None
+            reason = "current post-call posture does not expose an honest next supported call in this slice"
+        elif context_only:
+            preflight_kind = "context_only_not_submittable"
+            if remaining_missing_fields:
+                prepared_call = None
+                reason = (
+                    "context-only follow-up remains non-execution work and still needs "
+                    "caller-supplied required fields"
+                )
+            else:
+                prepared_call, validation_error = self._validate_prepared_call(prepared_call)
+                if validation_error is not None:
+                    prepared_call = None
+                    reason = validation_error
+                else:
+                    reason = (
+                        "prepared call can capture context, but current posture remains "
+                        "non-execution and not submittable as productive next work"
+                    )
+        elif remaining_missing_fields:
+            preflight_kind = "not_ready_missing_fields"
+            prepared_call = None
+            reason = "prepared next call still needs caller-supplied required fields"
+        else:
+            prepared_call, validation_error = self._validate_prepared_call(prepared_call)
+            if validation_error is not None:
+                preflight_kind = "not_ready_missing_fields"
+                prepared_call = None
+                reason = validation_error
+            else:
+                policy = self.evaluate_supported_call_policy(
+                    task_id,
+                    str(call_type),
+                    job_id=(
+                        prepared_call.get("job_id")
+                        if isinstance(prepared_call, dict)
+                        and isinstance(prepared_call.get("job_id"), str)
+                        else None
+                    ),
+                    parent_job_id=(
+                        prepared_call.get("parent_job_id")
+                        if isinstance(prepared_call, dict)
+                        and isinstance(prepared_call.get("parent_job_id"), str)
+                        else None
+                    ),
+                )
+                if isinstance(policy, dict) and not policy.get("allowed", True):
+                    preflight_kind = "policy_blocked"
+                    policy_block_reason = (
+                        policy.get("rejection_reason")
+                        or policy.get("execution_hold_reason")
+                        or "call_not_allowed"
+                    )
+                    reason = (
+                        "prepared next call is structurally complete but is still blocked "
+                        "by current supported-call policy"
+                    )
+                else:
+                    preflight_kind = "ready_to_submit"
+                    ready_to_submit = True
+                    reason = "prepared next call is structurally valid and allowed in this slice"
+
+        return {
+            "preflight_kind": preflight_kind,
+            "call_type": call_type,
+            "prepared_call": prepared_call,
+            "accepted_supplied_fields": accepted_supplied_fields,
+            "ignored_supplied_fields": ignored_supplied_fields,
+            "disallowed_supplied_fields": disallowed_supplied_fields,
+            "missing_required_fields": remaining_missing_fields,
+            "policy_block_reason": policy_block_reason,
+            "reason": reason,
+            "task_id": draft_readiness.get("task_id"),
+            "job_id": draft_readiness.get("job_id"),
+            "target_item_id": draft_readiness.get("target_item_id"),
+            "ready_to_submit": ready_to_submit,
+            "context_only": context_only,
+            "unavailable_in_slice": unavailable_in_slice,
+        }
+
+    @staticmethod
+    def _prepare_next_call_from_readiness(
+        *,
+        call_type: str | None,
+        merged_known_fields: dict[str, Any],
+        default_reported_at: str | None = None,
+    ) -> dict[str, Any] | None:
+        if not isinstance(call_type, str):
+            return None
+
+        prepared_call = dict(merged_known_fields)
+        if call_type == "job.start":
+            prepared_call.setdefault("schema_version", "v0.1")
+            prepared_call.setdefault("call_type", "job.start")
+            prepared_call.setdefault("from_role", "jarvis")
+            prepared_call.setdefault("to_role", "alfred")
+            if isinstance(default_reported_at, str) and default_reported_at:
+                prepared_call.setdefault("reported_at", default_reported_at)
+            return prepared_call
+
+        if call_type == "continuation.record":
+            prepared_call.setdefault("schema_version", "v0.1")
+            prepared_call.setdefault("call_type", "continuation.record")
+            prepared_call.setdefault("from_role", "jarvis")
+            prepared_call.setdefault("to_role", "alfred")
+            return prepared_call
+
+        return None
+
+    @staticmethod
+    def _validate_prepared_call(
+        prepared_call: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        if not isinstance(prepared_call, dict):
+            return None, "prepared next call could not be built honestly from known and supplied fields"
+        try:
+            validated = dict(validate_inbound_garage_call(dict(prepared_call)))
+        except GarageBoundaryError as exc:
+            return None, str(exc)
+        return validated, None
+
+    @staticmethod
+    def _remaining_missing_prepared_fields(
+        *,
+        required_fields: tuple[str, ...],
+        prepared_call: dict[str, Any] | None,
+    ) -> tuple[str, ...]:
+        if not isinstance(prepared_call, dict):
+            return required_fields
+
+        remaining: list[str] = []
+        for field_name in required_fields:
+            if field_name == "payload_ref":
+                if "payload_ref" in prepared_call:
+                    continue
+                payload = prepared_call.get("payload")
+                if isinstance(payload, dict) and isinstance(payload.get("content_ref"), dict):
+                    continue
+                remaining.append(field_name)
+                continue
+            if field_name not in prepared_call:
+                remaining.append(field_name)
+        return tuple(remaining)
 
     def evaluate_supported_call_policy(
         self,
