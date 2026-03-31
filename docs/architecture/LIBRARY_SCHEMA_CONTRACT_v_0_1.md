@@ -494,7 +494,7 @@ Requests a new Robin child job from the current Jarvis leg.
 - `task_id`
 - current/parent job context
 - `from_role = "jarvis"`
-- `to_role = "robin"`
+- `to_role = "alfred"`
 - request payload or payload_ref
 
 ## 15.3 Required semantic body shape
@@ -695,7 +695,7 @@ Each event schema should define:
 - related `task_id`
 - related `job_id` where applicable
 - `event_id`
-- `reported_at`
+- `recorded_at`
 - route/linkage metadata
 - refs where applicable
 - optional event payload/body
