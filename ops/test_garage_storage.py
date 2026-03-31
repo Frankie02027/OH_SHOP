@@ -1071,8 +1071,13 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         processor.process_call(make_task_create_call())
         processor.process_call(make_plan_record_call(plan_version=1, current_active_item="I002"))
-        processor.process_call(make_child_job_request_call())
-        processor.process_call(make_result_submit_call(reported_status="partial"))
+        child = processor.process_call(make_child_job_request_call())
+        processor.process_call(
+            make_result_submit_call(
+                job_id=child.result["job_id"],
+                reported_status="partial",
+            )
+        )
 
         active_item = storage.resolve_active_plan_item("T000001")
         task_summary = storage.latest_task_state_summary("T000001")
@@ -1224,6 +1229,9 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(task_summary["is_waiting_on_proof"])
         self.assertEqual("review-needed", task_summary["dominant_target_kind"])
         self.assertEqual("review-needed", task_summary["dominant_blocker_kind"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertFalse(task_summary["execution_allowed"])
+        self.assertEqual("review-needed", task_summary["execution_hold_kind"])
 
     def test_done_unverified_item_is_surfaced_as_verification_pending(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -1278,11 +1286,15 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("manual_review_required", task_summary["relevant_proof_gate_reason"])
         self.assertEqual("review-needed", task_summary["dominant_target_kind"])
         self.assertEqual("waiting-on-review", task_summary["effective_task_posture"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertEqual("review-needed", task_summary["execution_hold_kind"])
         self.assertFalse(task_summary["current_job_is_primary_focus"])
         self.assertTrue(task_summary["relevant_plan_item_is_primary_focus"])
         self.assertEqual("review-needed", job_summary["relevant_plan_item_proof_policy_kind"])
         self.assertTrue(job_summary["relevant_plan_item_waiting_on_review"])
         self.assertTrue(job_summary["current_job_subordinate_to_task_focus"])
+        self.assertTrue(job_summary["task_execution_held"])
+        self.assertEqual("review-needed", job_summary["task_execution_hold_kind"])
         self.assertEqual("review-needed", resume_target["target_kind"])
         self.assertEqual("I002", resume_target["item"]["item_id"])
 
@@ -1335,6 +1347,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(proof_item["is_waiting_on_proof"])
         self.assertTrue(task_summary["is_waiting_on_review"])
         self.assertEqual("review-needed", task_summary["dominant_target_kind"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertEqual("review-needed", task_summary["execution_hold_kind"])
         self.assertEqual("review-needed", resume_target["target_kind"])
 
     def test_next_executable_unavailable_explains_dependency_unverified(self) -> None:
@@ -1391,6 +1405,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("dependency_unverified", task_summary["next_executable_unavailable_reason"]["reason"])
         self.assertEqual("proof-gathering", job_summary["relevant_plan_item_proof_policy_kind"])
         self.assertTrue(job_summary["relevant_plan_item_waiting_on_proof"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertEqual("proof-gathering", task_summary["execution_hold_kind"])
 
     def test_continuation_record_can_promote_done_unverified_item_to_verified(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -1446,6 +1462,303 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("I003", active_item["item_id"])
         self.assertEqual("next-executable", next_target["target_kind"])
         self.assertEqual("I003", next_target["item"]["item_id"])
+
+    def test_job_start_is_rejected_while_task_waits_on_proof(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+
+        policy = storage.evaluate_supported_call_policy(
+            "T000001",
+            "job.start",
+            job_id="T000001.J001",
+        )
+        with self.assertRaises(GarageAlfredProcessingError) as ctx:
+            processor.process_call(make_job_start_call())
+
+        self.assertFalse(policy["allowed"])
+        self.assertEqual("proof-gathering", policy["dominant_target_kind"])
+        self.assertEqual("proof-gathering", policy["execution_hold_kind"])
+        self.assertIn("held on 'proof-gathering'", str(ctx.exception))
+        storage.close()
+
+    def test_job_start_is_rejected_while_task_waits_on_review(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+
+        policy = storage.evaluate_supported_call_policy(
+            "T000001",
+            "job.start",
+            job_id="T000001.J001",
+        )
+        with self.assertRaises(GarageAlfredProcessingError) as ctx:
+            processor.process_call(make_job_start_call())
+
+        self.assertFalse(policy["allowed"])
+        self.assertEqual("review-needed", policy["dominant_target_kind"])
+        self.assertEqual("review-needed", policy["execution_hold_kind"])
+        self.assertIn("held on 'review-needed'", str(ctx.exception))
+        storage.close()
+
+    def test_child_job_request_is_rejected_while_task_waits_on_review(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+
+        with self.assertRaises(GarageAlfredProcessingError) as ctx:
+            processor.process_call(make_child_job_request_call())
+
+        self.assertIn("held on 'review-needed'", str(ctx.exception))
+        storage.close()
+
+    def test_continuation_record_remains_usable_while_task_waits_on_review(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+
+        result = processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+        task_summary = storage.latest_task_state_summary("T000001")
+        proof_item = storage.read_relevant_proof_item_summary("T000001")
+        storage.close()
+
+        self.assertEqual("continuation.recorded", result.result["event_type"])
+        self.assertEqual("review-needed", task_summary["dominant_target_kind"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertEqual("review-needed", proof_item["proof_policy_kind"])
+        self.assertFalse(proof_item["proof_satisfied"])
+
+    def test_waiting_on_child_rejects_new_handoff_but_allows_current_child_progress(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run child leg",
+                        "description": "Delegate the blocking child work.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+
+        child = processor.process_call(make_child_job_request_call())
+        child_job_id = child.result["job_id"]
+        task_summary = storage.latest_task_state_summary("T000001")
+        rejected_policy = storage.evaluate_supported_call_policy(
+            "T000001",
+            "child_job.request",
+            job_id="T000001.J001",
+        )
+        started = processor.process_call(make_job_start_call(job_id=child_job_id))
+
+        with self.assertRaises(GarageAlfredProcessingError) as ctx:
+            processor.process_call(make_child_job_request_call())
+
+        self.assertEqual("waiting-on-child", task_summary["dominant_target_kind"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertEqual("waiting-on-child", task_summary["execution_hold_kind"])
+        self.assertFalse(rejected_policy["allowed"])
+        self.assertEqual("job.started", started.result["event_type"])
+        self.assertIn("held on 'waiting-on-child'", str(ctx.exception))
+        storage.close()
+
+    def test_job_start_is_allowed_when_task_is_ready_for_next_executable(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+
+        task_summary = storage.latest_task_state_summary("T000001")
+        policy = storage.evaluate_supported_call_policy(
+            "T000001",
+            "job.start",
+            job_id="T000001.J001",
+        )
+        result = processor.process_call(make_job_start_call())
+        active_item = storage.resolve_active_plan_item("T000001")
+        storage.close()
+
+        self.assertEqual("next-executable", task_summary["dominant_target_kind"])
+        self.assertTrue(task_summary["execution_allowed"])
+        self.assertFalse(task_summary["execution_held"])
+        self.assertTrue(policy["allowed"])
+        self.assertEqual("job.started", result.result["event_type"])
+        self.assertEqual(2, result.result["attempt_no"])
+        self.assertEqual("I003", active_item["item_id"])
+        self.assertEqual("in_progress", active_item["status"])
 
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(

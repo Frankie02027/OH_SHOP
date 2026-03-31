@@ -322,6 +322,26 @@ class GarageStorageAdapter:
             "effective_task_posture": (
                 task_policy.get("effective_task_posture") if isinstance(task_policy, dict) else None
             ),
+            "execution_allowed": (
+                task_policy.get("execution_allowed")
+                if isinstance(task_policy, dict)
+                else False
+            ),
+            "execution_held": (
+                task_policy.get("execution_held")
+                if isinstance(task_policy, dict)
+                else False
+            ),
+            "execution_hold_kind": (
+                task_policy.get("execution_hold_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "execution_hold_reason": (
+                task_policy.get("execution_hold_reason")
+                if isinstance(task_policy, dict)
+                else None
+            ),
             "effective_waiting_on_proof": (
                 task_policy.get("effective_waiting_on_proof") if isinstance(task_policy, dict) else False
             ),
@@ -438,6 +458,26 @@ class GarageStorageAdapter:
             ),
             "task_effective_posture": (
                 task_policy.get("effective_task_posture") if isinstance(task_policy, dict) else None
+            ),
+            "task_execution_allowed": (
+                task_policy.get("execution_allowed")
+                if isinstance(task_policy, dict)
+                else False
+            ),
+            "task_execution_held": (
+                task_policy.get("execution_held")
+                if isinstance(task_policy, dict)
+                else False
+            ),
+            "task_execution_hold_kind": (
+                task_policy.get("execution_hold_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "task_execution_hold_reason": (
+                task_policy.get("execution_hold_reason")
+                if isinstance(task_policy, dict)
+                else None
             ),
             "current_job_is_primary_focus": (
                 bool(task_record is not None and task_record.get("current_job_id") == job_id)
@@ -559,6 +599,92 @@ class GarageStorageAdapter:
         if not isinstance(policy, dict):
             return None
         return policy.get("dominant_blocker")
+
+    def evaluate_supported_call_policy(
+        self,
+        task_id: str,
+        call_type: str,
+        *,
+        job_id: str | None = None,
+        parent_job_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        policy = self.effective_task_policy_summary(task_id)
+        if not isinstance(policy, dict):
+            return None
+
+        dominant_target_kind = policy.get("dominant_target_kind")
+        current_job_id = task_record.get("current_job_id")
+        allowed_call_types = self._allowed_call_types_for_dominant_target(
+            dominant_target_kind
+        )
+        allowed = call_type in allowed_call_types
+        rejection_reason = None
+
+        if not allowed:
+            rejection_reason = (
+                policy.get("execution_hold_reason")
+                or (
+                    policy.get("dominant_blocker", {}).get("reason")
+                    if isinstance(policy.get("dominant_blocker"), dict)
+                    else None
+                )
+                or "call_not_allowed_for_current_target"
+            )
+        elif dominant_target_kind == "waiting-on-child" and call_type in {
+            "job.start",
+            "result.submit",
+            "failure.report",
+        }:
+            if not (isinstance(current_job_id, str) and job_id == current_job_id):
+                allowed = False
+                rejection_reason = "waiting_on_child_current_job_only"
+        elif dominant_target_kind == "waiting-on-child" and call_type == "child_job.request":
+            if not (
+                isinstance(current_job_id, str)
+                and (
+                    job_id == current_job_id
+                    or parent_job_id == current_job_id
+                )
+            ):
+                allowed = False
+                rejection_reason = "waiting_on_child_current_job_only"
+        elif dominant_target_kind == "blocked-evidence-review" and call_type == "failure.report":
+            if not (isinstance(current_job_id, str) and job_id == current_job_id):
+                allowed = False
+                rejection_reason = "blocked_evidence_current_job_only"
+        elif dominant_target_kind == "active-item" and call_type in {
+            "job.start",
+            "child_job.request",
+            "result.submit",
+            "failure.report",
+        }:
+            if (
+                isinstance(current_job_id, str)
+                and isinstance(job_id, str)
+                and job_id != current_job_id
+            ):
+                allowed = False
+                rejection_reason = "current_active_leg_mismatch"
+
+        return {
+            "task_id": task_id,
+            "call_type": call_type,
+            "job_id": job_id,
+            "allowed": allowed,
+            "dominant_target_kind": dominant_target_kind,
+            "dominant_blocker_kind": policy.get("dominant_blocker_kind"),
+            "execution_allowed": policy.get("execution_allowed", False),
+            "execution_held": policy.get("execution_held", False),
+            "execution_hold_kind": policy.get("execution_hold_kind"),
+            "execution_hold_reason": policy.get("execution_hold_reason"),
+            "current_job_id": current_job_id,
+            "parent_job_id": parent_job_id,
+            "allowed_call_types": allowed_call_types,
+            "rejection_reason": rejection_reason,
+        }
 
     def read_plan_item_summary(
         self,
@@ -976,6 +1102,17 @@ class GarageStorageAdapter:
         elif dominant_target_kind == "next-executable":
             effective_task_posture = "ready-for-next"
 
+        execution_allowed = dominant_target_kind in {
+            "active-item",
+            "next-executable",
+            "resume-anchor-only",
+        }
+        execution_held = not execution_allowed
+        execution_hold_kind = dominant_target_kind if execution_held else None
+        execution_hold_reason = (
+            dominant_blocker.get("reason") if isinstance(dominant_blocker, dict) else None
+        )
+
         current_job_is_primary_focus = dominant_target_kind in {"active-item", "waiting-on-child"}
         relevant_plan_item_is_primary_focus = dominant_target_kind in {
             "proof-gathering",
@@ -992,6 +1129,10 @@ class GarageStorageAdapter:
                 dominant_blocker.get("kind") if isinstance(dominant_blocker, dict) else None
             ),
             "effective_task_posture": effective_task_posture,
+            "execution_allowed": execution_allowed,
+            "execution_held": execution_held,
+            "execution_hold_kind": execution_hold_kind,
+            "execution_hold_reason": execution_hold_reason,
             "effective_waiting_on_proof": dominant_target_kind == "proof-gathering",
             "effective_waiting_on_review": dominant_target_kind == "review-needed",
             "effective_blocked_evidence_review": dominant_target_kind == "blocked-evidence-review",
@@ -1002,6 +1143,45 @@ class GarageStorageAdapter:
             "relevant_plan_item_is_primary_focus": relevant_plan_item_is_primary_focus,
             "next_executable_unavailable_reason": next_executable_unavailable_reason,
         }
+
+    @staticmethod
+    def _allowed_call_types_for_dominant_target(
+        dominant_target_kind: str | None,
+    ) -> tuple[str, ...]:
+        if dominant_target_kind == "proof-gathering":
+            return ("checkpoint.create", "continuation.record")
+        if dominant_target_kind == "review-needed":
+            return ("checkpoint.create", "continuation.record")
+        if dominant_target_kind == "blocked-evidence-review":
+            return ("failure.report", "checkpoint.create", "continuation.record")
+        if dominant_target_kind == "waiting-on-child":
+            return (
+                "job.start",
+                "child_job.request",
+                "result.submit",
+                "failure.report",
+                "checkpoint.create",
+                "continuation.record",
+            )
+        if dominant_target_kind == "active-item":
+            return (
+                "job.start",
+                "child_job.request",
+                "result.submit",
+                "failure.report",
+                "checkpoint.create",
+                "continuation.record",
+            )
+        if dominant_target_kind in {"next-executable", "resume-anchor-only", None}:
+            return (
+                "job.start",
+                "child_job.request",
+                "result.submit",
+                "failure.report",
+                "checkpoint.create",
+                "continuation.record",
+            )
+        return ("checkpoint.create", "continuation.record")
 
     def resolve_resume_evidence_refs(self, task_id: str) -> tuple[dict[str, Any], ...]:
         latest_continuation = self.latest_continuation_for_task(task_id)

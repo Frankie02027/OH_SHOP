@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import json
 from typing import Any, Callable, Protocol
 
+from ops.garage_boundaries import validate_inbound_garage_call
 from ops.garage_runtime import (
     GarageHandlerOutput,
     GarageProcessingResult,
@@ -54,6 +55,15 @@ class AlfredStateReader(Protocol):
         self,
         task_id: str,
         plan_version: int,
+    ) -> dict[str, Any] | None: ...
+
+    def evaluate_supported_call_policy(
+        self,
+        task_id: str,
+        call_type: str,
+        *,
+        job_id: str | None = None,
+        parent_job_id: str | None = None,
     ) -> dict[str, Any] | None: ...
 
 
@@ -135,7 +145,9 @@ class GarageAlfredProcessor:
     def process_call(self, data: dict[str, Any]) -> GarageProcessingResult:
         """Process one official Garage call through the Alfred slice."""
 
-        runtime_result = self._runtime.process_call(data)
+        validated_call = validate_inbound_garage_call(data)
+        self._enforce_supported_call_policy(validated_call)
+        runtime_result = self._runtime.process_call(validated_call)
         if self._bundle_applier is None:
             return runtime_result
 
@@ -154,6 +166,35 @@ class GarageAlfredProcessor:
             result=bundle.result,
             recorded_events=recorded_events,
             written_records=written_records,
+        )
+
+    def _enforce_supported_call_policy(self, call: dict[str, Any]) -> None:
+        if self._state_reader is None:
+            return
+        evaluator = getattr(self._state_reader, "evaluate_supported_call_policy", None)
+        if not callable(evaluator):
+            return
+        task_id = call.get("task_id")
+        call_type = call.get("call_type")
+        if not isinstance(task_id, str) or not isinstance(call_type, str):
+            return
+        if call_type in {"task.create", "plan.record"}:
+            return
+        policy = evaluator(
+            task_id,
+            call_type,
+            job_id=str(call["job_id"]) if "job_id" in call else None,
+            parent_job_id=(
+                str(call["parent_job_id"]) if "parent_job_id" in call else None
+            ),
+        )
+        if not isinstance(policy, dict) or policy.get("allowed", True):
+            return
+        hold_kind = policy.get("execution_hold_kind") or policy.get("dominant_target_kind")
+        rejection_reason = policy.get("rejection_reason") or "call_not_allowed"
+        raise GarageAlfredProcessingError(
+            f"{call_type} for task '{task_id}' is not allowed while execution is "
+            f"held on '{hold_kind}' ({rejection_reason})"
         )
 
     def supported_call_types(self) -> tuple[str, ...]:
@@ -331,6 +372,7 @@ class GarageAlfredProcessor:
         task_id = call["task_id"]
         job_id = call["job_id"]
         existing_job_record = self._existing_job_record(job_id)
+        existing_task_record = self._existing_task_record(task_id)
         resolved_attempt_no = self._resolve_job_start_attempt_no(
             call,
             existing_job_record,
@@ -347,10 +389,17 @@ class GarageAlfredProcessor:
             recorded_at,
             attempt_no=resolved_attempt_no,
         )
+        task_state = "running"
+        if (
+            isinstance(existing_task_record, dict)
+            and existing_task_record.get("task_state") == "waiting_on_child"
+            and existing_task_record.get("current_job_id") == job_id
+        ):
+            task_state = "waiting_on_child"
         task_record = self._build_task_record(
             task_id,
             recorded_at,
-            task_state="running",
+            task_state=task_state,
             current_job_id=job_id,
         )
         job_record = self._build_job_record(
@@ -953,7 +1002,7 @@ class GarageAlfredProcessor:
                     f"plan item '{current_item['item_id']}'"
                 )
             current_item["status"] = "in_progress"
-        elif status == "in_progress":
+        elif status in {"in_progress", "needs_child_job"}:
             pass
         else:
             raise GarageAlfredProcessingError(
