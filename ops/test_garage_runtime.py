@@ -207,7 +207,7 @@ class GarageRuntimeProcessorTests(unittest.TestCase):
         self.assertEqual(["child"], seen)
         self.assertEqual("child", result.result)
 
-    def test_unknown_call_type_fails_clearly(self) -> None:
+    def test_known_call_type_without_registered_handler_fails_clearly(self) -> None:
         with self.assertRaises(GarageProcessorError) as ctx:
             self.processor.process_call(
                 {

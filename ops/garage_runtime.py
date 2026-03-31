@@ -86,7 +86,7 @@ class GarageRuntimeProcessor:
         """Validate, dispatch, and process handler-produced events/records."""
 
         validated_call = validate_inbound_garage_call(data)
-        call_type = str(data.get("call_type") or "")
+        call_type = str(validated_call.get("call_type") or "")
         handler = self._handlers.get(call_type)
         if handler is None:
             raise GarageProcessorError(
