@@ -21,31 +21,70 @@ def make_task_create_call() -> dict[str, object]:
     }
 
 
-def make_job_start_call() -> dict[str, object]:
-    return {
+def make_job_start_call(
+    *,
+    task_id: str = "T000001",
+    job_id: str = "T000001.J001",
+    attempt_no: int | None = None,
+) -> dict[str, object]:
+    call: dict[str, object] = {
         "schema_version": "v0.1",
         "call_type": "job.start",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
+        "task_id": task_id,
+        "job_id": job_id,
         "from_role": "jarvis",
         "to_role": "alfred",
         "reported_at": "2026-03-30T12:01:00Z",
     }
+    if attempt_no is not None:
+        call["attempt_no"] = attempt_no
+    return call
 
 
-def make_result_submit_call() -> dict[str, object]:
+def make_child_job_request_call(
+    *,
+    task_id: str = "T000001",
+    job_id: str = "T000001.J001",
+    parent_job_id: str | None = None,
+) -> dict[str, object]:
+    call: dict[str, object] = {
+        "schema_version": "v0.1",
+        "call_type": "child_job.request",
+        "task_id": task_id,
+        "job_id": job_id,
+        "from_role": "jarvis",
+        "to_role": "alfred",
+        "reported_at": "2026-03-30T12:01:30Z",
+        "payload": {
+            "objective": "Use Robin for browser work.",
+            "reason_for_handoff": "Needs browser lane.",
+            "constraints": ["stay in browser lane"],
+            "expected_output": ["page title"],
+            "success_criteria": ["title captured"],
+        },
+    }
+    if parent_job_id is not None:
+        call["parent_job_id"] = parent_job_id
+    return call
+
+
+def make_result_submit_call(
+    *,
+    task_id: str = "T000001",
+    job_id: str = "T000001.J001",
+) -> dict[str, object]:
     return {
         "schema_version": "v0.1",
         "call_type": "result.submit",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
+        "task_id": task_id,
+        "job_id": job_id,
         "from_role": "robin",
         "to_role": "alfred",
         "reported_at": "2026-03-30T12:02:00Z",
         "reported_status": "succeeded",
         "payload_ref": {
             "kind": "result-json",
-            "path": "/workspace/robin/tasks/T000001/jobs/J001/result.json",
+            "path": f"/workspace/robin/tasks/{task_id}/jobs/{job_id.split('.J', 1)[1]}/result.json",
             "role": "robin",
         },
     }
@@ -111,6 +150,31 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         self.assertEqual("T000001", first.result["task_id"])
         self.assertEqual("T000002", second.result["task_id"])
+
+    def test_child_job_request_creates_durable_lineage_and_dispatch_events(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        result = processor.process_call(make_child_job_request_call())
+
+        child_job = storage.read_job_record(result.result["job_id"])
+        child_jobs = storage.list_child_jobs("T000001.J001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        job_history = storage.read_event_history(job_id=result.result["job_id"])
+        storage.close()
+
+        self.assertEqual("T000001.J002", result.result["job_id"])
+        self.assertEqual("T000001.J001", child_job["parent_job_id"])
+        self.assertEqual("waiting_on_child", task_summary["task_record"]["task_state"])
+        self.assertEqual("T000001.J002", task_summary["task_record"]["current_job_id"])
+        self.assertEqual(1, len(child_jobs))
+        self.assertEqual(
+            ["job.created", "job.dispatched"],
+            [event["event_type"] for event in job_history],
+        )
 
     def test_event_id_continuity_survives_processor_recreation(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -221,6 +285,56 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("T000001.E0001", history[0]["event_id"])
         self.assertEqual("T000001.E0002", history[1]["event_id"])
 
+    def test_same_job_retry_continuity_is_durable(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call(attempt_no=1))
+        storage.close()
+
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:05:00Z",
+        )
+        processor.process_call(make_job_start_call(attempt_no=2))
+        job_record = storage.read_job_record("T000001.J001")
+        summary = storage.read_job_state_summary("T000001.J001")
+        history = storage.read_event_history(job_id="T000001.J001")
+        storage.close()
+
+        self.assertEqual(2, job_record["attempt_no"])
+        self.assertEqual("running", job_record["job_state"])
+        self.assertEqual(2, summary["attempt_no"])
+        self.assertEqual(
+            [1, 2],
+            [event["attempt_no"] for event in history if event["event_type"] == "job.started"],
+        )
+
+    def test_materially_new_refined_job_gets_new_job_id_with_recoverable_lineage(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        first_child = processor.process_call(make_child_job_request_call())
+        refined_child = processor.process_call(
+            make_child_job_request_call(parent_job_id=first_child.result["job_id"])
+        )
+
+        linked_children = storage.list_child_jobs(first_child.result["job_id"])
+        refined_job = storage.read_job_record(refined_child.result["job_id"])
+        next_job_id = storage.peek_next_job_id("T000001")
+        storage.close()
+
+        self.assertEqual("T000001.J002", first_child.result["job_id"])
+        self.assertEqual("T000001.J003", refined_child.result["job_id"])
+        self.assertEqual(first_child.result["job_id"], refined_job["parent_job_id"])
+        self.assertEqual(1, len(linked_children))
+        self.assertEqual("T000001.J004", next_job_id)
+
     def test_checkpoint_record_write_persists_durably(self) -> None:
         write_garage_persisted_record(
             "checkpoint-record",
@@ -272,6 +386,42 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual(1, len(event_history))
         self.assertEqual("task.created", event_history[0]["event_type"])
         self.assertEqual("T000002", next_task_id)
+
+    def test_invalid_child_job_bundle_is_blocked_before_durable_side_effects(self) -> None:
+        class BrokenChildJobProcessor(GarageAlfredProcessor):
+            def _build_job_created_event(
+                self,
+                call: dict[str, object],
+                *,
+                child_job_id: str,
+                parent_job_id: str,
+                event_id: str,
+                recorded_at: str,
+            ) -> dict[str, object]:
+                event = super()._build_job_created_event(
+                    call,
+                    child_job_id=child_job_id,
+                    parent_job_id=parent_job_id,
+                    event_id=event_id,
+                    recorded_at=recorded_at,
+                )
+                event.pop("recorded_at")
+                return event
+
+        storage = GarageStorageAdapter(self.root)
+        processor = BrokenChildJobProcessor(
+            bundle_applier=storage.apply_official_bundle,
+            id_allocator=storage,
+            state_reader=storage,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+
+        with self.assertRaises(GarageBoundaryError):
+            processor.process_call(make_child_job_request_call())
+
+        self.assertEqual([], storage.read_event_history("T000001"))
+        self.assertIsNone(storage.read_job_record("T000001.J001"))
+        storage.close()
 
     def test_invalid_record_fails_before_storage_side_effect(self) -> None:
         with self.assertRaises(GarageBoundaryError):
@@ -336,11 +486,14 @@ class GarageStorageAdapterTests(unittest.TestCase):
         processor.process_call(make_continuation_record_call())
 
         task_summary = storage.latest_task_state_summary("T000001")
+        job_summary = storage.read_job_state_summary("T000001.J001")
         job_history = storage.read_event_history(job_id="T000001.J001")
         continuations = storage.list_continuation_records("T000001")
 
-        self.assertEqual("created", task_summary["task_record"]["task_state"])
+        self.assertEqual("resuming", task_summary["task_record"]["task_state"])
         self.assertEqual("continuation.recorded", task_summary["latest_event"]["event_type"])
+        self.assertEqual("returned", job_summary["job_record"]["job_state"])
+        self.assertEqual(1, storage.latest_attempt_for_job("T000001.J001"))
         self.assertEqual(1, len(continuations))
         self.assertEqual(4, len(job_history))
         self.assertEqual(

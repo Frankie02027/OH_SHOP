@@ -36,6 +36,32 @@ def make_job_start_call() -> dict[str, object]:
     }
 
 
+def make_child_job_request_call(
+    *,
+    job_id: str = "T000001.J001",
+    parent_job_id: str | None = None,
+) -> dict[str, object]:
+    call: dict[str, object] = {
+        "schema_version": "v0.1",
+        "call_type": "child_job.request",
+        "task_id": "T000001",
+        "job_id": job_id,
+        "from_role": "jarvis",
+        "to_role": "alfred",
+        "reported_at": "2026-03-30T12:00:30Z",
+        "payload": {
+            "objective": "Use Robin for browser work.",
+            "reason_for_handoff": "Needs browser lane.",
+            "constraints": ["stay in browser lane"],
+            "expected_output": ["page title"],
+            "success_criteria": ["title captured"],
+        },
+    }
+    if parent_job_id is not None:
+        call["parent_job_id"] = parent_job_id
+    return call
+
+
 def make_result_submit_call() -> dict[str, object]:
     return {
         "schema_version": "v0.1",
@@ -149,8 +175,23 @@ class GarageAlfredProcessorTests(unittest.TestCase):
         result = self.processor.process_call(make_job_start_call())
 
         self.assertEqual("job.started", result.recorded_events[0]["event_type"])
-        self.assertEqual(["job-record", "event-record"], [w[0] for w in result.written_records])
-        self.assertEqual("running", result.written_records[0][1]["job_state"])
+        self.assertEqual(
+            ["task-record", "job-record", "event-record"],
+            [w[0] for w in result.written_records],
+        )
+        self.assertEqual("running", result.written_records[1][1]["job_state"])
+
+    def test_child_job_request_produces_created_dispatched_and_lineage(self) -> None:
+        result = self.processor.process_call(make_child_job_request_call())
+
+        self.assertEqual(
+            ["job.created", "job.dispatched"],
+            [event["event_type"] for event in result.recorded_events],
+        )
+        self.assertEqual("T000001.J002", result.result["job_id"])
+        self.assertEqual("T000001.J001", result.result["parent_job_id"])
+        self.assertEqual("T000001.J001", result.written_records[1][1]["parent_job_id"])
+        self.assertEqual("dispatched", result.written_records[1][1]["job_state"])
 
     def test_result_submit_produces_job_returned_with_same_job_linkage(self) -> None:
         call = make_result_submit_call()
@@ -158,24 +199,24 @@ class GarageAlfredProcessorTests(unittest.TestCase):
 
         self.assertEqual("job.returned", result.recorded_events[0]["event_type"])
         self.assertEqual(call["job_id"], result.recorded_events[0]["job_id"])
-        self.assertEqual(call["job_id"], result.written_records[0][1]["job_id"])
+        self.assertEqual(call["job_id"], result.written_records[1][1]["job_id"])
 
     def test_failure_report_blocked_produces_job_blocked(self) -> None:
         result = self.processor.process_call(make_failure_report_call("blocked"))
         self.assertEqual("job.blocked", result.recorded_events[0]["event_type"])
-        self.assertEqual("blocked", result.written_records[0][1]["job_state"])
+        self.assertEqual("blocked", result.written_records[1][1]["job_state"])
 
     def test_failure_report_failed_produces_job_failed(self) -> None:
         result = self.processor.process_call(make_failure_report_call("failed"))
         self.assertEqual("job.failed", result.recorded_events[0]["event_type"])
-        self.assertEqual("failed", result.written_records[0][1]["job_state"])
+        self.assertEqual("failed", result.written_records[1][1]["job_state"])
 
     def test_checkpoint_create_produces_checkpoint_created_and_checkpoint_record(self) -> None:
         result = self.processor.process_call(make_checkpoint_create_call())
 
         self.assertEqual("checkpoint.created", result.recorded_events[0]["event_type"])
         self.assertEqual(
-            ["checkpoint-record", "event-record"],
+            ["task-record", "checkpoint-record", "event-record"],
             [w[0] for w in result.written_records],
         )
         self.assertEqual("T000001.C001", result.result["checkpoint_id"])
@@ -188,12 +229,12 @@ class GarageAlfredProcessorTests(unittest.TestCase):
             result.recorded_events[0]["event_type"],
         )
         self.assertEqual(
-            ["continuation-record", "event-record"],
+            ["task-record", "continuation-record", "event-record"],
             [w[0] for w in result.written_records],
         )
         self.assertEqual(
             "continuation-note",
-            result.written_records[0][1]["content_ref"]["kind"],
+            result.written_records[1][1]["content_ref"]["kind"],
         )
 
     def test_unsupported_call_type_fails_clearly(self) -> None:
@@ -201,22 +242,20 @@ class GarageAlfredProcessorTests(unittest.TestCase):
             self.processor.process_call(
                 {
                     "schema_version": "v0.1",
-                    "call_type": "child_job.request",
+                    "call_type": "plan.record",
                     "task_id": "T000001",
-                    "job_id": "T000001.J001",
                     "from_role": "jarvis",
                     "to_role": "alfred",
-                    "payload": {
-                        "objective": "Use Robin for browser work.",
-                        "reason_for_handoff": "Needs browser lane.",
-                        "constraints": ["stay in browser lane"],
-                        "expected_output": ["page title"],
-                        "success_criteria": ["title captured"],
+                    "plan_version": 1,
+                    "payload_ref": {
+                        "kind": "tracked-plan",
+                        "path": "/workspace/jarvis/tasks/T000001/plan.json",
+                        "role": "jarvis",
                     },
                 }
             )
 
-        self.assertIn("No handler registered for call_type 'child_job.request'", str(ctx.exception))
+        self.assertIn("No handler registered for call_type 'plan.record'", str(ctx.exception))
 
     def test_invalid_mapped_event_is_blocked_before_side_effect(self) -> None:
         class BrokenTaskCreateProcessor(GarageAlfredProcessor):
@@ -257,6 +296,40 @@ class GarageAlfredProcessorTests(unittest.TestCase):
             self.processor.process_call(bad_call)
 
         self.assertIn("payload_ref or payload.content_ref", str(ctx.exception))
+        self.assertEqual([], self.recorded_events)
+        self.assertEqual([], self.written_records)
+
+    def test_invalid_child_job_event_is_blocked_before_side_effect(self) -> None:
+        class BrokenChildJobProcessor(GarageAlfredProcessor):
+            def _build_job_created_event(
+                self,
+                call: dict[str, object],
+                *,
+                child_job_id: str,
+                parent_job_id: str,
+                event_id: str,
+                recorded_at: str,
+            ) -> dict[str, object]:
+                event = super()._build_job_created_event(
+                    call,
+                    child_job_id=child_job_id,
+                    parent_job_id=parent_job_id,
+                    event_id=event_id,
+                    recorded_at=recorded_at,
+                )
+                event.pop("recorded_at")
+                return event
+
+        processor = BrokenChildJobProcessor(
+            event_recorder=self._record_event,
+            record_writer=self._write_record,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+
+        with self.assertRaises(GarageBoundaryError) as ctx:
+            processor.process_call(make_child_job_request_call())
+
+        self.assertIn("recorded_at", str(ctx.exception))
         self.assertEqual([], self.recorded_events)
         self.assertEqual([], self.written_records)
 

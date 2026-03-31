@@ -40,6 +40,13 @@ class GarageStorageAdapter:
         number = self._reserve_pending_counter("task", self._max_task_number)
         return f"T{number:06d}"
 
+    def mint_job_id(self, task_id: str) -> str:
+        number = self._reserve_pending_counter(
+            f"job:{task_id}",
+            lambda: self._max_job_number(task_id),
+        )
+        return f"{task_id}.J{number:03d}"
+
     def mint_event_id(self, task_id: str) -> str:
         number = self._reserve_pending_counter(
             f"event:{task_id}",
@@ -138,6 +145,13 @@ class GarageStorageAdapter:
         value = self._current_counter_value(f"event:{task_id}", lambda: self._max_event_number(task_id))
         return f"{task_id}.E{value:04d}"
 
+    def peek_next_job_id(self, task_id: str) -> str:
+        value = self._current_counter_value(
+            f"job:{task_id}",
+            lambda: self._max_job_number(task_id),
+        )
+        return f"{task_id}.J{value:03d}"
+
     def peek_next_checkpoint_id(self, task_id: str) -> str:
         value = self._current_counter_value(
             f"checkpoint:{task_id}",
@@ -156,6 +170,36 @@ class GarageStorageAdapter:
             "latest_event": latest_event,
             "event_count": len(history),
         }
+
+    def read_job_state_summary(self, job_id: str) -> dict[str, Any] | None:
+        job_record = self.read_job_record(job_id)
+        if job_record is None:
+            return None
+        history = self.read_event_history(job_id=job_id)
+        latest_event = history[-1] if history else None
+        return {
+            "job_record": job_record,
+            "latest_event": latest_event,
+            "attempt_no": int(job_record.get("attempt_no") or 1),
+            "event_count": len(history),
+        }
+
+    def list_child_jobs(self, parent_job_id: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT data_json FROM job_records ORDER BY job_id ASC"
+        ).fetchall()
+        records = [json.loads(row["data_json"]) for row in rows]
+        return [
+            record
+            for record in records
+            if record.get("parent_job_id") == parent_job_id
+        ]
+
+    def latest_attempt_for_job(self, job_id: str) -> int | None:
+        job_record = self.read_job_record(job_id)
+        if job_record is None:
+            return None
+        return int(job_record.get("attempt_no") or 1)
 
     def _initialize_storage(self) -> None:
         self._conn.executescript(
@@ -227,6 +271,19 @@ class GarageStorageAdapter:
         if row is None:
             return 0
         return int(str(row["task_id"])[1:])
+
+    def _max_job_number(self, task_id: str) -> int:
+        rows = self._conn.execute(
+            "SELECT data_json FROM job_records ORDER BY job_id DESC"
+        ).fetchall()
+        job_ids = [
+            json.loads(row["data_json"])["job_id"]
+            for row in rows
+            if json.loads(row["data_json"]).get("task_id") == task_id
+        ]
+        if not job_ids:
+            return 0
+        return int(str(job_ids[0]).split(".J", 1)[1])
 
     def _max_checkpoint_number(self, task_id: str) -> int:
         row = self._conn.execute(
@@ -353,6 +410,13 @@ class GarageStorageAdapter:
                     next_values.get("task", 1),
                     int(str(task_id)[1:]) + 1,
                 )
+            elif record.schema_name == "job-record":
+                job_id = record.data["job_id"]
+                task_id = record.data["task_id"]
+                next_values[f"job:{task_id}"] = max(
+                    next_values.get(f"job:{task_id}", 1),
+                    int(str(job_id).split(".J", 1)[1]) + 1,
+                )
             elif record.schema_name == "checkpoint-record":
                 checkpoint_id = record.data["checkpoint_id"]
                 task_id = record.data["task_id"]
@@ -410,6 +474,7 @@ def build_storage_backed_alfred_processor(
     processor = GarageAlfredProcessor(
         bundle_applier=storage.apply_official_bundle,
         id_allocator=storage,
+        state_reader=storage,
         now_provider=now_provider,
     )
     return storage, processor

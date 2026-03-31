@@ -25,9 +25,19 @@ class AlfredIdProvider(Protocol):
 
     def mint_task_id(self) -> str: ...
 
+    def mint_job_id(self, task_id: str) -> str: ...
+
     def mint_event_id(self, task_id: str) -> str: ...
 
     def mint_checkpoint_id(self, task_id: str) -> str: ...
+
+
+class AlfredStateReader(Protocol):
+    """Minimal readback surface Alfred uses for current-state continuity."""
+
+    def read_task_record(self, task_id: str) -> dict[str, Any] | None: ...
+
+    def read_job_record(self, job_id: str) -> dict[str, Any] | None: ...
 
 
 @dataclass(frozen=True)
@@ -51,6 +61,7 @@ class AlfredIdAllocator:
     next_task_number: int = 1
 
     def __post_init__(self) -> None:
+        self._next_job_number_by_task: dict[str, int] = defaultdict(int)
         self._next_event_number_by_task: dict[str, int] = defaultdict(int)
         self._next_checkpoint_number_by_task: dict[str, int] = defaultdict(int)
 
@@ -58,6 +69,10 @@ class AlfredIdAllocator:
         task_id = f"T{self.next_task_number:06d}"
         self.next_task_number += 1
         return task_id
+
+    def mint_job_id(self, task_id: str) -> str:
+        self._next_job_number_by_task[task_id] += 1
+        return f"{task_id}.J{self._next_job_number_by_task[task_id]:03d}"
 
     def mint_event_id(self, task_id: str) -> str:
         self._next_event_number_by_task[task_id] += 1
@@ -85,6 +100,7 @@ class GarageAlfredProcessor:
         bundle_applier: Callable[[GarageOfficialBundle], tuple[tuple[Any, ...], tuple[Any, ...]]] | None = None,
         now_provider: Clock | None = None,
         id_allocator: AlfredIdProvider | None = None,
+        state_reader: AlfredStateReader | None = None,
     ) -> None:
         self._bundle_applier = bundle_applier
         if bundle_applier is not None:
@@ -96,6 +112,7 @@ class GarageAlfredProcessor:
         )
         self._now = now_provider or _utc_now_iso
         self._ids = id_allocator or AlfredIdAllocator()
+        self._state_reader = state_reader
         self._register_supported_handlers()
 
     def process_call(self, data: dict[str, Any]) -> GarageProcessingResult:
@@ -125,6 +142,7 @@ class GarageAlfredProcessor:
     def supported_call_types(self) -> tuple[str, ...]:
         return (
             "task.create",
+            "child_job.request",
             "job.start",
             "result.submit",
             "failure.report",
@@ -134,6 +152,9 @@ class GarageAlfredProcessor:
 
     def _register_supported_handlers(self) -> None:
         self._runtime.register_handler("task.create", self._handle_task_create)
+        self._runtime.register_handler(
+            "child_job.request", self._handle_child_job_request
+        )
         self._runtime.register_handler("job.start", self._handle_job_start)
         self._runtime.register_handler("result.submit", self._handle_result_submit)
         self._runtime.register_handler("failure.report", self._handle_failure_report)
@@ -149,12 +170,11 @@ class GarageAlfredProcessor:
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
         event = self._build_task_created_event(call, task_id, event_id, recorded_at)
-        task_record = {
-            "task_id": task_id,
-            "task_state": "created",
-            "created_at": recorded_at,
-            "updated_at": recorded_at,
-        }
+        task_record = self._build_task_record(
+            task_id,
+            recorded_at,
+            task_state="created",
+        )
         return GarageHandlerOutput(
             result={
                 "task_id": task_id,
@@ -168,23 +188,84 @@ class GarageAlfredProcessor:
             ),
         )
 
+    def _handle_child_job_request(self, call: dict[str, Any]) -> GarageHandlerOutput:
+        task_id = call["task_id"]
+        lineage_parent_job_id = str(call.get("parent_job_id") or call["job_id"])
+        child_job_id = self._mint_distinct_child_job_id(
+            task_id,
+            forbidden_job_ids={str(call["job_id"]), lineage_parent_job_id},
+        )
+        recorded_at = self._recorded_at(call)
+        created_event_id = self._ids.mint_event_id(task_id)
+        created_event = self._build_job_created_event(
+            call,
+            child_job_id=child_job_id,
+            parent_job_id=lineage_parent_job_id,
+            event_id=created_event_id,
+            recorded_at=recorded_at,
+        )
+        dispatched_event_id = self._ids.mint_event_id(task_id)
+        dispatched_event = self._build_job_dispatched_event(
+            call,
+            child_job_id=child_job_id,
+            event_id=dispatched_event_id,
+            recorded_at=recorded_at,
+        )
+        task_record = self._build_task_record(
+            task_id,
+            recorded_at,
+            task_state="waiting_on_child",
+            current_job_id=child_job_id,
+        )
+        job_record = self._build_job_record(
+            call,
+            task_id=task_id,
+            job_id=child_job_id,
+            job_state="dispatched",
+            latest_event_id=dispatched_event_id,
+            recorded_at=recorded_at,
+            from_role=call["from_role"],
+            to_role="robin",
+            attempt_no=1,
+            parent_job_id=lineage_parent_job_id,
+        )
+        return GarageHandlerOutput(
+            result={
+                "task_id": task_id,
+                "job_id": child_job_id,
+                "parent_job_id": lineage_parent_job_id,
+                "event_ids": (created_event_id, dispatched_event_id),
+                "event_types": ("job.created", "job.dispatched"),
+            },
+            events=(created_event, dispatched_event),
+            records=(
+                GarageRecordWrite("task-record", task_record),
+                GarageRecordWrite("job-record", job_record),
+                self._event_record_write(created_event),
+                self._event_record_write(dispatched_event),
+            ),
+        )
+
     def _handle_job_start(self, call: dict[str, Any]) -> GarageHandlerOutput:
         task_id = call["task_id"]
         job_id = call["job_id"]
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
         event = self._build_job_started_event(call, event_id, recorded_at)
-        job_record = {
-            "task_id": task_id,
-            "job_id": job_id,
-            "job_state": "running",
-            "from_role": call["from_role"],
-            "to_role": call["to_role"],
-            "latest_event_id": event_id,
-            "created_at": recorded_at,
-            "updated_at": recorded_at,
-        }
-        self._copy_optional_job_fields(call, job_record)
+        task_record = self._build_task_record(
+            task_id,
+            recorded_at,
+            task_state="running",
+            current_job_id=job_id,
+        )
+        job_record = self._build_job_record(
+            call,
+            task_id=task_id,
+            job_id=job_id,
+            job_state="running",
+            latest_event_id=event_id,
+            recorded_at=recorded_at,
+        )
         return GarageHandlerOutput(
             result={
                 "task_id": task_id,
@@ -194,6 +275,7 @@ class GarageAlfredProcessor:
             },
             events=(event,),
             records=(
+                GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
                 self._event_record_write(event),
             ),
@@ -205,18 +287,21 @@ class GarageAlfredProcessor:
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
         event = self._build_job_returned_event(call, event_id, recorded_at)
-        job_record = {
-            "task_id": task_id,
-            "job_id": job_id,
-            "job_state": "returned",
-            "from_role": call["from_role"],
-            "to_role": call["to_role"],
-            "last_reported_status": call["reported_status"],
-            "latest_event_id": event_id,
-            "created_at": recorded_at,
-            "updated_at": recorded_at,
-        }
-        self._copy_optional_job_fields(call, job_record)
+        task_record = self._build_task_record(
+            task_id,
+            recorded_at,
+            task_state="resuming",
+            current_job_id=job_id,
+        )
+        job_record = self._build_job_record(
+            call,
+            task_id=task_id,
+            job_id=job_id,
+            job_state="returned",
+            latest_event_id=event_id,
+            recorded_at=recorded_at,
+            last_reported_status=call["reported_status"],
+        )
         return GarageHandlerOutput(
             result={
                 "task_id": task_id,
@@ -227,6 +312,7 @@ class GarageAlfredProcessor:
             },
             events=(event,),
             records=(
+                GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
                 self._event_record_write(event),
             ),
@@ -255,18 +341,21 @@ class GarageAlfredProcessor:
             event_type=event_type,
             recorded_at=recorded_at,
         )
-        job_record = {
-            "task_id": task_id,
-            "job_id": job_id,
-            "job_state": job_state,
-            "from_role": call["from_role"],
-            "to_role": call["to_role"],
-            "last_reported_status": reported_status,
-            "latest_event_id": event_id,
-            "created_at": recorded_at,
-            "updated_at": recorded_at,
-        }
-        self._copy_optional_job_fields(call, job_record)
+        task_record = self._build_task_record(
+            task_id,
+            recorded_at,
+            task_state="resuming",
+            current_job_id=job_id,
+        )
+        job_record = self._build_job_record(
+            call,
+            task_id=task_id,
+            job_id=job_id,
+            job_state=job_state,
+            latest_event_id=event_id,
+            recorded_at=recorded_at,
+            last_reported_status=reported_status,
+        )
         return GarageHandlerOutput(
             result={
                 "task_id": task_id,
@@ -277,6 +366,7 @@ class GarageAlfredProcessor:
             },
             events=(event,),
             records=(
+                GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
                 self._event_record_write(event),
             ),
@@ -313,6 +403,12 @@ class GarageAlfredProcessor:
         key_ref_bundle = self._build_key_ref_bundle(call)
         if key_ref_bundle:
             checkpoint_record["key_ref_bundle"] = key_ref_bundle
+        task_record = self._build_task_record(
+            task_id,
+            recorded_at,
+            latest_checkpoint_id=checkpoint_id,
+            current_plan_version=call.get("plan_version"),
+        )
         return GarageHandlerOutput(
             result={
                 "task_id": task_id,
@@ -322,6 +418,7 @@ class GarageAlfredProcessor:
             },
             events=(event,),
             records=(
+                GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("checkpoint-record", checkpoint_record),
                 self._event_record_write(event),
             ),
@@ -347,6 +444,12 @@ class GarageAlfredProcessor:
             continuation_record["artifact_refs"] = call["artifact_refs"]
         if "workspace_refs" in call:
             continuation_record["workspace_refs"] = call["workspace_refs"]
+        task_record = self._build_task_record(
+            task_id,
+            recorded_at,
+            latest_continuation_ref=continuation_record["content_ref"],
+            current_plan_version=call.get("plan_version"),
+        )
         return GarageHandlerOutput(
             result={
                 "task_id": task_id,
@@ -355,10 +458,51 @@ class GarageAlfredProcessor:
             },
             events=(event,),
             records=(
+                GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("continuation-record", continuation_record),
                 self._event_record_write(event),
             ),
         )
+
+    def _build_job_created_event(
+        self,
+        call: dict[str, Any],
+        *,
+        child_job_id: str,
+        parent_job_id: str,
+        event_id: str,
+        recorded_at: str,
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": call["schema_version"],
+            "event_type": "job.created",
+            "event_id": event_id,
+            "task_id": call["task_id"],
+            "job_id": child_job_id,
+            "parent_job_id": parent_job_id,
+            "from_role": call["from_role"],
+            "to_role": "robin",
+            "recorded_at": recorded_at,
+        }
+
+    def _build_job_dispatched_event(
+        self,
+        call: dict[str, Any],
+        *,
+        child_job_id: str,
+        event_id: str,
+        recorded_at: str,
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": call["schema_version"],
+            "event_type": "job.dispatched",
+            "event_id": event_id,
+            "task_id": call["task_id"],
+            "job_id": child_job_id,
+            "from_role": "alfred",
+            "to_role": "robin",
+            "recorded_at": recorded_at,
+        }
 
     def _build_task_created_event(
         self,
@@ -503,6 +647,98 @@ class GarageAlfredProcessor:
         ):
             if field_name in call:
                 job_record[field_name] = call[field_name]
+
+    def _build_task_record(
+        self,
+        task_id: str,
+        recorded_at: str,
+        *,
+        task_state: str | None = None,
+        current_job_id: str | None | object = None,
+        latest_checkpoint_id: str | None | object = None,
+        latest_continuation_ref: dict[str, Any] | None | object = None,
+        current_plan_version: int | None = None,
+    ) -> dict[str, Any]:
+        existing = self._existing_task_record(task_id)
+        record = dict(existing or {"task_id": task_id})
+        record.setdefault("created_at", recorded_at)
+        if task_state is not None:
+            record["task_state"] = task_state
+        else:
+            record.setdefault("task_state", "created")
+        if current_job_id is not None:
+            record["current_job_id"] = current_job_id
+        if latest_checkpoint_id is not None:
+            record["latest_checkpoint_id"] = latest_checkpoint_id
+        if latest_continuation_ref is not None:
+            record["latest_continuation_ref"] = latest_continuation_ref
+        if current_plan_version is not None:
+            record["current_plan_version"] = current_plan_version
+        record["updated_at"] = recorded_at
+        return record
+
+    def _build_job_record(
+        self,
+        call: dict[str, Any],
+        *,
+        task_id: str,
+        job_id: str,
+        job_state: str,
+        latest_event_id: str,
+        recorded_at: str,
+        from_role: str | None = None,
+        to_role: str | None = None,
+        attempt_no: int | None = None,
+        parent_job_id: str | None = None,
+        last_reported_status: str | None = None,
+    ) -> dict[str, Any]:
+        existing = self._existing_job_record(job_id)
+        record = dict(existing or {"task_id": task_id, "job_id": job_id})
+        record["task_id"] = task_id
+        record["job_id"] = job_id
+        record.setdefault("created_at", recorded_at)
+        record["job_state"] = job_state
+        record["latest_event_id"] = latest_event_id
+        record["updated_at"] = recorded_at
+        record["from_role"] = from_role or str(record.get("from_role") or call["from_role"])
+        record["to_role"] = to_role or str(record.get("to_role") or call["to_role"])
+        if parent_job_id is not None:
+            record["parent_job_id"] = parent_job_id
+        elif "parent_job_id" in call:
+            record["parent_job_id"] = call["parent_job_id"]
+        if attempt_no is not None:
+            record["attempt_no"] = attempt_no
+        elif "attempt_no" in call:
+            record["attempt_no"] = call["attempt_no"]
+        elif "attempt_no" not in record and job_state in {"dispatched", "running"}:
+            record["attempt_no"] = 1
+        if last_reported_status is not None:
+            record["last_reported_status"] = last_reported_status
+        self._copy_optional_job_fields(call, record)
+        return record
+
+    def _mint_distinct_child_job_id(
+        self,
+        task_id: str,
+        *,
+        forbidden_job_ids: set[str],
+    ) -> str:
+        candidate = self._ids.mint_job_id(task_id)
+        while candidate in forbidden_job_ids:
+            candidate = self._ids.mint_job_id(task_id)
+        return candidate
+
+    def _existing_task_record(self, task_id: str) -> dict[str, Any] | None:
+        if self._state_reader is None:
+            return None
+        record = self._state_reader.read_task_record(task_id)
+        return dict(record) if isinstance(record, dict) else None
+
+    def _existing_job_record(self, job_id: str) -> dict[str, Any] | None:
+        if self._state_reader is None:
+            return None
+        record = self._state_reader.read_job_record(job_id)
+        return dict(record) if isinstance(record, dict) else None
 
     def _recorded_at(self, call: dict[str, Any]) -> str:
         return str(call.get("reported_at") or self._now())
