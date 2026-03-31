@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from ops.garage_runtime import (
     GarageHandlerOutput,
@@ -18,6 +18,16 @@ from ops.garage_runtime import (
 
 
 Clock = Callable[[], str]
+
+
+class AlfredIdProvider(Protocol):
+    """The small ID minting surface Alfred needs in this slice."""
+
+    def mint_task_id(self) -> str: ...
+
+    def mint_event_id(self, task_id: str) -> str: ...
+
+    def mint_checkpoint_id(self, task_id: str) -> str: ...
 
 
 class GarageAlfredProcessingError(RuntimeError):
@@ -63,7 +73,7 @@ class GarageAlfredProcessor:
         event_recorder: Callable[[dict[str, Any]], Any] | None = None,
         record_writer: Callable[[str, dict[str, Any]], Any] | None = None,
         now_provider: Clock | None = None,
-        id_allocator: AlfredIdAllocator | None = None,
+        id_allocator: AlfredIdProvider | None = None,
     ) -> None:
         self._runtime = GarageRuntimeProcessor(
             event_recorder=event_recorder,
