@@ -41,6 +41,59 @@ def make_job_start_call(
     return call
 
 
+def make_plan_record_call(
+    *,
+    task_id: str = "T000001",
+    job_id: str | None = "T000001.J001",
+    plan_version: int = 1,
+    current_active_item: str | None = "I002",
+    items: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "task_id": task_id,
+        "plan_version": plan_version,
+        "created_by": "jarvis",
+        "plan_status": "active",
+        "items": items
+        or [
+            {
+                "item_id": "I001",
+                "title": "Understand state",
+                "description": "Collect enough context to proceed safely.",
+                "status": "verified",
+            },
+            {
+                "item_id": "I002",
+                "title": "Run Robin child leg",
+                "description": "Delegate the browser step to Robin.",
+                "status": "needs_child_job",
+                "depends_on": ["I001"],
+            },
+            {
+                "item_id": "I003",
+                "title": "Resume and verify",
+                "description": "Resume locally after the child returns.",
+                "status": "todo",
+                "depends_on": ["I002"],
+            },
+        ],
+    }
+    if current_active_item is not None:
+        payload["current_active_item"] = current_active_item
+    call: dict[str, object] = {
+        "schema_version": "v0.1",
+        "call_type": "plan.record",
+        "task_id": task_id,
+        "from_role": "jarvis",
+        "to_role": "alfred",
+        "plan_version": plan_version,
+        "payload": payload,
+    }
+    if job_id is not None:
+        call["job_id"] = job_id
+    return call
+
+
 def make_child_job_request_call(
     *,
     task_id: str = "T000001",
@@ -95,6 +148,7 @@ def make_checkpoint_create_call(
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
     plan_version: int | None = None,
+    current_active_item: str | None = None,
 ) -> dict[str, object]:
     call: dict[str, object] = {
         "schema_version": "v0.1",
@@ -107,6 +161,8 @@ def make_checkpoint_create_call(
     }
     if plan_version is not None:
         call["plan_version"] = plan_version
+    if current_active_item is not None:
+        call["payload"]["current_active_item"] = current_active_item
     return call
 
 
@@ -606,6 +662,151 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("checkpoint-record", resume_anchor["anchor_kind"])
         self.assertEqual(checkpoint.result["checkpoint_id"], resume_anchor["record"]["checkpoint_id"])
         self.assertEqual(3, resume_anchor["plan_version"])
+
+    def test_active_plan_linkage_and_item_states_are_reconstructable(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(make_plan_record_call(plan_version=1, current_active_item="I002"))
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=2,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Understand state",
+                        "description": "Collect enough context to proceed safely.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run Robin child leg",
+                        "description": "Delegate the browser step to Robin.",
+                        "status": "blocked",
+                        "depends_on": ["I001"],
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume and verify",
+                        "description": "Resume locally after the child returns.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+
+        active_plan = storage.read_active_plan_summary("T000001")
+        linkage = storage.active_plan_linkage_summary("T000001")
+        active_item = storage.resolve_active_plan_item("T000001")
+        verified_item = storage.read_plan_item_summary("T000001", 2, "I001")
+        blocked_item = storage.read_plan_item_summary("T000001", 2, "I002")
+        pending_item = storage.read_plan_item_summary("T000001", 2, "I003")
+        prior_active_item = storage.read_plan_item_summary("T000001", 1, "I002")
+        storage.close()
+
+        self.assertEqual(2, active_plan["plan_version"])
+        self.assertEqual("I002", active_plan["current_active_item"])
+        self.assertEqual("I002", active_item["item_id"])
+        self.assertEqual("I002", linkage["current_active_item"])
+        self.assertEqual("I002", linkage["current_active_item_summary"]["item_id"])
+        self.assertEqual("I002", linkage["next_plan_resume_target"]["item"]["item_id"])
+        self.assertTrue(verified_item["is_completed"])
+        self.assertTrue(prior_active_item["is_active"])
+        self.assertTrue(blocked_item["is_blocked"])
+        self.assertFalse(blocked_item["is_completed"])
+        self.assertTrue(pending_item["is_pending"])
+        self.assertFalse(pending_item["dependencies_resolved"])
+
+    def test_task_summary_and_resume_target_become_plan_aware(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(make_plan_record_call(plan_version=1, current_active_item="I002"))
+        child = processor.process_call(make_child_job_request_call())
+        processor.process_call(
+            make_checkpoint_create_call(
+                job_id=child.result["job_id"],
+                plan_version=1,
+                current_active_item="I002",
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                job_id=child.result["job_id"],
+                plan_version=1,
+            )
+        )
+
+        task_summary = storage.latest_task_state_summary("T000001")
+        resume_anchor = storage.resolve_task_resume_anchor("T000001")
+        next_target = storage.resolve_next_plan_resume_target("T000001")
+        active_plan = storage.read_active_plan_summary("T000001")
+        storage.close()
+
+        self.assertEqual(1, task_summary["current_plan_version"])
+        self.assertEqual("I002", task_summary["current_active_plan_item"]["item_id"])
+        self.assertEqual("I002", task_summary["active_plan_linkage"]["current_active_item"])
+        self.assertEqual("I002", task_summary["latest_checkpoint_summary"]["current_active_item"])
+        self.assertEqual("I002", task_summary["latest_continuation_summary"]["current_active_item"])
+        self.assertEqual("continuation-record", resume_anchor["anchor_kind"])
+        self.assertEqual("I002", resume_anchor["current_active_item"])
+        self.assertEqual("I002", next_target["item"]["item_id"])
+        self.assertEqual("I002", next_target["resume_anchor"]["current_active_item"])
+        self.assertEqual("I002", active_plan["current_active_item_summary"]["item_id"])
+
+    def test_next_plan_resume_target_falls_back_to_ready_pending_item(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item=None,
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Understand state",
+                        "description": "Collect enough context to proceed safely.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Resume local implementation",
+                        "description": "Continue locally once context is verified.",
+                        "status": "todo",
+                        "depends_on": ["I001"],
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Final verification",
+                        "description": "Run final checks after implementation.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+
+        active_item = storage.resolve_active_plan_item("T000001")
+        next_target = storage.resolve_next_plan_resume_target("T000001")
+        resume_anchor = storage.resolve_task_resume_anchor("T000001")
+        storage.close()
+
+        self.assertIsNone(active_item)
+        self.assertEqual("I002", next_target["item"]["item_id"])
+        self.assertTrue(next_target["item"]["dependencies_resolved"])
+        self.assertEqual("job-state-event", resume_anchor["anchor_kind"])
 
 
 if __name__ == "__main__":

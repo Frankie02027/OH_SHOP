@@ -8,7 +8,6 @@ from ops.garage_boundaries import GarageBoundaryError
 from ops.garage_alfred import (
     GarageAlfredProcessingError,
     GarageAlfredProcessor,
-    GarageProcessorError,
 )
 
 
@@ -34,6 +33,57 @@ def make_job_start_call() -> dict[str, object]:
         "to_role": "alfred",
         "reported_at": "2026-03-30T12:01:00Z",
     }
+
+
+def make_plan_record_call(
+    *,
+    task_id: str = "T000001",
+    job_id: str | None = "T000001.J001",
+    plan_version: int = 1,
+    current_active_item: str | None = "I002",
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "task_id": task_id,
+        "plan_version": plan_version,
+        "created_by": "jarvis",
+        "plan_status": "active",
+        "items": [
+            {
+                "item_id": "I001",
+                "title": "Collect context",
+                "description": "Understand the current runtime slice.",
+                "status": "verified",
+            },
+            {
+                "item_id": "I002",
+                "title": "Delegate browser work",
+                "description": "Run the Robin child leg.",
+                "status": "needs_child_job",
+                "depends_on": ["I001"],
+            },
+            {
+                "item_id": "I003",
+                "title": "Resume and verify",
+                "description": "Resume after Robin returns and verify outputs.",
+                "status": "todo",
+                "depends_on": ["I002"],
+            },
+        ],
+    }
+    if current_active_item is not None:
+        payload["current_active_item"] = current_active_item
+    call: dict[str, object] = {
+        "schema_version": "v0.1",
+        "call_type": "plan.record",
+        "task_id": task_id,
+        "from_role": "jarvis",
+        "to_role": "alfred",
+        "plan_version": plan_version,
+        "payload": payload,
+    }
+    if job_id is not None:
+        call["job_id"] = job_id
+    return call
 
 
 def make_child_job_request_call(
@@ -171,6 +221,17 @@ class GarageAlfredProcessorTests(unittest.TestCase):
         self.assertEqual("T000001", result.result["task_id"])
         self.assertEqual(["task-record", "event-record"], [w[0] for w in result.written_records])
 
+    def test_plan_record_produces_plan_recorded_and_tracked_plan_record(self) -> None:
+        result = self.processor.process_call(make_plan_record_call())
+
+        self.assertEqual("plan.recorded", result.recorded_events[0]["event_type"])
+        self.assertEqual(
+            ["task-record", "tracked-plan", "event-record"],
+            [w[0] for w in result.written_records],
+        )
+        self.assertEqual(1, result.written_records[1][1]["plan_version"])
+        self.assertEqual("I002", result.written_records[1][1]["current_active_item"])
+
     def test_job_start_produces_job_started_and_job_record_path(self) -> None:
         result = self.processor.process_call(make_job_start_call())
 
@@ -237,8 +298,8 @@ class GarageAlfredProcessorTests(unittest.TestCase):
             result.written_records[1][1]["content_ref"]["kind"],
         )
 
-    def test_unsupported_call_type_fails_clearly(self) -> None:
-        with self.assertRaises(GarageProcessorError) as ctx:
+    def test_plan_record_with_payload_ref_only_fails_clearly(self) -> None:
+        with self.assertRaises(GarageAlfredProcessingError) as ctx:
             self.processor.process_call(
                 {
                     "schema_version": "v0.1",
@@ -255,7 +316,7 @@ class GarageAlfredProcessorTests(unittest.TestCase):
                 }
             )
 
-        self.assertIn("No handler registered for call_type 'plan.record'", str(ctx.exception))
+        self.assertIn("requires inline payload", str(ctx.exception))
 
     def test_invalid_mapped_event_is_blocked_before_side_effect(self) -> None:
         class BrokenTaskCreateProcessor(GarageAlfredProcessor):

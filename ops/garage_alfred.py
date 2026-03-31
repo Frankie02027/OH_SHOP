@@ -142,6 +142,7 @@ class GarageAlfredProcessor:
     def supported_call_types(self) -> tuple[str, ...]:
         return (
             "task.create",
+            "plan.record",
             "child_job.request",
             "job.start",
             "result.submit",
@@ -152,6 +153,7 @@ class GarageAlfredProcessor:
 
     def _register_supported_handlers(self) -> None:
         self._runtime.register_handler("task.create", self._handle_task_create)
+        self._runtime.register_handler("plan.record", self._handle_plan_record)
         self._runtime.register_handler(
             "child_job.request", self._handle_child_job_request
         )
@@ -184,6 +186,60 @@ class GarageAlfredProcessor:
             events=(event,),
             records=(
                 GarageRecordWrite("task-record", task_record),
+                self._event_record_write(event),
+            ),
+        )
+
+    def _handle_plan_record(self, call: dict[str, Any]) -> GarageHandlerOutput:
+        payload = call.get("payload")
+        if not isinstance(payload, dict):
+            raise GarageAlfredProcessingError(
+                "plan.record requires inline payload for tracked-plan reconstruction in this slice"
+            )
+        task_id = call["task_id"]
+        plan_version = int(call["plan_version"])
+        if payload.get("task_id") != task_id:
+            raise GarageAlfredProcessingError(
+                "plan.record payload.task_id must match envelope task_id"
+            )
+        if int(payload.get("plan_version") or 0) != plan_version:
+            raise GarageAlfredProcessingError(
+                "plan.record payload.plan_version must match envelope plan_version"
+            )
+        if "job_id" in call and "job_id" in payload and payload["job_id"] != call["job_id"]:
+            raise GarageAlfredProcessingError(
+                "plan.record payload.job_id must match envelope job_id when both are present"
+            )
+
+        recorded_at = self._recorded_at(call)
+        event_id = self._ids.mint_event_id(task_id)
+        tracked_plan = dict(payload)
+        tracked_plan.setdefault("created_at", recorded_at)
+        tracked_plan["updated_at"] = recorded_at
+        if "job_id" in call and "job_id" not in tracked_plan:
+            tracked_plan["job_id"] = call["job_id"]
+
+        event = self._build_plan_recorded_event(
+            call,
+            event_id=event_id,
+            recorded_at=recorded_at,
+        )
+        task_record = self._build_task_record(
+            task_id,
+            recorded_at,
+            current_plan_version=plan_version,
+        )
+        return GarageHandlerOutput(
+            result={
+                "task_id": task_id,
+                "plan_version": plan_version,
+                "event_id": event_id,
+                "event_type": "plan.recorded",
+            },
+            events=(event,),
+            records=(
+                GarageRecordWrite("task-record", task_record),
+                GarageRecordWrite("tracked-plan", tracked_plan),
                 self._event_record_write(event),
             ),
         )
@@ -515,6 +571,28 @@ class GarageAlfredProcessor:
             "to_role": "robin",
             "recorded_at": recorded_at,
         }
+
+    def _build_plan_recorded_event(
+        self,
+        call: dict[str, Any],
+        *,
+        event_id: str,
+        recorded_at: str,
+    ) -> dict[str, Any]:
+        event = {
+            "schema_version": call["schema_version"],
+            "event_type": "plan.recorded",
+            "event_id": event_id,
+            "task_id": call["task_id"],
+            "plan_version": call["plan_version"],
+            "related_call_type": "plan.record",
+            "recorded_at": recorded_at,
+        }
+        if "job_id" in call:
+            event["job_id"] = call["job_id"]
+        if "payload_ref" in call:
+            event["payload_ref"] = call["payload_ref"]
+        return event
 
     def _build_task_created_event(
         self,

@@ -101,6 +101,19 @@ class GarageStorageAdapter:
     def read_checkpoint_record(self, checkpoint_id: str) -> dict[str, Any] | None:
         return self._read_json_record("checkpoint_records", "checkpoint_id", checkpoint_id)
 
+    def read_tracked_plan(self, task_id: str, plan_version: int) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            """
+            SELECT data_json
+            FROM tracked_plans
+            WHERE task_id = ? AND plan_version = ?
+            """,
+            (task_id, plan_version),
+        ).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["data_json"])
+
     def list_continuation_records(self, task_id: str | None = None) -> list[dict[str, Any]]:
         query = "SELECT data_json FROM continuation_records"
         params: tuple[Any, ...] = ()
@@ -174,6 +187,9 @@ class GarageStorageAdapter:
             else None
         )
         plan_linkage = self.active_plan_linkage_summary(task_id)
+        active_plan_summary = self.read_active_plan_summary(task_id)
+        current_active_plan_item = self.resolve_active_plan_item(task_id)
+        resume_anchor = self.resolve_task_resume_anchor(task_id)
         return {
             "task_record": task_record,
             "latest_event": latest_event,
@@ -189,10 +205,23 @@ class GarageStorageAdapter:
             "latest_continuation": latest_continuation,
             "current_plan_version": task_record.get("current_plan_version"),
             "active_plan_linkage": plan_linkage,
+            "active_plan_summary": active_plan_summary,
+            "current_active_plan_item": current_active_plan_item,
             "is_waiting_on_child": task_record.get("task_state") == "waiting_on_child",
             "is_resuming": task_record.get("task_state") == "resuming",
             "is_running": task_record.get("task_state") == "running",
-            "has_resume_anchor": self.resolve_task_resume_anchor(task_id) is not None,
+            "resume_anchor": resume_anchor,
+            "has_resume_anchor": resume_anchor is not None,
+            "latest_checkpoint_summary": self._checkpoint_anchor_summary(
+                self.read_checkpoint_record(latest_checkpoint_id)
+                if isinstance(latest_checkpoint_id, str)
+                else None
+            ),
+            "latest_continuation_summary": self._continuation_anchor_summary(
+                latest_continuation,
+                active_plan_summary,
+            ),
+            "next_plan_resume_target": self.resolve_next_plan_resume_target(task_id),
         }
 
     def read_job_state_summary(self, job_id: str) -> dict[str, Any] | None:
@@ -254,6 +283,63 @@ class GarageStorageAdapter:
             return None
         return continuations[-1]
 
+    def read_active_plan_summary(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        plan_version = task_record.get("current_plan_version")
+        if not isinstance(plan_version, int):
+            return None
+        plan = self.read_tracked_plan(task_id, plan_version)
+        if plan is None:
+            return None
+        items = [self._plan_item_summary(plan, item) for item in plan.get("items", [])]
+        return {
+            "task_id": task_id,
+            "plan_version": plan_version,
+            "plan_status": plan.get("plan_status"),
+            "current_active_item": plan.get("current_active_item"),
+            "plan": plan,
+            "items": items,
+            "current_active_item_summary": self.resolve_active_plan_item(task_id),
+        }
+
+    def read_plan_item_summary(
+        self,
+        task_id: str,
+        plan_version: int,
+        item_id: str,
+    ) -> dict[str, Any] | None:
+        plan = self.read_tracked_plan(task_id, plan_version)
+        if plan is None:
+            return None
+        for item in plan.get("items", []):
+            if item.get("item_id") == item_id:
+                return self._plan_item_summary(plan, item)
+        return None
+
+    def resolve_active_plan_item(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        plan_version = task_record.get("current_plan_version")
+        if not isinstance(plan_version, int):
+            return None
+        plan = self.read_tracked_plan(task_id, plan_version)
+        if plan is None:
+            return None
+        current_active_item = plan.get("current_active_item")
+        if isinstance(current_active_item, str):
+            return self.read_plan_item_summary(task_id, plan_version, current_active_item)
+        active_candidates = [
+            self._plan_item_summary(plan, item)
+            for item in plan.get("items", [])
+            if item.get("status") in {"in_progress", "needs_child_job", "blocked"}
+        ]
+        if len(active_candidates) == 1:
+            return active_candidates[0]
+        return None
+
     def active_plan_linkage_summary(self, task_id: str) -> dict[str, Any] | None:
         task_record = self.read_task_record(task_id)
         if task_record is None:
@@ -263,9 +349,21 @@ class GarageStorageAdapter:
         if isinstance(latest_checkpoint_id, str):
             latest_checkpoint = self.read_checkpoint_record(latest_checkpoint_id)
         latest_continuation = self.latest_continuation_for_task(task_id)
+        active_plan_summary = self.read_active_plan_summary(task_id)
         return {
             "task_id": task_id,
             "current_plan_version": task_record.get("current_plan_version"),
+            "active_plan_summary": active_plan_summary,
+            "current_active_item": (
+                active_plan_summary.get("current_active_item")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
+            "current_active_item_summary": (
+                active_plan_summary.get("current_active_item_summary")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
             "latest_checkpoint_id": latest_checkpoint_id,
             "latest_checkpoint_plan_version": (
                 latest_checkpoint.get("plan_version") if latest_checkpoint else None
@@ -275,6 +373,7 @@ class GarageStorageAdapter:
             ),
             "latest_checkpoint": latest_checkpoint,
             "latest_continuation": latest_continuation,
+            "next_plan_resume_target": self.resolve_next_plan_resume_target(task_id),
         }
 
     def resolve_task_resume_anchor(self, task_id: str) -> dict[str, Any] | None:
@@ -283,11 +382,15 @@ class GarageStorageAdapter:
             return None
         latest_continuation = self.latest_continuation_for_task(task_id)
         if isinstance(latest_continuation, dict):
+            active_plan_item = self.resolve_active_plan_item(task_id)
             return {
                 "anchor_kind": "continuation-record",
                 "task_id": task_id,
                 "job_id": latest_continuation.get("job_id"),
                 "plan_version": latest_continuation.get("plan_version"),
+                "current_active_item": (
+                    active_plan_item.get("item_id") if isinstance(active_plan_item, dict) else None
+                ),
                 "record": latest_continuation,
             }
         latest_checkpoint = None
@@ -300,6 +403,7 @@ class GarageStorageAdapter:
                 "task_id": task_id,
                 "job_id": latest_checkpoint.get("job_id"),
                 "plan_version": latest_checkpoint.get("plan_version"),
+                "current_active_item": latest_checkpoint.get("current_active_item"),
                 "record": latest_checkpoint,
             }
         current_job_id = task_record.get("current_job_id")
@@ -314,8 +418,33 @@ class GarageStorageAdapter:
                 "task_id": task_id,
                 "job_id": current_job["job_record"]["job_id"],
                 "plan_version": task_record.get("current_plan_version"),
+                "current_active_item": None,
                 "record": current_job["latest_state_event"],
             }
+        return None
+
+    def resolve_next_plan_resume_target(self, task_id: str) -> dict[str, Any] | None:
+        active_plan_summary = self.read_active_plan_summary(task_id)
+        if active_plan_summary is None:
+            return None
+        current_item = active_plan_summary.get("current_active_item_summary")
+        resume_anchor = self.resolve_task_resume_anchor(task_id)
+        if isinstance(current_item, dict):
+            return {
+                "task_id": task_id,
+                "plan_version": active_plan_summary["plan_version"],
+                "item": current_item,
+                "resume_anchor": resume_anchor,
+            }
+        items = active_plan_summary.get("items", [])
+        for item in items:
+            if item["is_pending"] and item["dependencies_resolved"]:
+                return {
+                    "task_id": task_id,
+                    "plan_version": active_plan_summary["plan_version"],
+                    "item": item,
+                    "resume_anchor": resume_anchor,
+                }
         return None
 
     @staticmethod
@@ -347,6 +476,76 @@ class GarageStorageAdapter:
                 return latest_state_event
         return latest_event
 
+    @staticmethod
+    def _plan_item_summary(
+        plan: dict[str, Any],
+        item: dict[str, Any],
+    ) -> dict[str, Any]:
+        status = str(item["status"])
+        return {
+            "item": item,
+            "item_id": item["item_id"],
+            "title": item["title"],
+            "status": status,
+            "depends_on": tuple(item.get("depends_on", ())),
+            "is_pending": status == "todo",
+            "is_active": status in {"in_progress", "needs_child_job"},
+            "is_completed": status in {"done_unverified", "verified"},
+            "is_blocked": status == "blocked",
+            "dependencies_resolved": GarageStorageAdapter._dependencies_resolved(
+                plan.get("items", []),
+                item,
+            ),
+        }
+
+    @staticmethod
+    def _dependencies_resolved(
+        items: list[dict[str, Any]],
+        item: dict[str, Any],
+    ) -> bool:
+        items_by_id = {entry["item_id"]: entry for entry in items if "item_id" in entry}
+        for dependency_id in item.get("depends_on", []):
+            dependency = items_by_id.get(dependency_id)
+            if dependency is None:
+                return False
+            if dependency.get("status") not in {"verified", "abandoned"}:
+                return False
+        return True
+
+    @staticmethod
+    def _checkpoint_anchor_summary(
+        checkpoint_record: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if checkpoint_record is None:
+            return None
+        return {
+            "checkpoint_id": checkpoint_record["checkpoint_id"],
+            "job_id": checkpoint_record.get("job_id"),
+            "plan_version": checkpoint_record.get("plan_version"),
+            "current_active_item": checkpoint_record.get("current_active_item"),
+            "resume_point": checkpoint_record.get("resume_point"),
+            "reason": checkpoint_record.get("reason"),
+            "record": checkpoint_record,
+        }
+
+    @staticmethod
+    def _continuation_anchor_summary(
+        continuation_record: dict[str, Any] | None,
+        active_plan_summary: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if continuation_record is None:
+            return None
+        current_active_item = None
+        if isinstance(active_plan_summary, dict):
+            current_active_item = active_plan_summary.get("current_active_item")
+        return {
+            "job_id": continuation_record.get("job_id"),
+            "plan_version": continuation_record.get("plan_version"),
+            "current_active_item": current_active_item,
+            "content_ref": continuation_record.get("content_ref"),
+            "record": continuation_record,
+        }
+
     def _initialize_storage(self) -> None:
         self._conn.executescript(
             """
@@ -368,6 +567,13 @@ class GarageStorageAdapter:
             CREATE TABLE IF NOT EXISTS checkpoint_records (
                 checkpoint_id TEXT PRIMARY KEY,
                 data_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS tracked_plans (
+                task_id TEXT NOT NULL,
+                plan_version INTEGER NOT NULL,
+                data_json TEXT NOT NULL,
+                PRIMARY KEY(task_id, plan_version)
             );
 
             CREATE TABLE IF NOT EXISTS continuation_records (
@@ -511,6 +717,8 @@ class GarageStorageAdapter:
             self._upsert_json_record("task_records", "task_id", data["task_id"], data)
         elif schema_name == "job-record":
             self._upsert_json_record("job_records", "job_id", data["job_id"], data)
+        elif schema_name == "tracked-plan":
+            self._upsert_tracked_plan(data)
         elif schema_name == "checkpoint-record":
             self._upsert_json_record(
                 "checkpoint_records",
@@ -543,6 +751,20 @@ class GarageStorageAdapter:
                 data["task_id"],
                 data.get("job_id"),
                 data["recorded_at"],
+                json.dumps(data, sort_keys=True),
+            ),
+        )
+
+    def _upsert_tracked_plan(self, data: dict[str, Any]) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO tracked_plans(task_id, plan_version, data_json)
+            VALUES(?, ?, ?)
+            ON CONFLICT(task_id, plan_version) DO UPDATE SET data_json = excluded.data_json
+            """,
+            (
+                data["task_id"],
+                data["plan_version"],
                 json.dumps(data, sort_keys=True),
             ),
         )
