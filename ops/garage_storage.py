@@ -214,6 +214,7 @@ class GarageStorageAdapter:
         current_active_plan_item = self.resolve_active_plan_item(task_id)
         relevant_plan_item = self.resolve_relevant_plan_item(task_id)
         resume_anchor = self.resolve_task_resume_anchor(task_id)
+        task_policy = self.effective_task_policy_summary(task_id)
         return {
             "task_record": task_record,
             "latest_event": latest_event,
@@ -305,6 +306,48 @@ class GarageStorageAdapter:
                 if isinstance(active_plan_summary, dict)
                 else None
             ),
+            "effective_task_policy": task_policy,
+            "dominant_target": (
+                task_policy.get("dominant_target") if isinstance(task_policy, dict) else None
+            ),
+            "dominant_target_kind": (
+                task_policy.get("dominant_target_kind") if isinstance(task_policy, dict) else None
+            ),
+            "dominant_blocker": (
+                task_policy.get("dominant_blocker") if isinstance(task_policy, dict) else None
+            ),
+            "dominant_blocker_kind": (
+                task_policy.get("dominant_blocker_kind") if isinstance(task_policy, dict) else None
+            ),
+            "effective_task_posture": (
+                task_policy.get("effective_task_posture") if isinstance(task_policy, dict) else None
+            ),
+            "effective_waiting_on_proof": (
+                task_policy.get("effective_waiting_on_proof") if isinstance(task_policy, dict) else False
+            ),
+            "effective_waiting_on_review": (
+                task_policy.get("effective_waiting_on_review") if isinstance(task_policy, dict) else False
+            ),
+            "effective_blocked_evidence_review": (
+                task_policy.get("effective_blocked_evidence_review") if isinstance(task_policy, dict) else False
+            ),
+            "effective_waiting_on_child": (
+                task_policy.get("effective_waiting_on_child") if isinstance(task_policy, dict) else False
+            ),
+            "effective_running": (
+                task_policy.get("effective_running") if isinstance(task_policy, dict) else False
+            ),
+            "effective_ready_for_next": (
+                task_policy.get("effective_ready_for_next") if isinstance(task_policy, dict) else False
+            ),
+            "current_job_is_primary_focus": (
+                task_policy.get("current_job_is_primary_focus") if isinstance(task_policy, dict) else False
+            ),
+            "relevant_plan_item_is_primary_focus": (
+                task_policy.get("relevant_plan_item_is_primary_focus")
+                if isinstance(task_policy, dict)
+                else False
+            ),
         }
 
     def read_job_state_summary(self, job_id: str) -> dict[str, Any] | None:
@@ -319,6 +362,26 @@ class GarageStorageAdapter:
         relevant_plan_item = (
             self.resolve_relevant_plan_item(str(job_record["task_id"]))
             if task_record is not None and task_record.get("current_job_id") == job_id
+            else None
+        )
+        active_plan_summary = (
+            self.read_active_plan_summary(str(job_record["task_id"]))
+            if task_record is not None
+            else None
+        )
+        current_active_plan_item = (
+            active_plan_summary.get("current_active_item_summary")
+            if isinstance(active_plan_summary, dict)
+            else None
+        )
+        task_policy = (
+            self._build_task_policy_summary(
+                task_record=task_record,
+                active_plan_summary=active_plan_summary,
+                current_active_plan_item=current_active_plan_item,
+                relevant_plan_item=relevant_plan_item,
+            )
+            if task_record is not None
             else None
         )
         return {
@@ -369,6 +432,26 @@ class GarageStorageAdapter:
                 relevant_plan_item.get("is_waiting_on_review")
                 if isinstance(relevant_plan_item, dict)
                 else False
+            ),
+            "task_dominant_target_kind": (
+                task_policy.get("dominant_target_kind") if isinstance(task_policy, dict) else None
+            ),
+            "task_effective_posture": (
+                task_policy.get("effective_task_posture") if isinstance(task_policy, dict) else None
+            ),
+            "current_job_is_primary_focus": (
+                bool(task_record is not None and task_record.get("current_job_id") == job_id)
+                and bool(
+                    isinstance(task_policy, dict)
+                    and task_policy.get("current_job_is_primary_focus")
+                )
+            ),
+            "current_job_subordinate_to_task_focus": (
+                bool(task_record is not None and task_record.get("current_job_id") == job_id)
+                and bool(
+                    isinstance(task_policy, dict)
+                    and not task_policy.get("current_job_is_primary_focus")
+                )
             ),
         }
 
@@ -450,6 +533,32 @@ class GarageStorageAdapter:
                 else None
             ),
         }
+
+    def effective_task_policy_summary(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        active_plan_summary = self.read_active_plan_summary(task_id)
+        current_active_plan_item = self.resolve_active_plan_item(task_id)
+        relevant_plan_item = self.resolve_relevant_plan_item(task_id)
+        return self._build_task_policy_summary(
+            task_record=task_record,
+            active_plan_summary=active_plan_summary,
+            current_active_plan_item=current_active_plan_item,
+            relevant_plan_item=relevant_plan_item,
+        )
+
+    def resolve_dominant_task_target(self, task_id: str) -> dict[str, Any] | None:
+        policy = self.effective_task_policy_summary(task_id)
+        if not isinstance(policy, dict):
+            return None
+        return policy.get("dominant_target")
+
+    def resolve_dominant_task_blocker(self, task_id: str) -> dict[str, Any] | None:
+        policy = self.effective_task_policy_summary(task_id)
+        if not isinstance(policy, dict):
+            return None
+        return policy.get("dominant_blocker")
 
     def read_plan_item_summary(
         self,
@@ -688,56 +797,33 @@ class GarageStorageAdapter:
         return None
 
     def resolve_next_plan_resume_target(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
         active_plan_summary = self.read_active_plan_summary(task_id)
         if active_plan_summary is None:
             return None
-        current_item = active_plan_summary.get("current_active_item_summary")
-        relevant_item = active_plan_summary.get("relevant_plan_item_summary")
+        task_policy = self._build_task_policy_summary(
+            task_record=task_record,
+            active_plan_summary=active_plan_summary,
+            current_active_plan_item=active_plan_summary.get("current_active_item_summary"),
+            relevant_plan_item=active_plan_summary.get("relevant_plan_item_summary"),
+        )
+        if not isinstance(task_policy, dict):
+            return None
         resume_anchor = self.resolve_task_resume_anchor(task_id)
         next_executable_unavailable_reason = active_plan_summary.get(
             "next_executable_unavailable_reason"
         )
-        if (
-            isinstance(relevant_item, dict)
-            and relevant_item.get("is_verification_pending")
-        ):
+        dominant_target = task_policy.get("dominant_target")
+        dominant_target_kind = task_policy.get("dominant_target_kind")
+        if isinstance(dominant_target, dict):
             return {
                 "task_id": task_id,
                 "plan_version": active_plan_summary["plan_version"],
-                "target_kind": (
-                    "review-needed"
-                    if relevant_item.get("is_waiting_on_review")
-                    else "proof-gathering"
-                ),
-                "item": relevant_item,
-                "resume_anchor": resume_anchor,
-                "next_executable_unavailable_reason": next_executable_unavailable_reason,
-            }
-        if isinstance(relevant_item, dict) and relevant_item.get("is_blocked"):
-            return {
-                "task_id": task_id,
-                "plan_version": active_plan_summary["plan_version"],
-                "target_kind": "blocked-evidence-review",
-                "item": relevant_item,
-                "resume_anchor": resume_anchor,
-                "next_executable_unavailable_reason": next_executable_unavailable_reason,
-            }
-        if isinstance(current_item, dict):
-            return {
-                "task_id": task_id,
-                "plan_version": active_plan_summary["plan_version"],
-                "target_kind": "active-item",
-                "item": current_item,
-                "resume_anchor": resume_anchor,
-                "next_executable_unavailable_reason": next_executable_unavailable_reason,
-            }
-        next_item = self.resolve_next_executable_plan_item(task_id)
-        if isinstance(next_item, dict):
-            return {
-                "task_id": task_id,
-                "plan_version": active_plan_summary["plan_version"],
-                "target_kind": "next-executable",
-                "item": next_item,
+                "target_kind": dominant_target_kind,
+                "item": dominant_target.get("item"),
+                "job_id": dominant_target.get("job_id"),
                 "resume_anchor": resume_anchor,
                 "next_executable_unavailable_reason": next_executable_unavailable_reason,
             }
@@ -797,6 +883,124 @@ class GarageStorageAdapter:
             "is_waiting_on_review": relevant_item.get("is_waiting_on_review"),
             "evidence_refs": relevant_item.get("evidence_refs", ()),
             "evidence_count": relevant_item.get("evidence_count", 0),
+        }
+
+    @staticmethod
+    def _build_task_policy_summary(
+        *,
+        task_record: dict[str, Any] | None,
+        active_plan_summary: dict[str, Any] | None,
+        current_active_plan_item: dict[str, Any] | None,
+        relevant_plan_item: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if task_record is None:
+            return None
+
+        current_job_id = task_record.get("current_job_id")
+        next_executable_item = (
+            active_plan_summary.get("next_executable_item_summary")
+            if isinstance(active_plan_summary, dict)
+            else None
+        )
+        next_executable_unavailable_reason = (
+            active_plan_summary.get("next_executable_unavailable_reason")
+            if isinstance(active_plan_summary, dict)
+            else None
+        )
+
+        dominant_target_kind: str | None = None
+        dominant_target: dict[str, Any] | None = None
+        dominant_blocker: dict[str, Any] | None = None
+
+        if isinstance(relevant_plan_item, dict) and relevant_plan_item.get("is_blocked"):
+            dominant_target_kind = "blocked-evidence-review"
+            dominant_target = {"item": relevant_plan_item}
+            dominant_blocker = {
+                "kind": "blocked-evidence-review",
+                "reason": relevant_plan_item.get("advance_blocked_reason") or "blocked_failure_evidence",
+                "item_id": relevant_plan_item.get("item_id"),
+            }
+        elif isinstance(relevant_plan_item, dict) and relevant_plan_item.get("is_waiting_on_review"):
+            dominant_target_kind = "review-needed"
+            dominant_target = {"item": relevant_plan_item}
+            dominant_blocker = {
+                "kind": "review-needed",
+                "reason": relevant_plan_item.get("advance_blocked_reason") or relevant_plan_item.get("proof_gate_reason"),
+                "item_id": relevant_plan_item.get("item_id"),
+            }
+        elif isinstance(relevant_plan_item, dict) and relevant_plan_item.get("is_waiting_on_proof"):
+            dominant_target_kind = "proof-gathering"
+            dominant_target = {"item": relevant_plan_item}
+            dominant_blocker = {
+                "kind": "proof-gathering",
+                "reason": relevant_plan_item.get("advance_blocked_reason") or relevant_plan_item.get("proof_gate_reason"),
+                "item_id": relevant_plan_item.get("item_id"),
+            }
+        elif task_record.get("task_state") == "waiting_on_child":
+            dominant_target_kind = "waiting-on-child"
+            dominant_target = {
+                "item": current_active_plan_item or relevant_plan_item,
+                "job_id": current_job_id,
+            }
+            dominant_blocker = {
+                "kind": "waiting-on-child",
+                "reason": "child_job_in_flight",
+                "job_id": current_job_id,
+                "item_id": (
+                    (current_active_plan_item or relevant_plan_item).get("item_id")
+                    if isinstance(current_active_plan_item or relevant_plan_item, dict)
+                    else None
+                ),
+            }
+        elif isinstance(current_active_plan_item, dict) and current_active_plan_item.get("is_active"):
+            dominant_target_kind = "active-item"
+            dominant_target = {"item": current_active_plan_item, "job_id": current_job_id}
+        elif isinstance(next_executable_item, dict):
+            dominant_target_kind = "next-executable"
+            dominant_target = {"item": next_executable_item}
+        else:
+            dominant_target_kind = "resume-anchor-only"
+            dominant_target = None
+
+        effective_task_posture = "resuming"
+        if dominant_target_kind == "blocked-evidence-review":
+            effective_task_posture = "blocked-evidence-review"
+        elif dominant_target_kind == "review-needed":
+            effective_task_posture = "waiting-on-review"
+        elif dominant_target_kind == "proof-gathering":
+            effective_task_posture = "waiting-on-proof"
+        elif dominant_target_kind == "waiting-on-child":
+            effective_task_posture = "waiting-on-child"
+        elif dominant_target_kind == "active-item":
+            effective_task_posture = "running"
+        elif dominant_target_kind == "next-executable":
+            effective_task_posture = "ready-for-next"
+
+        current_job_is_primary_focus = dominant_target_kind in {"active-item", "waiting-on-child"}
+        relevant_plan_item_is_primary_focus = dominant_target_kind in {
+            "proof-gathering",
+            "review-needed",
+            "blocked-evidence-review",
+            "next-executable",
+        }
+
+        return {
+            "dominant_target_kind": dominant_target_kind,
+            "dominant_target": dominant_target,
+            "dominant_blocker": dominant_blocker,
+            "dominant_blocker_kind": (
+                dominant_blocker.get("kind") if isinstance(dominant_blocker, dict) else None
+            ),
+            "effective_task_posture": effective_task_posture,
+            "effective_waiting_on_proof": dominant_target_kind == "proof-gathering",
+            "effective_waiting_on_review": dominant_target_kind == "review-needed",
+            "effective_blocked_evidence_review": dominant_target_kind == "blocked-evidence-review",
+            "effective_waiting_on_child": dominant_target_kind == "waiting-on-child",
+            "effective_running": dominant_target_kind == "active-item",
+            "effective_ready_for_next": dominant_target_kind == "next-executable",
+            "current_job_is_primary_focus": current_job_is_primary_focus,
+            "relevant_plan_item_is_primary_focus": relevant_plan_item_is_primary_focus,
+            "next_executable_unavailable_reason": next_executable_unavailable_reason,
         }
 
     def resolve_resume_evidence_refs(self, task_id: str) -> tuple[dict[str, Any], ...]:
