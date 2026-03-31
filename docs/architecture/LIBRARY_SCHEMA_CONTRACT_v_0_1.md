@@ -153,7 +153,10 @@ Do not treat them as required v0.1 runtime authority unless they are deliberatel
 - `job-record.schema.json`
 - `event-record.schema.json`
 - `checkpoint-record.schema.json`
+- `continuation-record.schema.json`
+- `artifact-index-record.schema.json`
 - `content-ref.schema.json`
+- `policy-content-ref.schema.json`
 - `artifact-ref.schema.json`
 - `workspace-ref.schema.json`
 - `payload-ref.schema.json`
@@ -900,7 +903,10 @@ schemas/
     job-record.schema.json
     event-record.schema.json
     checkpoint-record.schema.json
+    continuation-record.schema.json
+    artifact-index-record.schema.json
     content-ref.schema.json
+    policy-content-ref.schema.json
     artifact-ref.schema.json
     workspace-ref.schema.json
     payload-ref.schema.json
