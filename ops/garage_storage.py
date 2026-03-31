@@ -363,6 +363,21 @@ class GarageStorageAdapter:
             "dominant_blocker_kind": (
                 task_policy.get("dominant_blocker_kind") if isinstance(task_policy, dict) else None
             ),
+            "dominant_rule_finality_kind": (
+                task_policy.get("dominant_rule_finality_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "dominant_unmet_requirement_kind": (
+                task_policy.get("dominant_unmet_requirement_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "dominant_unmet_requirement_detail": (
+                task_policy.get("dominant_unmet_requirement_detail")
+                if isinstance(task_policy, dict)
+                else None
+            ),
             "effective_task_posture": (
                 task_policy.get("effective_task_posture") if isinstance(task_policy, dict) else None
             ),
@@ -378,6 +393,16 @@ class GarageStorageAdapter:
             ),
             "execution_hold_kind": (
                 task_policy.get("execution_hold_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "execution_hold_detail_kind": (
+                task_policy.get("execution_hold_detail_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "execution_hold_detail": (
+                task_policy.get("execution_hold_detail")
                 if isinstance(task_policy, dict)
                 else None
             ),
@@ -599,8 +624,28 @@ class GarageStorageAdapter:
                 if isinstance(task_policy, dict)
                 else None
             ),
+            "task_execution_hold_detail_kind": (
+                task_policy.get("execution_hold_detail_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "task_execution_hold_detail": (
+                task_policy.get("execution_hold_detail")
+                if isinstance(task_policy, dict)
+                else None
+            ),
             "task_execution_hold_reason": (
                 task_policy.get("execution_hold_reason")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "task_dominant_rule_finality_kind": (
+                task_policy.get("dominant_rule_finality_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "task_dominant_unmet_requirement_kind": (
+                task_policy.get("dominant_unmet_requirement_kind")
                 if isinstance(task_policy, dict)
                 else None
             ),
@@ -719,6 +764,21 @@ class GarageStorageAdapter:
             ),
             "relevant_proof_policy_kind": (
                 relevant_plan_item_summary.get("proof_policy_kind")
+                if isinstance(relevant_plan_item_summary, dict)
+                else None
+            ),
+            "relevant_rule_finality_kind": (
+                relevant_plan_item_summary.get("rule_finality_kind")
+                if isinstance(relevant_plan_item_summary, dict)
+                else None
+            ),
+            "relevant_unmet_requirement_kind": (
+                relevant_plan_item_summary.get("unmet_requirement_kind")
+                if isinstance(relevant_plan_item_summary, dict)
+                else None
+            ),
+            "relevant_unmet_requirement_detail": (
+                relevant_plan_item_summary.get("unmet_requirement_detail")
                 if isinstance(relevant_plan_item_summary, dict)
                 else None
             ),
@@ -949,6 +1009,21 @@ class GarageStorageAdapter:
             ),
             "relevant_proof_policy_kind": (
                 active_plan_summary.get("relevant_proof_policy_kind")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
+            "relevant_rule_finality_kind": (
+                active_plan_summary.get("relevant_rule_finality_kind")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
+            "relevant_unmet_requirement_kind": (
+                active_plan_summary.get("relevant_unmet_requirement_kind")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
+            "relevant_unmet_requirement_detail": (
+                active_plan_summary.get("relevant_unmet_requirement_detail")
                 if isinstance(active_plan_summary, dict)
                 else None
             ),
@@ -1267,6 +1342,16 @@ class GarageStorageAdapter:
             if isinstance(active_plan_summary, dict)
             else None
         )
+        rule_aware_hint = GarageStorageAdapter._rule_aware_policy_hint(
+            relevant_plan_item,
+            dominant_target_kind=(
+                "review-needed"
+                if isinstance(relevant_plan_item, dict) and relevant_plan_item.get("is_waiting_on_review")
+                else "proof-gathering"
+                if isinstance(relevant_plan_item, dict) and relevant_plan_item.get("is_waiting_on_proof")
+                else None
+            ),
+        )
 
         dominant_target_kind: str | None = None
         dominant_target: dict[str, Any] | None = None
@@ -1285,7 +1370,11 @@ class GarageStorageAdapter:
             dominant_target = {"item": relevant_plan_item}
             dominant_blocker = {
                 "kind": "review-needed",
-                "reason": relevant_plan_item.get("advance_blocked_reason") or relevant_plan_item.get("proof_gate_reason"),
+                "reason": (
+                    rule_aware_hint.get("blocked_reason")
+                    or relevant_plan_item.get("advance_blocked_reason")
+                    or relevant_plan_item.get("proof_gate_reason")
+                ),
                 "item_id": relevant_plan_item.get("item_id"),
             }
         elif isinstance(relevant_plan_item, dict) and relevant_plan_item.get("is_waiting_on_proof"):
@@ -1293,7 +1382,11 @@ class GarageStorageAdapter:
             dominant_target = {"item": relevant_plan_item}
             dominant_blocker = {
                 "kind": "proof-gathering",
-                "reason": relevant_plan_item.get("advance_blocked_reason") or relevant_plan_item.get("proof_gate_reason"),
+                "reason": (
+                    rule_aware_hint.get("blocked_reason")
+                    or relevant_plan_item.get("advance_blocked_reason")
+                    or relevant_plan_item.get("proof_gate_reason")
+                ),
                 "item_id": relevant_plan_item.get("item_id"),
             }
         elif task_record.get("task_state") == "waiting_on_child":
@@ -1353,6 +1446,7 @@ class GarageStorageAdapter:
             dominant_target_kind=dominant_target_kind,
             dominant_target=dominant_target,
             current_job_state=current_job_state,
+            relevant_plan_item=relevant_plan_item,
         )
         blocked_call_types = tuple(
             call_type
@@ -1363,6 +1457,7 @@ class GarageStorageAdapter:
             dominant_target_kind=dominant_target_kind,
             dominant_target=dominant_target,
             current_job_state=current_job_state,
+            relevant_plan_item=relevant_plan_item,
         )
         best_next_call_type = (
             best_next_move.get("call_type")
@@ -1404,11 +1499,38 @@ class GarageStorageAdapter:
             "dominant_blocker_kind": (
                 dominant_blocker.get("kind") if isinstance(dominant_blocker, dict) else None
             ),
+            "dominant_rule_finality_kind": (
+                relevant_plan_item.get("rule_finality_kind")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "dominant_unmet_requirement_kind": (
+                relevant_plan_item.get("unmet_requirement_kind")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "dominant_unmet_requirement_detail": (
+                relevant_plan_item.get("unmet_requirement_detail")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
             "effective_task_posture": effective_task_posture,
             "execution_allowed": execution_allowed,
             "execution_held": execution_held,
             "execution_hold_kind": execution_hold_kind,
             "execution_hold_reason": execution_hold_reason,
+            "execution_hold_detail_kind": (
+                relevant_plan_item.get("unmet_requirement_kind")
+                if isinstance(relevant_plan_item, dict)
+                and dominant_target_kind in {"proof-gathering", "review-needed"}
+                else None
+            ),
+            "execution_hold_detail": (
+                relevant_plan_item.get("unmet_requirement_detail")
+                if isinstance(relevant_plan_item, dict)
+                and dominant_target_kind in {"proof-gathering", "review-needed"}
+                else None
+            ),
             "allowed_call_types": allowed_call_types,
             "allowed_call_policy": allowed_call_policy,
             "secondary_allowed_call_types": secondary_allowed_call_types,
@@ -1469,42 +1591,190 @@ class GarageStorageAdapter:
         return ("checkpoint.create", "continuation.record")
 
     @staticmethod
+    def _rule_aware_policy_hint(
+        relevant_plan_item: dict[str, Any] | None,
+        *,
+        dominant_target_kind: str | None,
+    ) -> dict[str, Any]:
+        if not isinstance(relevant_plan_item, dict):
+            return {
+                "move_kind": None,
+                "call_type": None,
+                "reason": None,
+                "effect_kind": None,
+                "blocked_reason": None,
+            }
+
+        unmet_kind = relevant_plan_item.get("unmet_requirement_kind")
+        unmet_detail = (
+            relevant_plan_item.get("unmet_requirement_detail")
+            if isinstance(relevant_plan_item.get("unmet_requirement_detail"), dict)
+            else {}
+        )
+        finality_kind = relevant_plan_item.get("rule_finality_kind")
+
+        if dominant_target_kind == "proof-gathering":
+            if unmet_kind == "missing_artifact_ref":
+                return {
+                    "move_kind": "attach-artifact-ref",
+                    "call_type": "continuation.record",
+                    "reason": "current item still needs an official artifact ref before verification",
+                    "effect_kind": "preserve_or_resolve",
+                    "blocked_reason": "missing_artifact_ref",
+                }
+            if unmet_kind == "missing_required_artifact_kind":
+                required_kind = unmet_detail.get("required_kind")
+                observed_kinds = tuple(unmet_detail.get("observed_artifact_kinds", ()))
+                return {
+                    "move_kind": "attach-required-artifact-kind",
+                    "call_type": "continuation.record",
+                    "reason": (
+                        f"current item still needs artifact kind '{required_kind}'"
+                        + (
+                            f"; observed kinds: {', '.join(observed_kinds)}"
+                            if observed_kinds
+                            else ""
+                        )
+                    ),
+                    "effect_kind": "preserve_or_resolve",
+                    "blocked_reason": "missing_required_artifact_kind",
+                }
+            if unmet_kind == "missing_result_evidence":
+                return {
+                    "move_kind": "attach-result-evidence",
+                    "call_type": "continuation.record",
+                    "reason": "current item still needs result-json evidence before verification",
+                    "effect_kind": "preserve_or_resolve",
+                    "blocked_reason": "missing_result_evidence",
+                }
+            if unmet_kind == "missing_summary_evidence":
+                return {
+                    "move_kind": "attach-summary-evidence",
+                    "call_type": "continuation.record",
+                    "reason": "current item still needs summary evidence before verification",
+                    "effect_kind": "preserve_or_resolve",
+                    "blocked_reason": "missing_summary_evidence",
+                }
+            if unmet_kind == "insufficient_evidence_bundle":
+                required_count = unmet_detail.get("required_minimum_count")
+                current_count = unmet_detail.get("current_evidence_count")
+                return {
+                    "move_kind": "complete-evidence-bundle",
+                    "call_type": "continuation.record",
+                    "reason": (
+                        f"current item needs a larger evidence bundle"
+                        + (
+                            f" ({current_count}/{required_count} refs present)"
+                            if required_count is not None and current_count is not None
+                            else ""
+                        )
+                    ),
+                    "effect_kind": "preserve_or_resolve",
+                    "blocked_reason": "insufficient_evidence_bundle",
+                }
+            return {
+                "move_kind": "gather-proof",
+                "call_type": "continuation.record",
+                "reason": "current item still needs more proof before advancement",
+                "effect_kind": "preserve_or_resolve",
+                "blocked_reason": relevant_plan_item.get("proof_gate_reason"),
+            }
+
+        if dominant_target_kind == "review-needed":
+            if unmet_kind == "manual_review_required":
+                return {
+                    "move_kind": "capture-manual-review-context",
+                    "call_type": "continuation.record",
+                    "reason": "current item explicitly requires manual review",
+                    "effect_kind": "preserve",
+                    "blocked_reason": "manual_review_required",
+                }
+            if unmet_kind == "downstream_item_confirms":
+                return {
+                    "move_kind": "capture-downstream-confirmation-context",
+                    "call_type": "continuation.record",
+                    "reason": "current item requires downstream confirmation outside this slice",
+                    "effect_kind": "preserve",
+                    "blocked_reason": "downstream_item_confirms",
+                }
+            if finality_kind == "unsupported-in-slice":
+                return {
+                    "move_kind": "capture-unsupported-rule-context",
+                    "call_type": "continuation.record",
+                    "reason": "current item uses a verification rule Alfred cannot satisfy in this slice",
+                    "effect_kind": "preserve",
+                    "blocked_reason": unmet_kind or "unsupported_verification_rule",
+                }
+            if finality_kind == "ill-defined":
+                return {
+                    "move_kind": "capture-rule-definition-context",
+                    "call_type": "continuation.record",
+                    "reason": "current item has an ill-defined verification rule; evidence alone cannot resolve it",
+                    "effect_kind": "preserve",
+                    "blocked_reason": unmet_kind or "ill_defined_verification_rule",
+                }
+            return {
+                "move_kind": "capture-review-context",
+                "call_type": "continuation.record",
+                "reason": "current item requires review outside this supported mechanical slice",
+                "effect_kind": "preserve",
+                "blocked_reason": relevant_plan_item.get("proof_gate_reason"),
+            }
+
+        return {
+            "move_kind": None,
+            "call_type": None,
+            "reason": None,
+            "effect_kind": None,
+            "blocked_reason": None,
+        }
+
+    @staticmethod
     def _allowed_call_policy_for_dominant_target(
         *,
         dominant_target_kind: str | None,
         dominant_target: dict[str, Any] | None,
         current_job_state: str | None,
+        relevant_plan_item: dict[str, Any] | None,
     ) -> tuple[dict[str, Any], ...]:
         if dominant_target_kind == "proof-gathering":
-            reason = "can enrich evidence; resolves only if the proof gate becomes satisfied"
+            guidance = GarageStorageAdapter._rule_aware_policy_hint(
+                relevant_plan_item,
+                dominant_target_kind=dominant_target_kind,
+            )
+            reason = guidance["reason"] or "can enrich evidence; resolves only if the proof gate becomes satisfied"
             return (
                 {
                     "call_type": "checkpoint.create",
-                    "effect_kind": "preserve_or_resolve",
+                    "effect_kind": guidance["effect_kind"] or "preserve_or_resolve",
                     "reason": reason,
                     "target": dominant_target,
                 },
                 {
                     "call_type": "continuation.record",
-                    "effect_kind": "preserve_or_resolve",
+                    "effect_kind": guidance["effect_kind"] or "preserve_or_resolve",
                     "reason": reason,
                     "target": dominant_target,
                 },
             )
         if dominant_target_kind == "review-needed":
-            reason = (
+            guidance = GarageStorageAdapter._rule_aware_policy_hint(
+                relevant_plan_item,
+                dominant_target_kind=dominant_target_kind,
+            )
+            reason = guidance["reason"] or (
                 "can capture more evidence or resume context but cannot resolve manual or unsupported review"
             )
             return (
                 {
                     "call_type": "checkpoint.create",
-                    "effect_kind": "preserve",
+                    "effect_kind": guidance["effect_kind"] or "preserve",
                     "reason": reason,
                     "target": dominant_target,
                 },
                 {
                     "call_type": "continuation.record",
-                    "effect_kind": "preserve",
+                    "effect_kind": guidance["effect_kind"] or "preserve",
                     "reason": reason,
                     "target": dominant_target,
                 },
@@ -1697,21 +1967,30 @@ class GarageStorageAdapter:
         dominant_target_kind: str | None,
         dominant_target: dict[str, Any] | None,
         current_job_state: str | None,
+        relevant_plan_item: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
         if dominant_target_kind == "proof-gathering":
+            guidance = GarageStorageAdapter._rule_aware_policy_hint(
+                relevant_plan_item,
+                dominant_target_kind=dominant_target_kind,
+            )
             return {
-                "move_kind": "gather-proof",
-                "call_type": "continuation.record",
-                "reason": "current item still needs evidence before advancement",
-                "effect_kind": "preserve_or_resolve",
+                "move_kind": guidance["move_kind"] or "gather-proof",
+                "call_type": guidance["call_type"] or "continuation.record",
+                "reason": guidance["reason"] or "current item still needs evidence before advancement",
+                "effect_kind": guidance["effect_kind"] or "preserve_or_resolve",
                 "target": dominant_target,
             }
         if dominant_target_kind == "review-needed":
+            guidance = GarageStorageAdapter._rule_aware_policy_hint(
+                relevant_plan_item,
+                dominant_target_kind=dominant_target_kind,
+            )
             return {
-                "move_kind": "capture-review-context",
-                "call_type": "continuation.record",
-                "reason": "current item requires manual or unsupported review",
-                "effect_kind": "preserve",
+                "move_kind": guidance["move_kind"] or "capture-review-context",
+                "call_type": guidance["call_type"] or "continuation.record",
+                "reason": guidance["reason"] or "current item requires manual or unsupported review",
+                "effect_kind": guidance["effect_kind"] or "preserve",
                 "target": dominant_target,
             }
         if dominant_target_kind == "blocked-evidence-review":

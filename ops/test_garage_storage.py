@@ -1032,9 +1032,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         self.assertIn("job.start", task_summary["blocked_call_types"])
         self.assertEqual("continuation.record", task_summary["best_next_call_type"])
-        self.assertEqual(
-            "gather-proof", task_summary["best_next_move"]["move_kind"]
-        )
+        self.assertEqual("attach-artifact-ref", task_summary["best_next_move"]["move_kind"])
         self.assertEqual(
             "preserve_or_resolve",
             task_summary["best_next_move_effect_kind"],
@@ -1318,6 +1316,166 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("next-executable", promoted_task_summary["dominant_target_kind"])
         self.assertEqual("job.start", promoted_task_summary["best_next_call_type"])
 
+    def test_rule_aware_policy_guidance_distinguishes_exact_requirement_postures(self) -> None:
+        scenarios = [
+            {
+                "name": "missing_artifact_ref",
+                "rule": {"type": "artifact_exists"},
+                "evidence_refs": [],
+                "expected_move_kind": "attach-artifact-ref",
+                "expected_finality": "mechanically-satisfiable-later",
+                "expected_hold_reason": "missing_artifact_ref",
+                "reason_snippet": "artifact ref",
+            },
+            {
+                "name": "missing_required_artifact_kind",
+                "rule": {"type": "artifact_matches_kind", "params": {"kind": "screenshot"}},
+                "evidence_refs": [make_summary_artifact_ref()],
+                "expected_move_kind": "attach-required-artifact-kind",
+                "expected_finality": "mechanically-satisfiable-later",
+                "expected_hold_reason": "missing_required_artifact_kind",
+                "reason_snippet": "screenshot",
+            },
+            {
+                "name": "missing_result_evidence",
+                "rule": {"type": "result_present"},
+                "evidence_refs": [make_summary_artifact_ref()],
+                "expected_move_kind": "attach-result-evidence",
+                "expected_finality": "mechanically-satisfiable-later",
+                "expected_hold_reason": "missing_result_evidence",
+                "reason_snippet": "result-json",
+            },
+            {
+                "name": "missing_summary_evidence",
+                "rule": {"type": "summary_present"},
+                "evidence_refs": [
+                    {
+                        "kind": "result-json",
+                        "path": "/workspace/robin/tasks/T000001/jobs/001/result.json",
+                        "role": "robin",
+                    }
+                ],
+                "expected_move_kind": "attach-summary-evidence",
+                "expected_finality": "mechanically-satisfiable-later",
+                "expected_hold_reason": "missing_summary_evidence",
+                "reason_snippet": "summary evidence",
+            },
+            {
+                "name": "insufficient_evidence_bundle",
+                "rule": {"type": "evidence_bundle_present", "params": {"minimum_count": 3}},
+                "evidence_refs": [
+                    make_summary_artifact_ref(),
+                    {
+                        "kind": "result-json",
+                        "path": "/workspace/robin/tasks/T000001/jobs/001/result.json",
+                        "role": "robin",
+                    },
+                ],
+                "expected_move_kind": "complete-evidence-bundle",
+                "expected_finality": "mechanically-satisfiable-later",
+                "expected_hold_reason": "insufficient_evidence_bundle",
+                "reason_snippet": "evidence bundle",
+            },
+            {
+                "name": "manual_review_required",
+                "rule": {"type": "manual_review_required"},
+                "evidence_refs": [make_summary_artifact_ref()],
+                "expected_move_kind": "capture-manual-review-context",
+                "expected_finality": "review-required",
+                "expected_hold_reason": "manual_review_required",
+                "reason_snippet": "manual review",
+            },
+            {
+                "name": "unsupported_in_slice",
+                "rule": {"type": "test_pass"},
+                "evidence_refs": [make_summary_artifact_ref()],
+                "expected_move_kind": "capture-unsupported-rule-context",
+                "expected_finality": "unsupported-in-slice",
+                "expected_hold_reason": "test_pass_not_mechanically_supported",
+                "reason_snippet": "cannot satisfy",
+            },
+            {
+                "name": "ill_defined",
+                "rule": {"type": "artifact_matches_kind", "params": {}},
+                "evidence_refs": [make_summary_artifact_ref()],
+                "expected_move_kind": "capture-rule-definition-context",
+                "expected_finality": "ill-defined",
+                "expected_hold_reason": "missing_required_kind_param",
+                "reason_snippet": "ill-defined",
+            },
+        ]
+
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario["name"]):
+                scenario_root = self.root / scenario["name"]
+                storage, processor = build_storage_backed_alfred_processor(
+                    scenario_root,
+                    now_provider=lambda: "2026-03-30T12:00:00Z",
+                )
+                processor.process_call(make_task_create_call())
+                processor.process_call(
+                    make_plan_record_call(
+                        plan_version=1,
+                        current_active_item="I002",
+                        items=[
+                            {
+                                "item_id": "I001",
+                                "title": "Prepare runtime",
+                                "description": "Set up the execution slice.",
+                                "status": "verified",
+                            },
+                            {
+                                "item_id": "I002",
+                                "title": "Hold on verification target",
+                                "description": "Current target is held on its verification rule.",
+                                "status": "done_unverified",
+                                "depends_on": ["I001"],
+                                "verification_rule": scenario["rule"],
+                                "evidence_refs": scenario["evidence_refs"],
+                            },
+                        ],
+                    )
+                )
+
+                task_summary = storage.latest_task_state_summary("T000001")
+                proof_item = storage.read_relevant_proof_item_summary("T000001")
+                posture_effect = storage.evaluate_supported_call_posture_effect(
+                    "T000001",
+                    "continuation.record",
+                )
+                policy = storage.evaluate_supported_call_policy(
+                    "T000001",
+                    "job.start",
+                    job_id="T000001.J001",
+                )
+                storage.close()
+
+                self.assertEqual(scenario["expected_move_kind"], task_summary["best_next_move"]["move_kind"])
+                self.assertEqual(scenario["expected_finality"], task_summary["dominant_rule_finality_kind"])
+                self.assertEqual(
+                    scenario["expected_hold_reason"],
+                    task_summary["execution_hold_reason"],
+                )
+                self.assertEqual(
+                    scenario["expected_hold_reason"],
+                    task_summary["execution_hold_detail_kind"],
+                )
+                self.assertEqual(
+                    scenario["expected_hold_reason"],
+                    proof_item["unmet_requirement_kind"],
+                )
+                self.assertEqual(
+                    scenario["expected_finality"],
+                    proof_item["rule_finality_kind"],
+                )
+                self.assertEqual(
+                    ("checkpoint.create", "continuation.record"),
+                    task_summary["allowed_call_types"],
+                )
+                self.assertFalse(policy["allowed"])
+                self.assertIn(scenario["reason_snippet"], task_summary["best_next_move"]["reason"])
+                self.assertIn(scenario["reason_snippet"], posture_effect["reason"])
+
     def test_result_present_rule_does_not_treat_summary_only_followup_as_result_proof(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
             self.root,
@@ -1379,6 +1537,65 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual(
             "missing_result_evidence",
             task_summary["relevant_unmet_requirement_kind"],
+        )
+
+    def test_task_and_job_summaries_surface_exact_rule_aware_hold_detail(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need screenshot proof",
+                        "description": "Current target needs a screenshot artifact.",
+                        "status": "done_unverified",
+                        "depends_on": ["I001"],
+                        "verification_rule": {
+                            "type": "artifact_matches_kind",
+                            "params": {"kind": "screenshot"},
+                        },
+                        "evidence_refs": [make_summary_artifact_ref()],
+                    },
+                ],
+            )
+        )
+
+        task_summary = storage.latest_task_state_summary("T000001")
+        job_summary = storage.read_job_state_summary("T000001.J001")
+        active_plan_summary = storage.read_active_plan_summary("T000001")
+        storage.close()
+
+        self.assertEqual("proof-gathering", task_summary["dominant_target_kind"])
+        self.assertEqual("mechanically-satisfiable-later", task_summary["dominant_rule_finality_kind"])
+        self.assertEqual("missing_required_artifact_kind", task_summary["dominant_unmet_requirement_kind"])
+        self.assertEqual("missing_required_artifact_kind", task_summary["execution_hold_detail_kind"])
+        self.assertEqual(
+            "screenshot",
+            task_summary["execution_hold_detail"]["required_kind"],
+        )
+        self.assertEqual("attach-required-artifact-kind", task_summary["best_next_move"]["move_kind"])
+        self.assertEqual(
+            "missing_required_artifact_kind",
+            job_summary["task_dominant_unmet_requirement_kind"],
+        )
+        self.assertEqual("missing_required_artifact_kind", job_summary["task_execution_hold_detail_kind"])
+        self.assertTrue(job_summary["current_job_subordinate_to_task_focus"])
+        self.assertEqual(
+            "missing_required_artifact_kind",
+            active_plan_summary["relevant_unmet_requirement_kind"],
         )
 
     def test_evidence_bundle_rule_uses_minimum_count_param_consistently(self) -> None:
@@ -1572,10 +1789,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             task_summary["allowed_call_types"],
         )
         self.assertEqual("continuation.record", task_summary["best_next_call_type"])
-        self.assertEqual(
-            "capture-review-context",
-            task_summary["best_next_move"]["move_kind"],
-        )
+        self.assertEqual("capture-manual-review-context", task_summary["best_next_move"]["move_kind"])
         self.assertEqual("preserve", task_summary["best_next_move_effect_kind"])
         self.assertFalse(task_summary["current_job_is_primary_focus"])
         self.assertTrue(task_summary["relevant_plan_item_is_primary_focus"])
@@ -1585,7 +1799,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(job_summary["task_execution_held"])
         self.assertEqual("review-needed", job_summary["task_execution_hold_kind"])
         self.assertEqual(
-            "capture-review-context",
+            "capture-manual-review-context",
             job_summary["task_best_next_move"]["move_kind"],
         )
         self.assertEqual("review-needed", resume_target["target_kind"])
