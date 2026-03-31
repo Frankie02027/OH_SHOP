@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import json
 from typing import Any, Callable, Protocol
 
 from ops.garage_runtime import (
@@ -20,6 +21,14 @@ from ops.garage_runtime import (
 Clock = Callable[[], str]
 PLAN_ACTIVEISH_STATUSES = {"in_progress", "needs_child_job", "blocked"}
 PLAN_RESOLVED_STATUSES = {"verified", "abandoned"}
+MECHANICAL_PROOF_RULE_TYPES = {
+    "artifact_exists",
+    "artifact_matches_kind",
+    "result_present",
+    "summary_present",
+    "evidence_bundle_present",
+    "no_extra_requirement",
+}
 
 
 class AlfredIdProvider(Protocol):
@@ -374,11 +383,19 @@ class GarageAlfredProcessor:
         task_id = call["task_id"]
         job_id = call["job_id"]
         recorded_at = self._recorded_at(call)
+        event_id = self._ids.mint_event_id(task_id)
+        evidence_refs, artifact_writes = self._collect_registered_evidence(
+            call,
+            task_id=task_id,
+            job_id=job_id,
+            event_id=event_id,
+            recorded_at=recorded_at,
+        )
         tracked_plan_write = self._mutate_tracked_plan_for_result_submit(
             call,
             recorded_at,
+            evidence_refs=evidence_refs,
         )
-        event_id = self._ids.mint_event_id(task_id)
         event = self._build_job_returned_event(call, event_id, recorded_at)
         task_record = self._build_task_record(
             task_id,
@@ -408,6 +425,7 @@ class GarageAlfredProcessor:
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
                 *(() if tracked_plan_write is None else (tracked_plan_write,)),
+                *artifact_writes,
                 self._event_record_write(event),
             ),
         )
@@ -428,11 +446,19 @@ class GarageAlfredProcessor:
             )
 
         recorded_at = self._recorded_at(call)
+        event_id = self._ids.mint_event_id(task_id)
+        evidence_refs, artifact_writes = self._collect_registered_evidence(
+            call,
+            task_id=task_id,
+            job_id=job_id,
+            event_id=event_id,
+            recorded_at=recorded_at,
+        )
         tracked_plan_write = self._mutate_tracked_plan_for_failure_report(
             task_id,
             recorded_at,
+            evidence_refs=evidence_refs,
         )
-        event_id = self._ids.mint_event_id(task_id)
         event = self._build_failure_event(
             call,
             event_id=event_id,
@@ -467,6 +493,7 @@ class GarageAlfredProcessor:
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
                 *(() if tracked_plan_write is None else (tracked_plan_write,)),
+                *artifact_writes,
                 self._event_record_write(event),
             ),
         )
@@ -476,6 +503,13 @@ class GarageAlfredProcessor:
         checkpoint_id = call.get("checkpoint_id") or self._ids.mint_checkpoint_id(task_id)
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
+        _, artifact_writes = self._collect_registered_evidence(
+            call,
+            task_id=task_id,
+            job_id=str(call["job_id"]) if "job_id" in call else None,
+            event_id=event_id,
+            recorded_at=recorded_at,
+        )
         event = self._build_checkpoint_created_event(
             call,
             checkpoint_id=checkpoint_id,
@@ -519,6 +553,7 @@ class GarageAlfredProcessor:
             records=(
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("checkpoint-record", checkpoint_record),
+                *artifact_writes,
                 self._event_record_write(event),
             ),
         )
@@ -527,6 +562,13 @@ class GarageAlfredProcessor:
         task_id = call["task_id"]
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
+        _, artifact_writes = self._collect_registered_evidence(
+            call,
+            task_id=task_id,
+            job_id=str(call["job_id"]) if "job_id" in call else None,
+            event_id=event_id,
+            recorded_at=recorded_at,
+        )
         event = self._build_continuation_recorded_event(call, event_id, recorded_at)
         continuation_record = {
             "task_id": task_id,
@@ -559,6 +601,7 @@ class GarageAlfredProcessor:
             records=(
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("continuation-record", continuation_record),
+                *artifact_writes,
                 self._event_record_write(event),
             ),
         )
@@ -947,6 +990,8 @@ class GarageAlfredProcessor:
         self,
         call: dict[str, Any],
         recorded_at: str,
+        *,
+        evidence_refs: tuple[dict[str, Any], ...],
     ) -> GarageRecordWrite | None:
         task_id = call["task_id"]
         plan = self._existing_active_tracked_plan(task_id)
@@ -960,13 +1005,19 @@ class GarageAlfredProcessor:
 
         reported_status = str(call["reported_status"])
         status = str(current_item["status"])
+        current_item["evidence_refs"] = self._merge_evidence_refs(
+            current_item.get("evidence_refs"),
+            evidence_refs,
+        )
         if reported_status == "succeeded":
             if status not in {"in_progress", "needs_child_job"}:
                 raise GarageAlfredProcessingError(
                     f"result.submit for task '{task_id}' cannot complete plan item "
                     f"'{current_item['item_id']}' from status '{status}'"
                 )
-            current_item["status"] = "done_unverified"
+            current_item["status"] = (
+                "verified" if self._proof_gate_satisfied(current_item) else "done_unverified"
+            )
             next_item = self._next_executable_item(plan, exclude_item_id=current_item["item_id"])
             if next_item is None:
                 plan.pop("current_active_item", None)
@@ -989,6 +1040,8 @@ class GarageAlfredProcessor:
         self,
         task_id: str,
         recorded_at: str,
+        *,
+        evidence_refs: tuple[dict[str, Any], ...],
     ) -> GarageRecordWrite | None:
         plan = self._existing_active_tracked_plan(task_id)
         if plan is None:
@@ -1005,6 +1058,10 @@ class GarageAlfredProcessor:
                 f"'{current_item['item_id']}' from status '{status}'"
             )
         current_item["status"] = "blocked"
+        current_item["evidence_refs"] = self._merge_evidence_refs(
+            current_item.get("evidence_refs"),
+            evidence_refs,
+        )
         plan["current_active_item"] = current_item["item_id"]
         return self._tracked_plan_write(plan, recorded_at)
 
@@ -1073,7 +1130,150 @@ class GarageAlfredProcessor:
                 raise GarageAlfredProcessingError(
                     "tracked plan current_active_item conflicts with reconstructed active item"
                 )
+        for item in items:
+            if (
+                item.get("status") == "verified"
+                and isinstance(item.get("verification_rule"), dict)
+                and not self._proof_gate_satisfied(item)
+            ):
+                raise GarageAlfredProcessingError(
+                    f"tracked plan item '{item['item_id']}' cannot be verified without a satisfied proof gate"
+                )
         return plan
+
+    @staticmethod
+    def _merge_evidence_refs(
+        existing_refs: Any,
+        new_refs: tuple[dict[str, Any], ...],
+    ) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for collection in (existing_refs or (), new_refs):
+            if not isinstance(collection, (list, tuple)):
+                continue
+            for ref in collection:
+                if not isinstance(ref, dict):
+                    continue
+                encoded = str(ref)
+                try:
+                    encoded = json.dumps(ref, sort_keys=True)
+                except Exception:
+                    pass
+                if encoded in seen:
+                    continue
+                seen.add(encoded)
+                merged.append(dict(ref))
+        return merged
+
+    @staticmethod
+    def _proof_gate_satisfied(item: dict[str, Any]) -> bool:
+        verification_rule = item.get("verification_rule")
+        if not isinstance(verification_rule, dict):
+            return False
+        rule_type = verification_rule.get("type")
+        if rule_type not in MECHANICAL_PROOF_RULE_TYPES:
+            return False
+        evidence_refs = [
+            ref for ref in item.get("evidence_refs", [])
+            if isinstance(ref, dict)
+        ]
+        artifact_refs = [ref for ref in evidence_refs if "artifact_id" in ref]
+        params = verification_rule.get("params") if isinstance(verification_rule.get("params"), dict) else {}
+        if rule_type == "no_extra_requirement":
+            return True
+        if rule_type == "artifact_exists":
+            return bool(artifact_refs)
+        if rule_type == "artifact_matches_kind":
+            required_kind = params.get("kind")
+            if required_kind is None:
+                return bool(artifact_refs)
+            return any(ref.get("kind") == required_kind for ref in artifact_refs)
+        if rule_type == "result_present":
+            return any(ref.get("kind") in {"result-json", "summary"} for ref in evidence_refs)
+        if rule_type == "summary_present":
+            return any(ref.get("kind") == "summary" for ref in evidence_refs)
+        if rule_type == "evidence_bundle_present":
+            minimum_count = params.get("min_count", 2)
+            try:
+                minimum_count = int(minimum_count)
+            except Exception:
+                minimum_count = 2
+            return len(evidence_refs) >= max(1, minimum_count)
+        return False
+
+    def _collect_registered_evidence(
+        self,
+        call: dict[str, Any],
+        *,
+        task_id: str,
+        job_id: str | None,
+        event_id: str,
+        recorded_at: str,
+    ) -> tuple[tuple[dict[str, Any], ...], tuple[GarageRecordWrite, ...]]:
+        evidence_refs: list[dict[str, Any]] = []
+        artifact_writes: list[GarageRecordWrite] = []
+        for artifact_ref in call.get("artifact_refs", ()):
+            if not isinstance(artifact_ref, dict):
+                continue
+            normalized_ref = dict(artifact_ref)
+            normalized_ref.setdefault("created_at", recorded_at)
+            if job_id is not None:
+                normalized_ref.setdefault("source_job_id", job_id)
+            normalized_ref.setdefault("source_event_id", event_id)
+            evidence_refs.append(normalized_ref)
+            artifact_writes.append(
+                GarageRecordWrite(
+                    "artifact-index-record",
+                    self._build_artifact_index_record(
+                        normalized_ref,
+                        task_id=task_id,
+                        job_id=job_id,
+                        event_id=event_id,
+                        recorded_at=recorded_at,
+                    ),
+                )
+            )
+        for workspace_ref in call.get("workspace_refs", ()):
+            if isinstance(workspace_ref, dict):
+                evidence_refs.append(dict(workspace_ref))
+        payload_ref = call.get("payload_ref")
+        if isinstance(payload_ref, dict):
+            evidence_refs.append(dict(payload_ref))
+        deduped_evidence = self._merge_evidence_refs((), tuple(evidence_refs))
+        deduped_writes: list[GarageRecordWrite] = []
+        seen_artifact_ids: set[str] = set()
+        for write in artifact_writes:
+            artifact_id = str(write.data["artifact_id"])
+            if artifact_id in seen_artifact_ids:
+                continue
+            seen_artifact_ids.add(artifact_id)
+            deduped_writes.append(write)
+        return tuple(deduped_evidence), tuple(deduped_writes)
+
+    @staticmethod
+    def _build_artifact_index_record(
+        artifact_ref: dict[str, Any],
+        *,
+        task_id: str,
+        job_id: str | None,
+        event_id: str,
+        recorded_at: str,
+    ) -> dict[str, Any]:
+        record = {
+            "artifact_id": artifact_ref["artifact_id"],
+            "kind": artifact_ref["kind"],
+            "workspace_ref": artifact_ref["workspace_ref"],
+            "reported_by": artifact_ref["reported_by"],
+            "created_at": artifact_ref.get("created_at", recorded_at),
+            "task_id": task_id,
+            "event_id": event_id,
+        }
+        if job_id is not None:
+            record["job_id"] = job_id
+        for optional_field in ("description", "mime_type", "size_bytes", "hash"):
+            if optional_field in artifact_ref:
+                record[optional_field] = artifact_ref[optional_field]
+        return record
 
     def _current_plan_item(self, plan: dict[str, Any]) -> dict[str, Any] | None:
         current_active_item = plan.get("current_active_item")

@@ -126,8 +126,9 @@ def make_result_submit_call(
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
     reported_status: str = "succeeded",
+    artifact_refs: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    return {
+    call = {
         "schema_version": "v0.1",
         "call_type": "result.submit",
         "task_id": task_id,
@@ -142,6 +143,9 @@ def make_result_submit_call(
             "role": "robin",
         },
     }
+    if artifact_refs is not None:
+        call["artifact_refs"] = artifact_refs
+    return call
 
 
 def make_failure_report_call(
@@ -149,8 +153,9 @@ def make_failure_report_call(
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
     reported_status: str = "blocked",
+    artifact_refs: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    return {
+    call = {
         "schema_version": "v0.1",
         "call_type": "failure.report",
         "task_id": task_id,
@@ -165,6 +170,9 @@ def make_failure_report_call(
             "role": "robin",
         },
     }
+    if artifact_refs is not None:
+        call["artifact_refs"] = artifact_refs
+    return call
 
 
 def make_checkpoint_create_call(
@@ -173,6 +181,7 @@ def make_checkpoint_create_call(
     job_id: str = "T000001.J001",
     plan_version: int | None = None,
     current_active_item: str | None = None,
+    artifact_refs: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     call: dict[str, object] = {
         "schema_version": "v0.1",
@@ -187,6 +196,8 @@ def make_checkpoint_create_call(
         call["plan_version"] = plan_version
     if current_active_item is not None:
         call["payload"]["current_active_item"] = current_active_item
+    if artifact_refs is not None:
+        call["artifact_refs"] = artifact_refs
     return call
 
 
@@ -195,6 +206,7 @@ def make_continuation_record_call(
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
     plan_version: int | None = None,
+    artifact_refs: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     call: dict[str, object] = {
         "schema_version": "v0.1",
@@ -211,7 +223,28 @@ def make_continuation_record_call(
     }
     if plan_version is not None:
         call["plan_version"] = plan_version
+    if artifact_refs is not None:
+        call["artifact_refs"] = artifact_refs
     return call
+
+
+def make_summary_artifact_ref(
+    *,
+    task_id: str = "T000001",
+    job_id: str = "T000001.J001",
+    artifact_id: str = "T000001.J001.A001",
+    kind: str = "summary",
+) -> dict[str, object]:
+    return {
+        "artifact_id": artifact_id,
+        "kind": kind,
+        "workspace_ref": {
+            "role": "robin",
+            "path": f"/workspace/robin/tasks/{task_id}/jobs/{job_id.split('.J', 1)[1]}/{artifact_id.split('.A', 1)[1]}.json",
+        },
+        "reported_by": "robin",
+        "description": "Proof-bearing output for the supported slice.",
+    }
 
 
 class GarageStorageAdapterTests(unittest.TestCase):
@@ -1062,6 +1095,205 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertIn("conflicts with reconstructed active item", str(ctx.exception))
         self.assertIsNone(storage.read_tracked_plan("T000001", 1))
         self.assertEqual(["task.created"], [event["event_type"] for event in storage.read_event_history("T000001")])
+        storage.close()
+
+    def test_result_submit_registers_artifact_and_promotes_item_to_verified_when_gate_is_satisfied(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce summary proof",
+                        "description": "Return the summary artifact for the current step.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+
+        item_summary = storage.read_plan_item_summary("T000001", 1, "I002")
+        artifact_index = storage.read_artifact_index_record("T000001.J001.A001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("verified", item_summary["status"])
+        self.assertTrue(item_summary["proof_satisfied"])
+        self.assertEqual(2, item_summary["evidence_count"])
+        self.assertEqual(("T000001.J001.A001",), item_summary["official_artifact_ids"])
+        self.assertEqual("T000001", artifact_index["task_id"])
+        self.assertEqual("T000001.J001", artifact_index["job_id"])
+        self.assertEqual("verified", task_summary["relevant_plan_item"]["status"])
+        self.assertEqual("T000001.J001.A001", task_summary["relevant_evidence_refs"][0]["artifact_id"])
+
+    def test_manual_review_rule_keeps_item_done_unverified_even_with_evidence(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+
+        item_summary = storage.read_plan_item_summary("T000001", 1, "I002")
+        storage.close()
+
+        self.assertEqual("done_unverified", item_summary["status"])
+        self.assertFalse(item_summary["proof_satisfied"])
+        self.assertEqual(2, item_summary["evidence_count"])
+
+    def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect failure evidence",
+                        "description": "Return failure artifacts for the blocked step.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(
+            make_failure_report_call(
+                reported_status="blocked",
+                artifact_refs=[make_summary_artifact_ref(kind="screenshot")],
+            )
+        )
+
+        item_summary = storage.read_plan_item_summary("T000001", 1, "I002")
+        artifact_index = storage.read_artifact_index_record("T000001.J001.A001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("blocked", item_summary["status"])
+        self.assertTrue(item_summary["is_blocked"])
+        self.assertEqual(2, item_summary["evidence_count"])
+        self.assertEqual("screenshot", artifact_index["kind"])
+        self.assertEqual("blocked", task_summary["relevant_plan_item"]["status"])
+
+    def test_resume_summaries_surface_relevant_evidence_refs(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_plan_record_call(plan_version=1, current_active_item="I002"))
+        processor.process_call(
+            make_checkpoint_create_call(
+                plan_version=1,
+                current_active_item="I002",
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        checkpoint_summary = storage.latest_task_state_summary("T000001")["latest_checkpoint_summary"]
+        continuation_summary = storage.latest_task_state_summary("T000001")["latest_continuation_summary"]
+        resume_evidence = storage.resolve_resume_evidence_refs("T000001")
+        artifact_records = storage.list_artifact_index_records(task_id="T000001")
+        storage.close()
+
+        self.assertEqual("T000001.J001.A001", checkpoint_summary["evidence_refs"][0]["artifact_id"])
+        self.assertEqual("T000001.J001.A002", continuation_summary["evidence_refs"][0]["artifact_id"])
+        self.assertEqual("T000001.J001.A002", resume_evidence[0]["artifact_id"])
+        self.assertEqual(2, len(artifact_records))
+
+    def test_verified_item_without_satisfied_gate_is_rejected_before_write(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+
+        with self.assertRaises(GarageAlfredProcessingError) as ctx:
+            processor.process_call(
+                make_plan_record_call(
+                    plan_version=1,
+                    current_active_item=None,
+                    items=[
+                        {
+                            "item_id": "I001",
+                            "title": "Claim verified too early",
+                            "description": "Mark verified without satisfying the declared gate.",
+                            "status": "verified",
+                            "verification_rule": {"type": "artifact_exists"},
+                        }
+                    ],
+                )
+            )
+
+        self.assertIn("cannot be verified without a satisfied proof gate", str(ctx.exception))
+        self.assertIsNone(storage.read_tracked_plan("T000001", 1))
         storage.close()
 
 

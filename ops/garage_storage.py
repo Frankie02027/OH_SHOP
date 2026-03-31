@@ -131,6 +131,28 @@ class GarageStorageAdapter:
             artifact_id,
         )
 
+    def list_artifact_index_records(
+        self,
+        *,
+        task_id: str | None = None,
+        job_id: str | None = None,
+        event_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT data_json FROM artifact_index_records ORDER BY artifact_id ASC"
+        ).fetchall()
+        records = [json.loads(row["data_json"]) for row in rows]
+        filtered: list[dict[str, Any]] = []
+        for record in records:
+            if task_id is not None and record.get("task_id") != task_id:
+                continue
+            if job_id is not None and record.get("job_id") != job_id:
+                continue
+            if event_id is not None and record.get("event_id") != event_id:
+                continue
+            filtered.append(record)
+        return filtered
+
     def read_event_history(
         self,
         task_id: str | None = None,
@@ -189,6 +211,7 @@ class GarageStorageAdapter:
         plan_linkage = self.active_plan_linkage_summary(task_id)
         active_plan_summary = self.read_active_plan_summary(task_id)
         current_active_plan_item = self.resolve_active_plan_item(task_id)
+        relevant_plan_item = self.resolve_relevant_plan_item(task_id)
         resume_anchor = self.resolve_task_resume_anchor(task_id)
         return {
             "task_record": task_record,
@@ -207,6 +230,22 @@ class GarageStorageAdapter:
             "active_plan_linkage": plan_linkage,
             "active_plan_summary": active_plan_summary,
             "current_active_plan_item": current_active_plan_item,
+            "relevant_plan_item": relevant_plan_item,
+            "current_item_evidence_refs": (
+                current_active_plan_item.get("evidence_refs")
+                if isinstance(current_active_plan_item, dict)
+                else ()
+            ),
+            "relevant_evidence_refs": (
+                relevant_plan_item.get("evidence_refs")
+                if isinstance(relevant_plan_item, dict)
+                else ()
+            ),
+            "current_item_proof_satisfied": (
+                current_active_plan_item.get("proof_satisfied")
+                if isinstance(current_active_plan_item, dict)
+                else False
+            ),
             "is_waiting_on_child": task_record.get("task_state") == "waiting_on_child",
             "is_resuming": task_record.get("task_state") == "resuming",
             "is_running": task_record.get("task_state") == "running",
@@ -221,6 +260,7 @@ class GarageStorageAdapter:
                 latest_continuation,
                 active_plan_summary,
             ),
+            "resume_evidence_refs": self.resolve_resume_evidence_refs(task_id),
             "next_plan_resume_target": self.resolve_next_plan_resume_target(task_id),
         }
 
@@ -245,6 +285,9 @@ class GarageStorageAdapter:
             if latest_state_event
             else None,
             "latest_reported_status": job_record.get("last_reported_status"),
+            "latest_evidence_refs": self._extract_event_evidence_refs(
+                latest_event if isinstance(latest_event, dict) else None
+            ),
             "parent_job_id": job_record.get("parent_job_id"),
             "is_same_job_retry": bool(attempt_no and attempt_no > 1),
             "is_materially_new_child_leg": job_record.get("parent_job_id") is not None,
@@ -307,6 +350,7 @@ class GarageStorageAdapter:
             "items": items,
             "current_active_item_summary": self.resolve_active_plan_item(task_id),
             "next_executable_item_summary": next_executable_item,
+            "relevant_plan_item_summary": self.resolve_relevant_plan_item(task_id),
         }
 
     def read_plan_item_summary(
@@ -463,6 +507,44 @@ class GarageStorageAdapter:
                 return item
         return None
 
+    def resolve_relevant_plan_item(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        plan_version = task_record.get("current_plan_version")
+        if not isinstance(plan_version, int):
+            return None
+        plan = self.read_tracked_plan(task_id, plan_version)
+        if plan is None:
+            return None
+        current_item = self.resolve_active_plan_item(task_id)
+        if isinstance(current_item, dict):
+            return current_item
+        item_summaries = [self._plan_item_summary(plan, item) for item in plan.get("items", [])]
+        for item in reversed(item_summaries):
+            if item["evidence_count"] > 0 or item["status"] in {"done_unverified", "verified", "blocked"}:
+                return item
+        return None
+
+    def resolve_resume_evidence_refs(self, task_id: str) -> tuple[dict[str, Any], ...]:
+        latest_continuation = self.latest_continuation_for_task(task_id)
+        if isinstance(latest_continuation, dict):
+            refs = self._extract_continuation_evidence_refs(latest_continuation)
+            if refs:
+                return refs
+        task_record = self.read_task_record(task_id)
+        if isinstance(task_record, dict):
+            latest_checkpoint_id = task_record.get("latest_checkpoint_id")
+            if isinstance(latest_checkpoint_id, str):
+                checkpoint = self.read_checkpoint_record(latest_checkpoint_id)
+                refs = self._extract_checkpoint_evidence_refs(checkpoint)
+                if refs:
+                    return refs
+        relevant_item = self.resolve_relevant_plan_item(task_id)
+        if isinstance(relevant_item, dict):
+            return tuple(dict(ref) for ref in relevant_item.get("evidence_refs", ()))
+        return ()
+
     @staticmethod
     def _latest_job_state_event(
         history: list[dict[str, Any]],
@@ -508,6 +590,22 @@ class GarageStorageAdapter:
             "title": item["title"],
             "status": status,
             "depends_on": tuple(item.get("depends_on", ())),
+            "verification_rule_type": (
+                item.get("verification_rule", {}).get("type")
+                if isinstance(item.get("verification_rule"), dict)
+                else None
+            ),
+            "evidence_refs": tuple(
+                dict(ref) for ref in item.get("evidence_refs", []) if isinstance(ref, dict)
+            ),
+            "evidence_count": len(
+                [ref for ref in item.get("evidence_refs", []) if isinstance(ref, dict)]
+            ),
+            "official_artifact_ids": tuple(
+                str(ref["artifact_id"])
+                for ref in item.get("evidence_refs", [])
+                if isinstance(ref, dict) and "artifact_id" in ref
+            ),
             "is_pending": status == "todo",
             "is_active": status in {"in_progress", "needs_child_job"},
             "is_completed": status in {"done_unverified", "verified"},
@@ -515,6 +613,7 @@ class GarageStorageAdapter:
             "dependencies_resolved": dependencies_resolved,
             "is_executable": status == "todo" and dependencies_resolved,
             "is_current_target": plan.get("current_active_item") == item.get("item_id"),
+            "proof_satisfied": GarageAlfredProcessor._proof_gate_satisfied(item),
         }
 
     @staticmethod
@@ -544,6 +643,9 @@ class GarageStorageAdapter:
             "current_active_item": checkpoint_record.get("current_active_item"),
             "resume_point": checkpoint_record.get("resume_point"),
             "reason": checkpoint_record.get("reason"),
+            "evidence_refs": GarageStorageAdapter._extract_checkpoint_evidence_refs(
+                checkpoint_record
+            ),
             "record": checkpoint_record,
         }
 
@@ -562,8 +664,58 @@ class GarageStorageAdapter:
             "plan_version": continuation_record.get("plan_version"),
             "current_active_item": current_active_item,
             "content_ref": continuation_record.get("content_ref"),
+            "evidence_refs": GarageStorageAdapter._extract_continuation_evidence_refs(
+                continuation_record
+            ),
             "record": continuation_record,
         }
+
+    @staticmethod
+    def _extract_event_evidence_refs(
+        event: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], ...]:
+        if event is None:
+            return ()
+        refs: list[dict[str, Any]] = []
+        for field_name in ("artifact_refs", "workspace_refs"):
+            for ref in event.get(field_name, ()):
+                if isinstance(ref, dict):
+                    refs.append(dict(ref))
+        payload_ref = event.get("payload_ref")
+        if isinstance(payload_ref, dict):
+            refs.append(dict(payload_ref))
+        return tuple(refs)
+
+    @staticmethod
+    def _extract_checkpoint_evidence_refs(
+        checkpoint_record: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], ...]:
+        if checkpoint_record is None:
+            return ()
+        refs: list[dict[str, Any]] = []
+        key_ref_bundle = checkpoint_record.get("key_ref_bundle")
+        if isinstance(key_ref_bundle, dict):
+            for field_name in ("artifact_refs", "workspace_refs"):
+                for ref in key_ref_bundle.get(field_name, ()):
+                    if isinstance(ref, dict):
+                        refs.append(dict(ref))
+            payload_ref = key_ref_bundle.get("payload_ref")
+            if isinstance(payload_ref, dict):
+                refs.append(dict(payload_ref))
+        return tuple(refs)
+
+    @staticmethod
+    def _extract_continuation_evidence_refs(
+        continuation_record: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], ...]:
+        if continuation_record is None:
+            return ()
+        refs: list[dict[str, Any]] = []
+        for field_name in ("artifact_refs", "workspace_refs"):
+            for ref in continuation_record.get(field_name, ()):
+                if isinstance(ref, dict):
+                    refs.append(dict(ref))
+        return tuple(refs)
 
     def _initialize_storage(self) -> None:
         self._conn.executescript(

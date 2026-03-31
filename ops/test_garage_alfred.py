@@ -290,7 +290,7 @@ class GarageAlfredProcessorTests(unittest.TestCase):
             result.recorded_events[0]["event_type"],
         )
         self.assertEqual(
-            ["task-record", "continuation-record", "event-record"],
+            ["task-record", "continuation-record", "artifact-index-record", "event-record"],
             [w[0] for w in result.written_records],
         )
         self.assertEqual(
