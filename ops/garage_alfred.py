@@ -576,6 +576,43 @@ class GarageAlfredProcessor:
             submit_decision=submit_decision,
         )
 
+    def attempt_best_next_call_with_guards(
+        self,
+        task_id: str,
+        *,
+        supplied_fields: dict[str, Any] | None = None,
+        expected: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        current_summary = self._read_current_task_summary_for_receipt(task_id)
+        fresh_preflight = self.prepare_next_call_from_draft(
+            task_id,
+            supplied_fields=supplied_fields,
+        )
+        actual = self._build_guarded_attempt_actuals(
+            current_summary=current_summary,
+            fresh_preflight=fresh_preflight,
+        )
+        guard_result = self._evaluate_attempt_guards(expected=expected, actual=actual)
+        if not bool(guard_result.get("guard_match")):
+            return self._build_guarded_attempt_receipt(
+                expected=expected,
+                actual=actual,
+                guard_result=guard_result,
+                attempt_receipt=None,
+                fresh_preflight=fresh_preflight,
+            )
+        attempt_receipt = self.attempt_best_next_call(
+            task_id,
+            supplied_fields=supplied_fields,
+        )
+        return self._build_guarded_attempt_receipt(
+            expected=expected,
+            actual=actual,
+            guard_result=guard_result,
+            attempt_receipt=attempt_receipt,
+            fresh_preflight=fresh_preflight,
+        )
+
     def _attach_submit_receipt(
         self,
         *,
@@ -670,6 +707,197 @@ class GarageAlfredProcessor:
             "productive_in_slice": productive_in_slice,
             "context_capture_only": context_capture_only,
             "unavailable_in_slice": unavailable_in_slice,
+        }
+
+    def _build_guarded_attempt_actuals(
+        self,
+        *,
+        current_summary: dict[str, Any] | None,
+        fresh_preflight: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        immediate_follow_up = (
+            current_summary.get("immediate_follow_up_behavior")
+            if isinstance(current_summary, dict)
+            else None
+        )
+        next_call_hint = (
+            current_summary.get("next_call_hint") if isinstance(current_summary, dict) else None
+        )
+        next_call_draft = (
+            current_summary.get("next_call_draft")
+            if isinstance(current_summary, dict)
+            else None
+        )
+        best_next_move = (
+            current_summary.get("best_next_move") if isinstance(current_summary, dict) else None
+        )
+        prepared_call = (
+            fresh_preflight.get("prepared_call")
+            if isinstance(fresh_preflight, dict)
+            else None
+        )
+        attempted_call_type = self._resolve_attempted_call_type(
+            best_next_move=best_next_move,
+            next_call_hint=next_call_hint,
+            next_call_draft=next_call_draft,
+            prepared_call=prepared_call,
+        )
+        submission_mode = self._resolve_submission_mode(fresh_preflight)
+        context_only = bool(fresh_preflight.get("context_only")) if isinstance(
+            fresh_preflight, dict
+        ) else bool(
+            next_call_hint.get("context_only") if isinstance(next_call_hint, dict) else False
+        )
+        productive_in_slice = (
+            not context_only
+            and not bool(
+                fresh_preflight.get("unavailable_in_slice")
+                if isinstance(fresh_preflight, dict)
+                else False
+            )
+        )
+        if not isinstance(fresh_preflight, dict) and isinstance(immediate_follow_up, dict):
+            productive_in_slice = bool(immediate_follow_up.get("productive_in_slice"))
+        unavailable_in_slice = bool(fresh_preflight.get("unavailable_in_slice")) if isinstance(
+            fresh_preflight, dict
+        ) else attempted_call_type is None
+        missing_required_fields = tuple(
+            fresh_preflight.get("missing_required_fields") or ()
+        ) if isinstance(fresh_preflight, dict) else ()
+        requires_additional_input = bool(missing_required_fields) or bool(
+            next_call_hint.get("requires_additional_user_or_agent_input")
+            if isinstance(next_call_hint, dict)
+            else False
+        )
+        return {
+            "dominant_target_kind": (
+                current_summary.get("dominant_target_kind")
+                if isinstance(current_summary, dict)
+                else None
+            ),
+            "best_next_call_type": attempted_call_type,
+            "follow_up_behavior_kind": (
+                immediate_follow_up.get("follow_up_behavior_kind")
+                if isinstance(immediate_follow_up, dict)
+                else None
+            ),
+            "submission_mode": submission_mode,
+            "context_only": context_only,
+            "productive_in_slice": productive_in_slice,
+            "unavailable_in_slice": unavailable_in_slice,
+            "best_next_move": best_next_move,
+            "missing_required_fields": missing_required_fields,
+            "requires_additional_user_or_agent_input": requires_additional_input,
+            "prepared_call": prepared_call if isinstance(prepared_call, dict) else None,
+        }
+
+    @staticmethod
+    def _evaluate_attempt_guards(
+        *,
+        expected: dict[str, Any] | None,
+        actual: dict[str, Any],
+    ) -> dict[str, Any]:
+        if expected is None:
+            return {
+                "guard_match": True,
+                "guard_failure_kind": None,
+                "guard_failure_reason": None,
+                "expected": {},
+            }
+        if not isinstance(expected, dict):
+            return {
+                "guard_match": False,
+                "guard_failure_kind": "invalid_guard_shape",
+                "guard_failure_reason": "expected guards must be a dict when provided",
+                "expected": {},
+            }
+        expected_copy = dict(expected)
+        allowed_keys = {
+            "expected_dominant_target_kind": "dominant_target_kind",
+            "expected_best_next_call_type": "best_next_call_type",
+            "expected_follow_up_behavior_kind": "follow_up_behavior_kind",
+            "expected_submission_mode": "submission_mode",
+            "expected_context_only": "context_only",
+            "expected_productive_in_slice": "productive_in_slice",
+        }
+        unsupported_keys = tuple(
+            key for key in expected_copy.keys() if key not in allowed_keys
+        )
+        if unsupported_keys:
+            return {
+                "guard_match": False,
+                "guard_failure_kind": "unsupported_guard_key",
+                "guard_failure_reason": (
+                    "unsupported guarded-attempt expectation keys: "
+                    + ", ".join(sorted(unsupported_keys))
+                ),
+                "expected": expected_copy,
+            }
+        for expected_key, actual_key in allowed_keys.items():
+            if expected_key not in expected_copy:
+                continue
+            if expected_copy.get(expected_key) != actual.get(actual_key):
+                return {
+                    "guard_match": False,
+                    "guard_failure_kind": f"{actual_key}_mismatch",
+                    "guard_failure_reason": (
+                        f"{actual_key} changed from expected {expected_copy.get(expected_key)!r} "
+                        f"to actual {actual.get(actual_key)!r}"
+                    ),
+                    "expected": expected_copy,
+                }
+        return {
+            "guard_match": True,
+            "guard_failure_kind": None,
+            "guard_failure_reason": None,
+            "expected": expected_copy,
+        }
+
+    def _build_guarded_attempt_receipt(
+        self,
+        *,
+        expected: dict[str, Any] | None,
+        actual: dict[str, Any],
+        guard_result: dict[str, Any],
+        attempt_receipt: dict[str, Any] | None,
+        fresh_preflight: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if isinstance(attempt_receipt, dict):
+            guarded = dict(attempt_receipt)
+            guarded["guard_match"] = bool(guard_result.get("guard_match"))
+            guarded["guard_failure_kind"] = guard_result.get("guard_failure_kind")
+            guarded["guard_failure_reason"] = guard_result.get("guard_failure_reason")
+            guarded["expected"] = dict(guard_result.get("expected") or {})
+            guarded["actual"] = dict(actual)
+            return guarded
+        prepared_call = (
+            fresh_preflight.get("prepared_call")
+            if isinstance(fresh_preflight, dict)
+            else actual.get("prepared_call")
+        )
+        return {
+            "attempt_kind": "guard_mismatch_refused",
+            "guard_match": False,
+            "guard_failure_kind": guard_result.get("guard_failure_kind"),
+            "guard_failure_reason": guard_result.get("guard_failure_reason"),
+            "expected": dict(guard_result.get("expected") or expected or {}),
+            "actual": dict(actual),
+            "attempt_allowed": False,
+            "attempt_reason": guard_result.get("guard_failure_reason"),
+            "attempted_call_type": actual.get("best_next_call_type"),
+            "attempted_submission_mode": actual.get("submission_mode"),
+            "best_next_move": actual.get("best_next_move"),
+            "follow_up_behavior_kind": actual.get("follow_up_behavior_kind"),
+            "missing_required_fields": tuple(actual.get("missing_required_fields") or ()),
+            "requires_additional_user_or_agent_input": bool(
+                actual.get("requires_additional_user_or_agent_input")
+            ),
+            "formed_concrete_call": isinstance(prepared_call, dict),
+            "prepared_call": prepared_call if isinstance(prepared_call, dict) else None,
+            "submit_receipt": None,
+            "productive_in_slice": bool(actual.get("productive_in_slice")),
+            "context_capture_only": bool(actual.get("context_only")),
+            "unavailable_in_slice": bool(actual.get("unavailable_in_slice")),
         }
 
     def _build_submit_receipt(
