@@ -700,6 +700,14 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("waiting-on-child", task_summary["dominant_target_kind"])
         self.assertEqual("waiting-on-child", task_summary["dominant_blocker_kind"])
         self.assertEqual("waiting-on-child", task_summary["effective_task_posture"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertEqual("waiting-on-child", task_summary["execution_hold_kind"])
+        self.assertIn("job.start", task_summary["allowed_call_types"])
+        self.assertIn("child_job.request", task_summary["allowed_call_types"])
+        self.assertEqual("job.start", task_summary["best_next_call_type"])
+        self.assertEqual(
+            "progress-child-leg", task_summary["best_next_move"]["move_kind"]
+        )
         self.assertEqual(child.result["job_id"], task_summary["task_record"]["current_job_id"])
         self.assertEqual("dispatched", child_summary["job_state"])
         self.assertEqual("job.dispatched", child_summary["latest_event_type"])
@@ -1014,6 +1022,16 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("proof-gathering", task_summary["dominant_target_kind"])
         self.assertEqual("proof-gathering", task_summary["dominant_blocker_kind"])
         self.assertEqual("waiting-on-proof", task_summary["effective_task_posture"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertEqual(
+            ("checkpoint.create", "continuation.record"),
+            task_summary["allowed_call_types"],
+        )
+        self.assertIn("job.start", task_summary["blocked_call_types"])
+        self.assertEqual("continuation.record", task_summary["best_next_call_type"])
+        self.assertEqual(
+            "gather-proof", task_summary["best_next_move"]["move_kind"]
+        )
         self.assertFalse(task_summary["current_job_is_primary_focus"])
         self.assertTrue(task_summary["relevant_plan_item_is_primary_focus"])
         self.assertEqual("proof-gathering", task_summary["next_plan_resume_target"]["target_kind"])
@@ -1061,6 +1079,14 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("blocked-evidence-review", task_summary["dominant_target_kind"])
         self.assertEqual("blocked-evidence-review", task_summary["dominant_blocker_kind"])
         self.assertEqual("blocked-evidence-review", task_summary["effective_task_posture"])
+        self.assertTrue(task_summary["execution_held"])
+        self.assertIn("failure.report", task_summary["allowed_call_types"])
+        self.assertIn("continuation.record", task_summary["allowed_call_types"])
+        self.assertEqual("continuation.record", task_summary["best_next_call_type"])
+        self.assertEqual(
+            "capture-blocked-evidence",
+            task_summary["best_next_move"]["move_kind"],
+        )
         self.assertEqual("I002", task_summary["current_active_plan_item"]["item_id"])
         self.assertEqual("I002", task_summary["next_plan_resume_target"]["item"]["item_id"])
 
@@ -1088,6 +1114,14 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(task_summary["is_resuming"])
         self.assertEqual("active-item", task_summary["dominant_target_kind"])
         self.assertEqual("running", task_summary["effective_task_posture"])
+        self.assertTrue(task_summary["execution_allowed"])
+        self.assertIn("result.submit", task_summary["allowed_call_types"])
+        self.assertIn("failure.report", task_summary["allowed_call_types"])
+        self.assertIsNone(task_summary["best_next_call_type"])
+        self.assertEqual(
+            "continue-active-execution",
+            task_summary["best_next_move"]["move_kind"],
+        )
 
     def test_incoherent_plan_transition_is_rejected_before_durable_side_effects(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -1288,6 +1322,15 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("waiting-on-review", task_summary["effective_task_posture"])
         self.assertTrue(task_summary["execution_held"])
         self.assertEqual("review-needed", task_summary["execution_hold_kind"])
+        self.assertEqual(
+            ("checkpoint.create", "continuation.record"),
+            task_summary["allowed_call_types"],
+        )
+        self.assertEqual("continuation.record", task_summary["best_next_call_type"])
+        self.assertEqual(
+            "capture-review-context",
+            task_summary["best_next_move"]["move_kind"],
+        )
         self.assertFalse(task_summary["current_job_is_primary_focus"])
         self.assertTrue(task_summary["relevant_plan_item_is_primary_focus"])
         self.assertEqual("review-needed", job_summary["relevant_plan_item_proof_policy_kind"])
@@ -1295,6 +1338,10 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(job_summary["current_job_subordinate_to_task_focus"])
         self.assertTrue(job_summary["task_execution_held"])
         self.assertEqual("review-needed", job_summary["task_execution_hold_kind"])
+        self.assertEqual(
+            "capture-review-context",
+            job_summary["task_best_next_move"]["move_kind"],
+        )
         self.assertEqual("review-needed", resume_target["target_kind"])
         self.assertEqual("I002", resume_target["item"]["item_id"])
 
@@ -1455,6 +1502,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         proof_item = storage.read_plan_item_summary("T000001", 1, "I002")
         active_item = storage.resolve_active_plan_item("T000001")
         next_target = storage.resolve_next_plan_resume_target("T000001")
+        allowed_calls = storage.allowed_supported_call_types("T000001")
+        best_move = storage.best_next_supported_move("T000001")
         storage.close()
 
         self.assertEqual("verified", proof_item["status"])
@@ -1462,6 +1511,18 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("I003", active_item["item_id"])
         self.assertEqual("next-executable", next_target["target_kind"])
         self.assertEqual("I003", next_target["item"]["item_id"])
+        self.assertEqual(
+            (
+                "job.start",
+                "child_job.request",
+                "result.submit",
+                "failure.report",
+                "checkpoint.create",
+                "continuation.record",
+            ),
+            allowed_calls,
+        )
+        self.assertEqual("start-next-executable", best_move["move_kind"])
 
     def test_job_start_is_rejected_while_task_waits_on_proof(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -1504,6 +1565,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(policy["allowed"])
         self.assertEqual("proof-gathering", policy["dominant_target_kind"])
         self.assertEqual("proof-gathering", policy["execution_hold_kind"])
+        self.assertEqual("continuation.record", policy["best_next_move"]["call_type"])
         self.assertIn("held on 'proof-gathering'", str(ctx.exception))
         storage.close()
 
@@ -1553,6 +1615,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(policy["allowed"])
         self.assertEqual("review-needed", policy["dominant_target_kind"])
         self.assertEqual("review-needed", policy["execution_hold_kind"])
+        self.assertEqual("continuation.record", policy["best_next_move"]["call_type"])
         self.assertIn("held on 'review-needed'", str(ctx.exception))
         storage.close()
 
@@ -1645,6 +1708,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("continuation.recorded", result.result["event_type"])
         self.assertEqual("review-needed", task_summary["dominant_target_kind"])
         self.assertTrue(task_summary["execution_held"])
+        self.assertEqual("continuation.record", task_summary["best_next_call_type"])
         self.assertEqual("review-needed", proof_item["proof_policy_kind"])
         self.assertFalse(proof_item["proof_satisfied"])
 
@@ -1693,6 +1757,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("waiting-on-child", task_summary["dominant_target_kind"])
         self.assertTrue(task_summary["execution_held"])
         self.assertEqual("waiting-on-child", task_summary["execution_hold_kind"])
+        self.assertEqual("job.start", task_summary["best_next_call_type"])
         self.assertFalse(rejected_policy["allowed"])
         self.assertEqual("job.started", started.result["event_type"])
         self.assertIn("held on 'waiting-on-child'", str(ctx.exception))
@@ -1754,6 +1819,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("next-executable", task_summary["dominant_target_kind"])
         self.assertTrue(task_summary["execution_allowed"])
         self.assertFalse(task_summary["execution_held"])
+        self.assertEqual("job.start", task_summary["best_next_call_type"])
         self.assertTrue(policy["allowed"])
         self.assertEqual("job.started", result.result["event_type"])
         self.assertEqual(2, result.result["attempt_no"])

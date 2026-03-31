@@ -192,9 +192,23 @@ class GarageAlfredProcessor:
             return
         hold_kind = policy.get("execution_hold_kind") or policy.get("dominant_target_kind")
         rejection_reason = policy.get("rejection_reason") or "call_not_allowed"
+        best_next_move = policy.get("best_next_move")
+        recommendation = ""
+        if isinstance(best_next_move, dict):
+            recommended_call = best_next_move.get("call_type")
+            recommended_reason = best_next_move.get("reason")
+            if isinstance(recommended_call, str):
+                recommendation = (
+                    f"; best supported next move is '{recommended_call}'"
+                    + (
+                        f" ({recommended_reason})"
+                        if isinstance(recommended_reason, str) and recommended_reason
+                        else ""
+                    )
+                )
         raise GarageAlfredProcessingError(
             f"{call_type} for task '{task_id}' is not allowed while execution is "
-            f"held on '{hold_kind}' ({rejection_reason})"
+            f"held on '{hold_kind}' ({rejection_reason}){recommendation}"
         )
 
     def supported_call_types(self) -> tuple[str, ...]:
