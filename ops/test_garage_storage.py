@@ -5110,6 +5110,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             },
         )
         receipt = attempt["submit_receipt"]
+        final_receipt = attempt["final_receipt"]
         storage.close()
 
         self.assertFalse(attempt["guard_match"])
@@ -5124,6 +5125,24 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertIsNotNone(receipt)
         self.assertEqual("submitted", receipt["decision_kind"])
         self.assertEqual("productive_in_slice", receipt["submission_mode"])
+        self.assertEqual(
+            "guard_mismatch_rebased_productive_execution",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertFalse(final_receipt["original_guard_match"])
+        self.assertTrue(final_receipt["rebase_considered"])
+        self.assertTrue(final_receipt["rebase_allowed"])
+        self.assertTrue(final_receipt["final_attempt_allowed"])
+        self.assertEqual("job.start", final_receipt["attempted_call_type"])
+        self.assertEqual(
+            "productive_in_slice",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertEqual("active-item", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "continue-active-execution",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
 
     def test_guarded_rebase_can_attempt_context_capture_replacement_only_when_approved(
         self,
@@ -5189,6 +5208,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             },
         )
         receipt = attempt["submit_receipt"]
+        final_receipt = attempt["final_receipt"]
         storage.close()
 
         self.assertFalse(attempt["guard_match"])
@@ -5200,6 +5220,116 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(attempt["productive_in_slice"])
         self.assertIsNotNone(receipt)
         self.assertEqual("context_capture", receipt["submission_mode"])
+        self.assertEqual(
+            "guard_mismatch_rebased_context_capture",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertFalse(final_receipt["original_guard_match"])
+        self.assertTrue(final_receipt["rebase_considered"])
+        self.assertTrue(final_receipt["rebase_allowed"])
+        self.assertTrue(final_receipt["final_attempt_allowed"])
+        self.assertTrue(final_receipt["context_capture_only"])
+        self.assertFalse(final_receipt["productive_in_slice"])
+        self.assertEqual(
+            "context_capture",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertEqual("review-needed", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "capture-manual-review-context",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
+
+    def test_guarded_rebase_can_attempt_blocked_evidence_context_capture_when_approved(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect blocked evidence",
+                        "description": "Capture failure evidence for the blocked step.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_failure_report_call(
+                reported_status="blocked",
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/blocked.md",
+                    "role": "jarvis",
+                }
+            },
+            expected={"expected_submission_mode": "productive_in_slice"},
+            allowed_rebased={
+                "allow_rebased_context_capture_candidate": True,
+                "expected_rebased_call_type": "continuation.record",
+                "expected_rebased_submission_mode": "context_capture",
+                "expected_rebased_follow_up_behavior_kind": "capture-blocked-evidence-next",
+            },
+        )
+        receipt = attempt["submit_receipt"]
+        final_receipt = attempt["final_receipt"]
+        storage.close()
+
+        self.assertFalse(attempt["guard_match"])
+        self.assertTrue(attempt["rebase_considered"])
+        self.assertTrue(attempt["rebase_allowed"])
+        self.assertEqual("rebased_attempted_context_capture", attempt["attempt_kind"])
+        self.assertTrue(attempt["attempt_allowed"])
+        self.assertTrue(attempt["context_capture_only"])
+        self.assertFalse(attempt["productive_in_slice"])
+        self.assertIsNotNone(receipt)
+        self.assertEqual("context_capture", receipt["submission_mode"])
+        self.assertEqual(
+            "guard_mismatch_rebased_context_capture",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertTrue(final_receipt["context_capture_only"])
+        self.assertFalse(final_receipt["productive_in_slice"])
+        self.assertEqual(
+            "context_capture",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertEqual(
+            "blocked-evidence-review",
+            final_receipt["dominant_target_kind_now"],
+        )
+        self.assertEqual(
+            "capture-blocked-evidence",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
 
     def test_guarded_rebase_refuses_when_replacement_falls_outside_approved_conditions(
         self,
@@ -5256,6 +5386,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             expected={"expected_submission_mode": "productive_in_slice"},
             allowed_rebased={"allow_rebased_productive_candidate": True},
         )
+        final_receipt = attempt["final_receipt"]
         storage.close()
 
         self.assertFalse(attempt["guard_match"])
@@ -5264,6 +5395,19 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("rebased_candidate_not_approved", attempt["rebase_failure_kind"])
         self.assertFalse(attempt["attempt_allowed"])
         self.assertIsNone(attempt["submit_receipt"])
+        self.assertEqual(
+            "guard_mismatch_rebase_refused",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertFalse(final_receipt["original_guard_match"])
+        self.assertTrue(final_receipt["rebase_considered"])
+        self.assertFalse(final_receipt["rebase_allowed"])
+        self.assertFalse(final_receipt["final_attempt_allowed"])
+        self.assertEqual(
+            "rebased_candidate_not_approved",
+            final_receipt["rebase_failure_kind"],
+        )
+        self.assertEqual("review-needed", final_receipt["dominant_target_kind_now"])
 
     def test_guarded_rebase_missing_input_candidate_returns_clean_needs_input_result(
         self,
@@ -5309,6 +5453,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             },
         )
         receipt = attempt["submit_receipt"]
+        final_receipt = attempt["final_receipt"]
         storage.close()
 
         self.assertFalse(attempt["guard_match"])
@@ -5323,6 +5468,18 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(attempt["requires_additional_user_or_agent_input"])
         self.assertIsNotNone(receipt)
         self.assertEqual("submission_refused_missing_fields", receipt["submit_effect_kind"])
+        self.assertEqual(
+            "guard_mismatch_rebased_missing_input_refused",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertFalse(final_receipt["final_attempt_allowed"])
+        self.assertEqual(("payload_ref",), final_receipt["missing_required_fields"])
+        self.assertTrue(final_receipt["requires_additional_user_or_agent_input"])
+        self.assertEqual("proof-gathering", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "attach-artifact-ref",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
 
     def test_guarded_rebase_unavailable_candidate_still_refuses_cleanly(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -5373,6 +5530,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             expected={"expected_dominant_target_kind": "next-executable"},
             allowed_rebased={"allow_rebased_productive_candidate": True},
         )
+        final_receipt = attempt["final_receipt"]
         storage.close()
 
         self.assertFalse(attempt["guard_match"])
@@ -5381,6 +5539,17 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("rebased_candidate_unavailable", attempt["rebase_failure_kind"])
         self.assertFalse(attempt["attempt_allowed"])
         self.assertIsNone(attempt["submit_receipt"])
+        self.assertEqual(
+            "guard_mismatch_rebased_unavailable_refused",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertFalse(final_receipt["final_attempt_allowed"])
+        self.assertTrue(final_receipt["unavailable_in_slice"])
+        self.assertEqual("active-item", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "continue-active-execution",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
 
     def test_guarded_rebase_can_attempt_waiting_on_child_productive_replacement_when_approved(
         self,
@@ -5424,6 +5593,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             },
         )
         receipt = attempt["submit_receipt"]
+        final_receipt = attempt["final_receipt"]
         storage.close()
 
         self.assertFalse(attempt["guard_match"])
@@ -5436,6 +5606,177 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("job.start", attempt["attempted_call_type"])
         self.assertIsNotNone(receipt)
         self.assertEqual("submitted", receipt["decision_kind"])
+        self.assertEqual(
+            "guard_mismatch_rebased_productive_execution",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertTrue(final_receipt["final_attempt_allowed"])
+        self.assertEqual("job.start", final_receipt["attempted_call_type"])
+        self.assertEqual(
+            "waiting-on-child",
+            final_receipt["dominant_target_kind_now"],
+        )
+        self.assertEqual(
+            "progress-child-leg",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
+
+    def test_guarded_rebase_original_match_returns_flattened_productive_receipt(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+
+        attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={
+                "expected_dominant_target_kind": "next-executable",
+                "expected_best_next_call_type": "job.start",
+                "expected_follow_up_behavior_kind": "start-next-executable-next",
+                "expected_submission_mode": "productive_in_slice",
+                "expected_context_only": False,
+                "expected_productive_in_slice": True,
+            },
+        )
+        receipt = attempt["submit_receipt"]
+        final_receipt = attempt["final_receipt"]
+        storage.close()
+
+        self.assertTrue(attempt["guard_match"])
+        self.assertFalse(final_receipt["rebase_considered"])
+        self.assertIsNone(final_receipt["rebase_allowed"])
+        self.assertEqual(
+            "original_guarded_attempt_productive_execution",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertTrue(final_receipt["final_attempt_allowed"])
+        self.assertEqual("job.start", final_receipt["attempted_call_type"])
+        self.assertEqual(
+            "productive_in_slice",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertEqual("active-item", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "continue-active-execution",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
+        self.assertIsNotNone(receipt)
+        self.assertEqual("submitted", receipt["decision_kind"])
+
+    def test_guarded_rebase_active_leg_still_returns_flattened_unavailable_receipt(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(make_job_start_call())
+
+        attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={
+                "expected_dominant_target_kind": "active-item",
+                "expected_context_only": False,
+                "expected_productive_in_slice": False,
+            },
+            allowed_rebased={"allow_rebased_productive_candidate": True},
+        )
+        final_receipt = attempt["final_receipt"]
+        receipt = attempt["submit_receipt"]
+        storage.close()
+
+        self.assertTrue(attempt["guard_match"])
+        self.assertFalse(attempt["attempt_allowed"])
+        self.assertIsNotNone(receipt)
+        self.assertEqual("submission_refused_unavailable", receipt["submit_effect_kind"])
+        self.assertEqual(
+            "guard_match_unavailable_refused",
+            final_receipt["final_attempt_path_kind"],
+        )
+        self.assertTrue(final_receipt["original_guard_match"])
+        self.assertFalse(final_receipt["final_attempt_allowed"])
+        self.assertTrue(final_receipt["unavailable_in_slice"])
+        self.assertEqual("active-item", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "continue-active-execution",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
 
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(

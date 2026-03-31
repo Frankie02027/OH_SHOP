@@ -632,7 +632,7 @@ class GarageAlfredProcessor:
             result["rebase_allowed"] = None
             result["rebase_failure_kind"] = None
             result["rebase_failure_reason"] = None
-            return result
+            return self._attach_guarded_rebase_final_receipt(task_id=task_id, result=result)
 
         rebase_result = self._evaluate_rebased_attempt_approval(
             allowed_rebased=allowed_rebased,
@@ -644,7 +644,7 @@ class GarageAlfredProcessor:
             result["rebase_allowed"] = False
             result["rebase_failure_kind"] = rebase_result.get("rebase_failure_kind")
             result["rebase_failure_reason"] = rebase_result.get("rebase_failure_reason")
-            return result
+            return self._attach_guarded_rebase_final_receipt(task_id=task_id, result=result)
 
         rebased_attempt = self.attempt_best_next_call(
             task_id,
@@ -674,7 +674,83 @@ class GarageAlfredProcessor:
         )
         result["rebased_candidate_kind"] = guarded_attempt.get("rebased_candidate_kind")
         result["rebased_candidate_reason"] = guarded_attempt.get("rebased_candidate_reason")
-        return result
+        return self._attach_guarded_rebase_final_receipt(task_id=task_id, result=result)
+
+    def _attach_guarded_rebase_final_receipt(
+        self,
+        *,
+        task_id: str,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        enriched = dict(result)
+        enriched["final_receipt"] = self._build_guarded_rebase_final_receipt(
+            task_id=task_id,
+            result=result,
+        )
+        return enriched
+
+    def _build_guarded_rebase_final_receipt(
+        self,
+        *,
+        task_id: str,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        current_summary = self._read_current_task_summary_for_receipt(task_id)
+        return {
+            "final_attempt_path_kind": self._classify_guarded_rebase_final_attempt_path(result),
+            "original_guard_match": bool(result.get("guard_match")),
+            "rebase_considered": bool(result.get("rebase_considered")),
+            "rebase_allowed": result.get("rebase_allowed"),
+            "rebase_failure_kind": result.get("rebase_failure_kind"),
+            "rebase_failure_reason": result.get("rebase_failure_reason"),
+            "final_attempt_allowed": bool(result.get("attempt_allowed")),
+            "attempted_call_type": result.get("attempted_call_type"),
+            "attempted_submission_mode": result.get("attempted_submission_mode"),
+            "productive_in_slice": bool(result.get("productive_in_slice")),
+            "context_capture_only": bool(result.get("context_capture_only")),
+            "missing_required_fields": tuple(result.get("missing_required_fields") or ()),
+            "requires_additional_user_or_agent_input": bool(
+                result.get("requires_additional_user_or_agent_input")
+            ),
+            "unavailable_in_slice": bool(result.get("unavailable_in_slice")),
+            "guard_failure_kind": result.get("guard_failure_kind"),
+            "guard_failure_reason": result.get("guard_failure_reason"),
+            "dominant_target_kind_now": (
+                current_summary.get("dominant_target_kind")
+                if isinstance(current_summary, dict)
+                else None
+            ),
+            "dominant_blocker_kind_now": (
+                current_summary.get("dominant_blocker_kind")
+                if isinstance(current_summary, dict)
+                else None
+            ),
+            "best_next_move_now": (
+                current_summary.get("best_next_move")
+                if isinstance(current_summary, dict)
+                else None
+            ),
+            "execution_allowed_now": (
+                current_summary.get("execution_allowed")
+                if isinstance(current_summary, dict)
+                else None
+            ),
+            "execution_hold_kind_now": (
+                current_summary.get("execution_hold_kind")
+                if isinstance(current_summary, dict)
+                else None
+            ),
+            "current_job_is_primary_focus_now": (
+                current_summary.get("current_job_is_primary_focus")
+                if isinstance(current_summary, dict)
+                else None
+            ),
+            "relevant_plan_item_is_primary_focus_now": (
+                current_summary.get("relevant_plan_item_is_primary_focus")
+                if isinstance(current_summary, dict)
+                else None
+            ),
+        }
 
     def _attach_submit_receipt(
         self,
@@ -1202,6 +1278,39 @@ class GarageAlfredProcessor:
         if attempt_kind.startswith("attempted_") or attempt_kind.startswith("attempt_refused_"):
             return f"rebased_{attempt_kind}"
         return f"rebased_{attempt_kind}"
+
+    @staticmethod
+    def _classify_guarded_rebase_final_attempt_path(result: dict[str, Any]) -> str:
+        original_guard_match = bool(result.get("guard_match"))
+        rebase_considered = bool(result.get("rebase_considered"))
+        rebase_allowed = result.get("rebase_allowed")
+        attempt_allowed = bool(result.get("attempt_allowed"))
+        attempted_submission_mode = result.get("attempted_submission_mode")
+        missing_required_fields = tuple(result.get("missing_required_fields") or ())
+        unavailable_in_slice = bool(result.get("unavailable_in_slice"))
+        rebased_candidate_kind = result.get("rebased_candidate_kind")
+
+        if original_guard_match:
+            if attempt_allowed:
+                if attempted_submission_mode == "context_capture":
+                    return "original_guarded_attempt_context_capture"
+                return "original_guarded_attempt_productive_execution"
+            if missing_required_fields:
+                return "guard_match_missing_input_refused"
+            return "guard_match_unavailable_refused"
+
+        if rebase_considered and rebase_allowed:
+            if attempt_allowed:
+                if attempted_submission_mode == "context_capture":
+                    return "guard_mismatch_rebased_context_capture"
+                return "guard_mismatch_rebased_productive_execution"
+            if missing_required_fields:
+                return "guard_mismatch_rebased_missing_input_refused"
+            return "guard_mismatch_rebased_unavailable_refused"
+
+        if rebased_candidate_kind == "unavailable_replacement_candidate" or unavailable_in_slice:
+            return "guard_mismatch_rebased_unavailable_refused"
+        return "guard_mismatch_rebase_refused"
 
     def _build_submit_receipt(
         self,
