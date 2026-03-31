@@ -4161,6 +4161,357 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("active-item", receipt["dominant_target_kind_now"])
         self.assertEqual("continue-active-execution", receipt["best_next_move_now"]["move_kind"])
 
+    def test_attempt_best_next_call_submits_ready_job_start(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+
+        attempt = processor.attempt_best_next_call("T000001")
+        receipt = attempt["submit_receipt"]
+        storage.close()
+
+        self.assertEqual("attempted_productive_execution", attempt["attempt_kind"])
+        self.assertEqual("job.start", attempt["attempted_call_type"])
+        self.assertEqual("productive_in_slice", attempt["attempted_submission_mode"])
+        self.assertEqual("job.start", attempt["best_next_move"]["call_type"])
+        self.assertTrue(attempt["attempt_allowed"])
+        self.assertFalse(attempt["requires_additional_user_or_agent_input"])
+        self.assertTrue(attempt["formed_concrete_call"])
+        self.assertFalse(attempt["context_capture_only"])
+        self.assertFalse(attempt["unavailable_in_slice"])
+        self.assertIsNotNone(receipt)
+        self.assertEqual("productive_execution_advanced", receipt["submit_effect_kind"])
+        self.assertEqual("active-item", receipt["dominant_target_kind_now"])
+
+    def test_attempt_best_next_call_refuses_proof_gathering_until_content_exists(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need artifact proof",
+                        "description": "Still needs an official artifact ref.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(make_checkpoint_create_call(plan_version=1))
+
+        attempt = processor.attempt_best_next_call("T000001")
+        receipt = attempt["submit_receipt"]
+        storage.close()
+
+        self.assertEqual("attempt_refused_missing_fields", attempt["attempt_kind"])
+        self.assertEqual("continuation.record", attempt["attempted_call_type"])
+        self.assertEqual("attach-artifact-ref", attempt["best_next_move"]["move_kind"])
+        self.assertFalse(attempt["attempt_allowed"])
+        self.assertEqual(("payload_ref",), attempt["missing_required_fields"])
+        self.assertTrue(attempt["requires_additional_user_or_agent_input"])
+        self.assertFalse(attempt["formed_concrete_call"])
+        self.assertFalse(attempt["context_capture_only"])
+        self.assertFalse(attempt["unavailable_in_slice"])
+        self.assertIsNotNone(receipt)
+        self.assertEqual("submission_refused_missing_fields", receipt["submit_effect_kind"])
+        self.assertEqual("proof-gathering", receipt["dominant_target_kind_now"])
+
+    def test_attempt_best_next_call_submits_review_context_capture_when_content_present(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        attempt = processor.attempt_best_next_call(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        receipt = attempt["submit_receipt"]
+        storage.close()
+
+        self.assertEqual("attempted_context_capture", attempt["attempt_kind"])
+        self.assertEqual("continuation.record", attempt["attempted_call_type"])
+        self.assertEqual("context_capture", attempt["attempted_submission_mode"])
+        self.assertEqual("capture-review-context-next", attempt["follow_up_behavior_kind"])
+        self.assertTrue(attempt["attempt_allowed"])
+        self.assertTrue(attempt["formed_concrete_call"])
+        self.assertTrue(attempt["context_capture_only"])
+        self.assertFalse(attempt["productive_in_slice"])
+        self.assertFalse(attempt["unavailable_in_slice"])
+        self.assertIsNotNone(receipt)
+        self.assertEqual("context_capture", receipt["submission_mode"])
+        self.assertEqual(
+            "posture_preserved_after_context_capture",
+            receipt["submit_effect_kind"],
+        )
+        self.assertEqual("review-needed", receipt["dominant_target_kind_now"])
+
+    def test_attempt_best_next_call_submits_blocked_evidence_context_capture_when_content_present(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect blocked evidence",
+                        "description": "Capture failure evidence for the blocked step.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_failure_report_call(
+                reported_status="blocked",
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        attempt = processor.attempt_best_next_call(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/blocked.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        receipt = attempt["submit_receipt"]
+        storage.close()
+
+        self.assertEqual("attempted_context_capture", attempt["attempt_kind"])
+        self.assertEqual("continuation.record", attempt["attempted_call_type"])
+        self.assertEqual("context_capture", attempt["attempted_submission_mode"])
+        self.assertEqual("capture-blocked-evidence-next", attempt["follow_up_behavior_kind"])
+        self.assertTrue(attempt["attempt_allowed"])
+        self.assertTrue(attempt["formed_concrete_call"])
+        self.assertTrue(attempt["context_capture_only"])
+        self.assertFalse(attempt["productive_in_slice"])
+        self.assertFalse(attempt["unavailable_in_slice"])
+        self.assertIsNotNone(receipt)
+        self.assertEqual(
+            "posture_preserved_after_context_capture",
+            receipt["submit_effect_kind"],
+        )
+        self.assertEqual("blocked-evidence-review", receipt["dominant_target_kind_now"])
+
+    def test_attempt_best_next_call_submits_child_job_start_only_when_startable(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run child leg",
+                        "description": "Delegate the blocking child work.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_child_job_request_call())
+
+        attempt = processor.attempt_best_next_call("T000001")
+        receipt = attempt["submit_receipt"]
+        storage.close()
+
+        self.assertEqual("attempted_productive_execution", attempt["attempt_kind"])
+        self.assertEqual("job.start", attempt["attempted_call_type"])
+        self.assertTrue(attempt["attempt_allowed"])
+        self.assertTrue(attempt["formed_concrete_call"])
+        self.assertIsNotNone(receipt)
+        self.assertEqual("submitted", receipt["decision_kind"])
+        self.assertEqual("job.start", receipt["submit_result"].call_type)
+
+    def test_attempt_best_next_call_does_not_fabricate_active_leg_path(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(make_job_start_call())
+
+        attempt = processor.attempt_best_next_call("T000001")
+        receipt = attempt["submit_receipt"]
+        storage.close()
+
+        self.assertEqual("attempt_refused_unavailable", attempt["attempt_kind"])
+        self.assertIsNone(attempt["attempted_call_type"])
+        self.assertFalse(attempt["attempt_allowed"])
+        self.assertFalse(attempt["formed_concrete_call"])
+        self.assertTrue(attempt["unavailable_in_slice"])
+        self.assertIsNotNone(receipt)
+        self.assertEqual("submission_refused_unavailable", receipt["submit_effect_kind"])
+        self.assertEqual("active-item", receipt["dominant_target_kind_now"])
+
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
             self.root,

@@ -541,6 +541,41 @@ class GarageAlfredProcessor:
             submit_result=submit_result,
         )
 
+    def attempt_best_next_call(
+        self,
+        task_id: str,
+        supplied_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        current_summary = self._read_current_task_summary_for_receipt(task_id)
+        if not isinstance(current_summary, dict):
+            return self._build_attempt_best_next_receipt(
+                current_summary=None,
+                submit_decision={
+                    "decision_kind": "unavailable_in_slice",
+                    "allowed_to_submit": False,
+                    "submission_mode": None,
+                    "reason": "fresh task state summary is unavailable for best-next attempt",
+                    "prepared_call": None,
+                    "submit_result": None,
+                    "fresh_preflight": None,
+                    "stale_or_blocked": False,
+                    "missing_required_fields": (),
+                    "context_only": False,
+                    "unavailable_in_slice": True,
+                    "productive_in_slice": False,
+                    "submit_receipt": None,
+                },
+            )
+
+        submit_decision = self.submit_prepared_next_call(
+            task_id=task_id,
+            supplied_fields=supplied_fields,
+        )
+        return self._build_attempt_best_next_receipt(
+            current_summary=current_summary,
+            submit_decision=submit_decision,
+        )
+
     def _attach_submit_receipt(
         self,
         *,
@@ -557,6 +592,85 @@ class GarageAlfredProcessor:
             submit_result=submit_result,
         )
         return enriched
+
+    def _build_attempt_best_next_receipt(
+        self,
+        *,
+        current_summary: dict[str, Any] | None,
+        submit_decision: dict[str, Any],
+    ) -> dict[str, Any]:
+        immediate_follow_up = (
+            current_summary.get("immediate_follow_up_behavior")
+            if isinstance(current_summary, dict)
+            else None
+        )
+        next_call_hint = (
+            current_summary.get("next_call_hint") if isinstance(current_summary, dict) else None
+        )
+        next_call_draft = (
+            current_summary.get("next_call_draft")
+            if isinstance(current_summary, dict)
+            else None
+        )
+        best_next_move = (
+            current_summary.get("best_next_move") if isinstance(current_summary, dict) else None
+        )
+        submit_receipt = submit_decision.get("submit_receipt")
+        prepared_call = submit_decision.get("prepared_call")
+        missing_required_fields = tuple(submit_decision.get("missing_required_fields") or ())
+        attempted_call_type = self._resolve_attempted_call_type(
+            best_next_move=best_next_move,
+            next_call_hint=next_call_hint,
+            next_call_draft=next_call_draft,
+            prepared_call=prepared_call,
+        )
+        requires_additional_input = bool(missing_required_fields) or bool(
+            next_call_hint.get("requires_additional_user_or_agent_input")
+            if isinstance(next_call_hint, dict)
+            else False
+        )
+        attempt_reason = str(
+            submit_decision.get("reason")
+            or (
+                next_call_hint.get("hint_reason")
+                if isinstance(next_call_hint, dict)
+                else "best next call attempt is unavailable in the current slice"
+            )
+        )
+        submission_mode = submit_decision.get("submission_mode")
+        context_capture_only = bool(submit_decision.get("context_only")) or (
+            submission_mode == "context_capture"
+        )
+        productive_in_slice = bool(submit_decision.get("productive_in_slice"))
+        unavailable_in_slice = bool(submit_decision.get("unavailable_in_slice")) or (
+            attempted_call_type is None
+        )
+        return {
+            "attempt_kind": self._classify_attempt_kind(
+                submit_decision=submit_decision,
+                attempted_call_type=attempted_call_type,
+            ),
+            "attempted_call_type": attempted_call_type,
+            "attempted_submission_mode": submission_mode,
+            "best_next_move": best_next_move,
+            "follow_up_behavior_kind": (
+                immediate_follow_up.get("follow_up_behavior_kind")
+                if isinstance(immediate_follow_up, dict)
+                else None
+            ),
+            "next_call_hint": next_call_hint,
+            "next_call_draft": next_call_draft,
+            "attempt_allowed": bool(submit_decision.get("allowed_to_submit")),
+            "attempt_reason": attempt_reason,
+            "missing_required_fields": missing_required_fields,
+            "requires_additional_user_or_agent_input": requires_additional_input,
+            "formed_concrete_call": isinstance(prepared_call, dict),
+            "prepared_call": prepared_call if isinstance(prepared_call, dict) else None,
+            "submit_receipt": submit_receipt if isinstance(submit_receipt, dict) else None,
+            "productive_in_slice": productive_in_slice,
+            "context_capture_only": context_capture_only,
+            "unavailable_in_slice": unavailable_in_slice,
+        }
 
     def _build_submit_receipt(
         self,
@@ -659,6 +773,47 @@ class GarageAlfredProcessor:
             return None
         summary = summary_reader(task_id)
         return dict(summary) if isinstance(summary, dict) else None
+
+    @staticmethod
+    def _resolve_attempted_call_type(
+        *,
+        best_next_move: Any,
+        next_call_hint: Any,
+        next_call_draft: Any,
+        prepared_call: Any,
+    ) -> str | None:
+        if isinstance(prepared_call, dict) and isinstance(prepared_call.get("call_type"), str):
+            return str(prepared_call.get("call_type"))
+        if isinstance(next_call_draft, dict) and isinstance(next_call_draft.get("call_type"), str):
+            return str(next_call_draft.get("call_type"))
+        if isinstance(next_call_hint, dict) and isinstance(
+            next_call_hint.get("recommended_call_type"), str
+        ):
+            return str(next_call_hint.get("recommended_call_type"))
+        if isinstance(best_next_move, dict) and isinstance(best_next_move.get("call_type"), str):
+            return str(best_next_move.get("call_type"))
+        return None
+
+    @staticmethod
+    def _classify_attempt_kind(
+        *,
+        submit_decision: dict[str, Any],
+        attempted_call_type: str | None,
+    ) -> str:
+        decision_kind = str(submit_decision.get("decision_kind") or "unavailable_in_slice")
+        if bool(submit_decision.get("allowed_to_submit")):
+            if submit_decision.get("submission_mode") == "context_capture":
+                return "attempted_context_capture"
+            return "attempted_productive_execution"
+        if tuple(submit_decision.get("missing_required_fields") or ()):
+            return "attempt_refused_missing_fields"
+        if bool(submit_decision.get("stale_or_blocked")):
+            return "attempt_refused_stale_or_blocked"
+        if attempted_call_type is None or bool(submit_decision.get("unavailable_in_slice")):
+            return "attempt_refused_unavailable"
+        if decision_kind == "policy_blocked":
+            return "attempt_refused_stale_or_blocked"
+        return "attempt_refused_unavailable"
 
     @staticmethod
     def _classify_submit_effect_kind(
