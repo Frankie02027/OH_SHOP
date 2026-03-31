@@ -5833,6 +5833,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
                 }
             },
         )
+        final_receipt = continuation["continuation_final_receipt"]
         storage.close()
 
         self.assertEqual(
@@ -5857,6 +5858,25 @@ class GarageStorageAdapterTests(unittest.TestCase):
             continuation["submit_receipt"]["decision_kind"],
         )
         self.assertIsNotNone(continuation["final_receipt"])
+        self.assertEqual(
+            "continued_productive_execution",
+            final_receipt["continuation_final_path_kind"],
+        )
+        self.assertTrue(final_receipt["prior_receipt_compatible"])
+        self.assertTrue(final_receipt["attempt_allowed"])
+        self.assertEqual("continuation.record", final_receipt["attempted_call_type"])
+        self.assertEqual(
+            "productive_in_slice",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertTrue(final_receipt["productive_in_slice"])
+        self.assertFalse(final_receipt["context_capture_only"])
+        self.assertFalse(final_receipt["unavailable_in_slice"])
+        self.assertEqual("proof-gathering", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "attach-artifact-ref",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
 
     def test_continue_from_final_receipt_can_continue_review_context_capture_when_compatible(
         self,
@@ -5933,6 +5953,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
                 }
             },
         )
+        final_receipt = continuation["continuation_final_receipt"]
         storage.close()
 
         self.assertEqual(
@@ -5956,6 +5977,23 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual(
             "context_capture",
             continuation["submit_receipt"]["submission_mode"],
+        )
+        self.assertEqual(
+            "continued_context_capture",
+            final_receipt["continuation_final_path_kind"],
+        )
+        self.assertTrue(final_receipt["prior_receipt_compatible"])
+        self.assertTrue(final_receipt["attempt_allowed"])
+        self.assertEqual(
+            "context_capture",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertFalse(final_receipt["productive_in_slice"])
+        self.assertTrue(final_receipt["context_capture_only"])
+        self.assertEqual("review-needed", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "capture-manual-review-context",
+            final_receipt["best_next_move_now"]["move_kind"],
         )
 
     def test_continue_from_final_receipt_can_continue_blocked_evidence_context_capture_when_compatible(
@@ -6029,6 +6067,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
                 }
             },
         )
+        final_receipt = continuation["continuation_final_receipt"]
         storage.close()
 
         self.assertEqual(
@@ -6051,6 +6090,93 @@ class GarageStorageAdapterTests(unittest.TestCase):
             continuation["fresh_follow_up_behavior_kind"],
         )
         self.assertIsNotNone(continuation["submit_receipt"])
+        self.assertEqual(
+            "continued_context_capture",
+            final_receipt["continuation_final_path_kind"],
+        )
+        self.assertFalse(final_receipt["productive_in_slice"])
+        self.assertTrue(final_receipt["context_capture_only"])
+        self.assertEqual(
+            "blocked-evidence-review",
+            final_receipt["dominant_target_kind_now"],
+        )
+        self.assertEqual(
+            "capture-blocked-evidence",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
+
+    def test_continue_from_final_receipt_keeps_missing_input_refusal_flattened(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need artifact proof",
+                        "description": "Still needs an official artifact ref.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(make_checkpoint_create_call(plan_version=1))
+
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={"expected_dominant_target_kind": "next-executable"},
+            allowed_rebased={
+                "allow_rebased_missing_input_candidate": True,
+                "expected_rebased_call_type": "continuation.record",
+                "expected_rebased_submission_mode": "productive_in_slice",
+                "expected_rebased_follow_up_behavior_kind": "gather-proof-next",
+            },
+        )
+
+        continuation = processor.continue_from_final_receipt(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+        )
+        final_receipt = continuation["continuation_final_receipt"]
+        storage.close()
+
+        self.assertTrue(continuation["prior_receipt_compatible"])
+        self.assertEqual(
+            "continued_missing_input_refused",
+            continuation["continuation_kind"],
+        )
+        self.assertFalse(continuation["attempt_allowed"])
+        self.assertEqual(("payload_ref",), continuation["missing_required_fields"])
+        self.assertIsNotNone(continuation["submit_receipt"])
+        self.assertEqual(
+            "continued_missing_input_refused",
+            final_receipt["continuation_final_path_kind"],
+        )
+        self.assertFalse(final_receipt["attempt_allowed"])
+        self.assertEqual(("payload_ref",), final_receipt["missing_required_fields"])
+        self.assertTrue(final_receipt["requires_additional_user_or_agent_input"])
+        self.assertFalse(final_receipt["unavailable_in_slice"])
+        self.assertEqual("proof-gathering", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "attach-artifact-ref",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
 
     def test_continue_from_final_receipt_refuses_stale_receipt_when_state_drifted(
         self,
@@ -6113,6 +6239,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
                 }
             },
         )
+        final_receipt = continuation["continuation_final_receipt"]
         storage.close()
 
         self.assertFalse(continuation["prior_receipt_compatible"])
@@ -6127,6 +6254,16 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         self.assertIsNone(continuation["submit_receipt"])
         self.assertIsNone(continuation["final_receipt"])
+        self.assertEqual(
+            "stale_receipt_refused",
+            final_receipt["continuation_final_path_kind"],
+        )
+        self.assertFalse(final_receipt["prior_receipt_compatible"])
+        self.assertFalse(final_receipt["attempt_allowed"])
+        self.assertEqual(
+            continuation["continuation_failure_kind"],
+            final_receipt["continuation_failure_kind"],
+        )
 
     def test_continue_from_final_receipt_waiting_on_child_stays_explicit(
         self,
@@ -6174,6 +6311,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             "T000001",
             final_receipt=prior_attempt["final_receipt"],
         )
+        final_receipt = continuation["continuation_final_receipt"]
         storage.close()
 
         self.assertEqual(
@@ -6194,6 +6332,17 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual(
             "progress-child-leg-next",
             continuation["fresh_follow_up_behavior_kind"],
+        )
+        self.assertEqual(
+            "continued_unavailable_refused",
+            final_receipt["continuation_final_path_kind"],
+        )
+        self.assertFalse(final_receipt["attempt_allowed"])
+        self.assertTrue(final_receipt["unavailable_in_slice"])
+        self.assertEqual("waiting-on-child", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "progress-child-leg",
+            final_receipt["best_next_move_now"]["move_kind"],
         )
 
     def test_continue_from_final_receipt_from_unavailable_active_leg_does_not_fabricate_path(
@@ -6256,6 +6405,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             "T000001",
             final_receipt=prior_attempt["final_receipt"],
         )
+        final_receipt = continuation["continuation_final_receipt"]
         storage.close()
 
         self.assertEqual(
@@ -6277,6 +6427,18 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual(
             "continue-active-execution",
             continuation["fresh_best_next_move"]["move_kind"],
+        )
+        self.assertEqual(
+            "continued_unavailable_refused",
+            final_receipt["continuation_final_path_kind"],
+        )
+        self.assertTrue(final_receipt["prior_receipt_compatible"])
+        self.assertFalse(final_receipt["attempt_allowed"])
+        self.assertTrue(final_receipt["unavailable_in_slice"])
+        self.assertEqual("active-item", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "continue-active-execution",
+            final_receipt["best_next_move_now"]["move_kind"],
         )
 
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:

@@ -698,11 +698,14 @@ class GarageAlfredProcessor:
             actual=actual,
         )
         if not bool(compatibility.get("prior_receipt_compatible")):
-            return self._build_continue_from_final_receipt_receipt(
+            return self._attach_continuation_final_receipt(
                 task_id=task_id,
-                prior_final_receipt=final_receipt,
-                compatibility=compatibility,
-                continued_result=None,
+                continuation=self._build_continue_from_final_receipt_receipt(
+                    task_id=task_id,
+                    prior_final_receipt=final_receipt,
+                    compatibility=compatibility,
+                    continued_result=None,
+                ),
             )
 
         continued_result = self.attempt_best_next_call_with_guarded_rebase(
@@ -723,11 +726,14 @@ class GarageAlfredProcessor:
                 "expected": dict(compatibility.get("expected") or {}),
                 "actual": dict(continued_result.get("actual") or {}),
             }
-        return self._build_continue_from_final_receipt_receipt(
+        return self._attach_continuation_final_receipt(
             task_id=task_id,
-            prior_final_receipt=final_receipt,
-            compatibility=compatibility,
-            continued_result=continued_result,
+            continuation=self._build_continue_from_final_receipt_receipt(
+                task_id=task_id,
+                prior_final_receipt=final_receipt,
+                compatibility=compatibility,
+                continued_result=continued_result,
+            ),
         )
 
     @staticmethod
@@ -931,6 +937,149 @@ class GarageAlfredProcessor:
             "submit_receipt": submit_receipt,
             "final_receipt": final_receipt,
         }
+
+    def _attach_continuation_final_receipt(
+        self,
+        *,
+        task_id: str,
+        continuation: dict[str, Any],
+    ) -> dict[str, Any]:
+        enriched = dict(continuation)
+        enriched["continuation_final_receipt"] = self._build_continuation_final_receipt(
+            task_id=task_id,
+            continuation=continuation,
+        )
+        return enriched
+
+    def _build_continuation_final_receipt(
+        self,
+        *,
+        task_id: str,
+        continuation: dict[str, Any],
+    ) -> dict[str, Any]:
+        current_summary = self._read_current_task_summary_for_receipt(task_id)
+        nested_submit_receipt = (
+            continuation.get("submit_receipt")
+            if isinstance(continuation.get("submit_receipt"), dict)
+            else None
+        )
+        nested_final_receipt = (
+            continuation.get("final_receipt")
+            if isinstance(continuation.get("final_receipt"), dict)
+            else None
+        )
+        dominant_target_kind_now = self._pick_first_present(
+            nested_final_receipt,
+            nested_submit_receipt,
+            continuation,
+            current_summary,
+            key="dominant_target_kind_now",
+            fallback_key="fresh_dominant_target_kind",
+        )
+        dominant_blocker_kind_now = self._pick_first_present(
+            nested_final_receipt,
+            nested_submit_receipt,
+            current_summary,
+            key="dominant_blocker_kind_now",
+        )
+        best_next_move_now = self._pick_first_present(
+            nested_final_receipt,
+            nested_submit_receipt,
+            continuation,
+            current_summary,
+            key="best_next_move_now",
+            fallback_key="fresh_best_next_move",
+        )
+        execution_allowed_now = self._pick_first_present(
+            nested_final_receipt,
+            nested_submit_receipt,
+            current_summary,
+            key="execution_allowed_now",
+        )
+        execution_hold_kind_now = self._pick_first_present(
+            nested_final_receipt,
+            nested_submit_receipt,
+            current_summary,
+            key="execution_hold_kind_now",
+        )
+        current_job_is_primary_focus_now = self._pick_first_present(
+            nested_final_receipt,
+            nested_submit_receipt,
+            current_summary,
+            key="current_job_is_primary_focus_now",
+        )
+        relevant_plan_item_is_primary_focus_now = self._pick_first_present(
+            nested_final_receipt,
+            nested_submit_receipt,
+            current_summary,
+            key="relevant_plan_item_is_primary_focus_now",
+        )
+        attempted_submission_mode = continuation.get("attempted_submission_mode")
+        context_capture_only = bool(
+            self._pick_first_present(
+                nested_final_receipt,
+                nested_submit_receipt,
+                key="context_capture_only",
+            )
+        ) or attempted_submission_mode == "context_capture"
+        productive_in_slice = bool(
+            self._pick_first_present(
+                nested_final_receipt,
+                nested_submit_receipt,
+                key="productive_in_slice",
+            )
+        ) or attempted_submission_mode == "productive_in_slice"
+        unavailable_in_slice = bool(
+            self._pick_first_present(
+                nested_final_receipt,
+                nested_submit_receipt,
+                key="unavailable_in_slice",
+            )
+        )
+        if not unavailable_in_slice and isinstance(best_next_move_now, dict):
+            unavailable_in_slice = best_next_move_now.get("call_type") is None and not bool(
+                continuation.get("attempt_allowed")
+            ) and not tuple(continuation.get("missing_required_fields") or ())
+        return {
+            "continuation_final_path_kind": continuation.get("continuation_kind"),
+            "prior_receipt_compatible": bool(continuation.get("prior_receipt_compatible")),
+            "continuation_failure_kind": continuation.get("continuation_failure_kind"),
+            "continuation_failure_reason": continuation.get("continuation_failure_reason"),
+            "attempt_allowed": bool(continuation.get("attempt_allowed")),
+            "attempted_call_type": continuation.get("attempted_call_type"),
+            "attempted_submission_mode": attempted_submission_mode,
+            "productive_in_slice": productive_in_slice,
+            "context_capture_only": context_capture_only,
+            "missing_required_fields": tuple(continuation.get("missing_required_fields") or ()),
+            "requires_additional_user_or_agent_input": bool(
+                continuation.get("requires_additional_user_or_agent_input")
+            ),
+            "unavailable_in_slice": unavailable_in_slice,
+            "dominant_target_kind_now": dominant_target_kind_now,
+            "dominant_blocker_kind_now": dominant_blocker_kind_now,
+            "best_next_move_now": best_next_move_now,
+            "execution_allowed_now": execution_allowed_now,
+            "execution_hold_kind_now": execution_hold_kind_now,
+            "current_job_is_primary_focus_now": current_job_is_primary_focus_now,
+            "relevant_plan_item_is_primary_focus_now": (
+                relevant_plan_item_is_primary_focus_now
+            ),
+        }
+
+    @staticmethod
+    def _pick_first_present(
+        *sources: dict[str, Any] | None,
+        key: str,
+        fallback_key: str | None = None,
+    ) -> Any:
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            if key in source:
+                return source.get(key)
+            if fallback_key is not None and fallback_key in source:
+                return source.get(fallback_key)
+        return None
 
     def _attach_guarded_rebase_final_receipt(
         self,
