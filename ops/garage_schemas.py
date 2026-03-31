@@ -136,7 +136,7 @@ class GarageSchemaRegistry:
         self, schema_name: str, validator: Draft202012Validator, data: Any
     ) -> None:
         errors = sorted(
-            validator.iter_errors(data),
+            self._collect_relevant_errors(validator.iter_errors(data)),
             key=lambda err: (list(err.absolute_path), err.message),
         )
         if not errors:
@@ -151,6 +151,22 @@ class GarageSchemaRegistry:
             for error in errors
         ]
         raise SchemaValidationError(schema_name, issues)
+
+    @staticmethod
+    def _collect_relevant_errors(errors: Any) -> list[Any]:
+        relevant: list[Any] = []
+
+        def visit(error: Any) -> None:
+            if error.context and error.validator in {"oneOf", "anyOf", "allOf"}:
+                for child in error.context:
+                    visit(child)
+                return
+            relevant.append(error)
+
+        for error in errors:
+            visit(error)
+
+        return relevant
 
     @staticmethod
     def _format_error_path(error: Any) -> str:
