@@ -165,10 +165,24 @@ class GarageStorageAdapter:
             return None
         history = self.read_event_history(task_id=task_id)
         latest_event = history[-1] if history else None
+        current_job_id = task_record.get("current_job_id")
+        latest_checkpoint_id = task_record.get("latest_checkpoint_id")
+        latest_continuation = self.latest_continuation_for_task(task_id)
         return {
             "task_record": task_record,
             "latest_event": latest_event,
             "event_count": len(history),
+            "current_job": self.read_job_state_summary(current_job_id)
+            if isinstance(current_job_id, str)
+            else None,
+            "latest_checkpoint": self.read_checkpoint_record(latest_checkpoint_id)
+            if isinstance(latest_checkpoint_id, str)
+            else None,
+            "latest_continuation": latest_continuation,
+            "current_plan_version": task_record.get("current_plan_version"),
+            "is_waiting_on_child": task_record.get("task_state") == "waiting_on_child",
+            "is_resuming": task_record.get("task_state") == "resuming",
+            "is_running": task_record.get("task_state") == "running",
         }
 
     def read_job_state_summary(self, job_id: str) -> dict[str, Any] | None:
@@ -177,11 +191,18 @@ class GarageStorageAdapter:
             return None
         history = self.read_event_history(job_id=job_id)
         latest_event = history[-1] if history else None
+        attempt_no = self.latest_attempt_for_job(job_id)
         return {
             "job_record": job_record,
             "latest_event": latest_event,
-            "attempt_no": int(job_record.get("attempt_no") or 1),
+            "attempt_no": attempt_no,
             "event_count": len(history),
+            "job_state": job_record.get("job_state"),
+            "latest_event_type": latest_event.get("event_type") if latest_event else None,
+            "latest_reported_status": job_record.get("last_reported_status"),
+            "parent_job_id": job_record.get("parent_job_id"),
+            "is_same_job_retry": bool(attempt_no and attempt_no > 1),
+            "is_materially_new_child_leg": job_record.get("parent_job_id") is not None,
         }
 
     def list_child_jobs(self, parent_job_id: str) -> list[dict[str, Any]]:
@@ -199,7 +220,20 @@ class GarageStorageAdapter:
         job_record = self.read_job_record(job_id)
         if job_record is None:
             return None
-        return int(job_record.get("attempt_no") or 1)
+        history = self.read_event_history(job_id=job_id)
+        started_attempts = [
+            int(event["attempt_no"])
+            for event in history
+            if event.get("event_type") == "job.started" and "attempt_no" in event
+        ]
+        record_attempt = int(job_record.get("attempt_no") or 1)
+        return max([record_attempt, *started_attempts])
+
+    def latest_continuation_for_task(self, task_id: str) -> dict[str, Any] | None:
+        continuations = self.list_continuation_records(task_id)
+        if not continuations:
+            return None
+        return continuations[-1]
 
     def _initialize_storage(self) -> None:
         self._conn.executescript(

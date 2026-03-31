@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ops.garage_alfred import GarageAlfredProcessor
+from ops.garage_alfred import GarageAlfredProcessingError, GarageAlfredProcessor
 from ops.garage_boundaries import GarageBoundaryError, write_garage_persisted_record
 from ops.garage_storage import GarageStorageAdapter, build_storage_backed_alfred_processor
 
@@ -90,32 +90,48 @@ def make_result_submit_call(
     }
 
 
-def make_checkpoint_create_call() -> dict[str, object]:
-    return {
+def make_checkpoint_create_call(
+    *,
+    task_id: str = "T000001",
+    job_id: str = "T000001.J001",
+    plan_version: int | None = None,
+) -> dict[str, object]:
+    call: dict[str, object] = {
         "schema_version": "v0.1",
         "call_type": "checkpoint.create",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
+        "task_id": task_id,
+        "job_id": job_id,
         "from_role": "jarvis",
         "to_role": "alfred",
         "payload": {"reason": "checkpoint before restart"},
     }
+    if plan_version is not None:
+        call["plan_version"] = plan_version
+    return call
 
 
-def make_continuation_record_call() -> dict[str, object]:
-    return {
+def make_continuation_record_call(
+    *,
+    task_id: str = "T000001",
+    job_id: str = "T000001.J001",
+    plan_version: int | None = None,
+) -> dict[str, object]:
+    call: dict[str, object] = {
         "schema_version": "v0.1",
         "call_type": "continuation.record",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
+        "task_id": task_id,
+        "job_id": job_id,
         "from_role": "jarvis",
         "to_role": "alfred",
         "payload_ref": {
             "kind": "continuation-note",
-            "path": "/workspace/jarvis/tasks/T000001/continuation.md",
+            "path": f"/workspace/jarvis/tasks/{task_id}/continuation.md",
             "role": "jarvis",
         },
     }
+    if plan_version is not None:
+        call["plan_version"] = plan_version
+    return call
 
 
 class GarageStorageAdapterTests(unittest.TestCase):
@@ -292,18 +308,20 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         processor.process_call(make_task_create_call())
         processor.process_call(make_job_start_call(attempt_no=1))
+        processor.process_call(make_result_submit_call())
         storage.close()
 
         storage, processor = build_storage_backed_alfred_processor(
             self.root,
             now_provider=lambda: "2026-03-30T12:05:00Z",
         )
-        processor.process_call(make_job_start_call(attempt_no=2))
+        result = processor.process_call(make_job_start_call())
         job_record = storage.read_job_record("T000001.J001")
         summary = storage.read_job_state_summary("T000001.J001")
         history = storage.read_event_history(job_id="T000001.J001")
         storage.close()
 
+        self.assertEqual(2, result.result["attempt_no"])
         self.assertEqual(2, job_record["attempt_no"])
         self.assertEqual("running", job_record["job_state"])
         self.assertEqual(2, summary["attempt_no"])
@@ -311,6 +329,29 @@ class GarageStorageAdapterTests(unittest.TestCase):
             [1, 2],
             [event["attempt_no"] for event in history if event["event_type"] == "job.started"],
         )
+
+    def test_incoherent_retry_attempt_is_rejected(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call(attempt_no=1))
+        processor.process_call(make_result_submit_call())
+
+        with self.assertRaises(GarageAlfredProcessingError) as ctx:
+            processor.process_call(make_job_start_call(attempt_no=5))
+
+        history = storage.read_event_history(job_id="T000001.J001")
+        summary = storage.read_job_state_summary("T000001.J001")
+        storage.close()
+
+        self.assertIn("expected attempt_no 2 but received 5", str(ctx.exception))
+        self.assertEqual(
+            ["job.started", "job.returned"],
+            [event["event_type"] for event in history],
+        )
+        self.assertEqual(1, summary["attempt_no"])
 
     def test_materially_new_refined_job_gets_new_job_id_with_recoverable_lineage(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -482,8 +523,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         processor.process_call(make_task_create_call())
         processor.process_call(make_job_start_call())
         processor.process_call(make_result_submit_call())
-        processor.process_call(make_checkpoint_create_call())
-        processor.process_call(make_continuation_record_call())
+        processor.process_call(make_checkpoint_create_call(plan_version=2))
+        processor.process_call(make_continuation_record_call(plan_version=2))
 
         task_summary = storage.latest_task_state_summary("T000001")
         job_summary = storage.read_job_state_summary("T000001.J001")
@@ -491,8 +532,18 @@ class GarageStorageAdapterTests(unittest.TestCase):
         continuations = storage.list_continuation_records("T000001")
 
         self.assertEqual("resuming", task_summary["task_record"]["task_state"])
+        self.assertTrue(task_summary["is_resuming"])
+        self.assertEqual(2, task_summary["current_plan_version"])
         self.assertEqual("continuation.recorded", task_summary["latest_event"]["event_type"])
+        self.assertEqual("T000001.J001", task_summary["current_job"]["job_record"]["job_id"])
+        self.assertEqual(2, task_summary["latest_checkpoint"]["plan_version"])
+        self.assertEqual(2, task_summary["latest_continuation"]["plan_version"])
         self.assertEqual("returned", job_summary["job_record"]["job_state"])
+        self.assertEqual("returned", job_summary["job_state"])
+        self.assertEqual("continuation.recorded", job_summary["latest_event_type"])
+        self.assertEqual("succeeded", job_summary["latest_reported_status"])
+        self.assertFalse(job_summary["is_same_job_retry"])
+        self.assertFalse(job_summary["is_materially_new_child_leg"])
         self.assertEqual(1, storage.latest_attempt_for_job("T000001.J001"))
         self.assertEqual(1, len(continuations))
         self.assertEqual(4, len(job_history))
@@ -501,6 +552,28 @@ class GarageStorageAdapterTests(unittest.TestCase):
             [event["event_type"] for event in job_history],
         )
         storage.close()
+
+    def test_waiting_on_child_and_child_job_summary_are_reconstructable(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        child = processor.process_call(make_child_job_request_call())
+
+        task_summary = storage.latest_task_state_summary("T000001")
+        child_summary = storage.read_job_state_summary(child.result["job_id"])
+        storage.close()
+
+        self.assertTrue(task_summary["is_waiting_on_child"])
+        self.assertEqual("waiting_on_child", task_summary["task_record"]["task_state"])
+        self.assertEqual(child.result["job_id"], task_summary["task_record"]["current_job_id"])
+        self.assertEqual("dispatched", child_summary["job_state"])
+        self.assertEqual("job.dispatched", child_summary["latest_event_type"])
+        self.assertEqual(1, child_summary["attempt_no"])
+        self.assertFalse(child_summary["is_same_job_retry"])
+        self.assertTrue(child_summary["is_materially_new_child_leg"])
 
 
 if __name__ == "__main__":

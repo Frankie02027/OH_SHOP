@@ -249,9 +249,19 @@ class GarageAlfredProcessor:
     def _handle_job_start(self, call: dict[str, Any]) -> GarageHandlerOutput:
         task_id = call["task_id"]
         job_id = call["job_id"]
+        existing_job_record = self._existing_job_record(job_id)
+        resolved_attempt_no = self._resolve_job_start_attempt_no(
+            call,
+            existing_job_record,
+        )
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
-        event = self._build_job_started_event(call, event_id, recorded_at)
+        event = self._build_job_started_event(
+            call,
+            event_id,
+            recorded_at,
+            attempt_no=resolved_attempt_no,
+        )
         task_record = self._build_task_record(
             task_id,
             recorded_at,
@@ -265,6 +275,7 @@ class GarageAlfredProcessor:
             job_state="running",
             latest_event_id=event_id,
             recorded_at=recorded_at,
+            attempt_no=resolved_attempt_no,
         )
         return GarageHandlerOutput(
             result={
@@ -272,6 +283,7 @@ class GarageAlfredProcessor:
                 "job_id": job_id,
                 "event_id": event_id,
                 "event_type": "job.started",
+                "attempt_no": resolved_attempt_no,
             },
             events=(event,),
             records=(
@@ -529,6 +541,8 @@ class GarageAlfredProcessor:
         call: dict[str, Any],
         event_id: str,
         recorded_at: str,
+        *,
+        attempt_no: int | None = None,
     ) -> dict[str, Any]:
         event = {
             "schema_version": call["schema_version"],
@@ -539,8 +553,8 @@ class GarageAlfredProcessor:
             "related_call_type": "job.start",
             "recorded_at": recorded_at,
         }
-        if "attempt_no" in call:
-            event["attempt_no"] = call["attempt_no"]
+        if attempt_no is not None:
+            event["attempt_no"] = attempt_no
         return event
 
     def _build_job_returned_event(
@@ -716,6 +730,39 @@ class GarageAlfredProcessor:
             record["last_reported_status"] = last_reported_status
         self._copy_optional_job_fields(call, record)
         return record
+
+    def _resolve_job_start_attempt_no(
+        self,
+        call: dict[str, Any],
+        existing_job_record: dict[str, Any] | None,
+    ) -> int:
+        explicit_attempt = call.get("attempt_no")
+        explicit_value = int(explicit_attempt) if explicit_attempt is not None else None
+        if existing_job_record is None:
+            return explicit_value or 1
+
+        current_attempt = int(existing_job_record.get("attempt_no") or 1)
+        current_state = str(existing_job_record.get("job_state") or "")
+
+        if current_state in {"queued", "dispatched"}:
+            expected_attempt = current_attempt
+        elif current_state in {"returned", "blocked", "failed", "cancelled", "completed"}:
+            expected_attempt = current_attempt + 1
+        elif current_state == "running":
+            raise GarageAlfredProcessingError(
+                f"job.start for already-running job '{call['job_id']}' is incoherent"
+            )
+        else:
+            expected_attempt = current_attempt
+
+        if explicit_value is None:
+            return expected_attempt
+        if explicit_value != expected_attempt:
+            raise GarageAlfredProcessingError(
+                f"job.start for '{call['job_id']}' expected attempt_no "
+                f"{expected_attempt} but received {explicit_value}"
+            )
+        return explicit_value
 
     def _mint_distinct_child_job_id(
         self,
