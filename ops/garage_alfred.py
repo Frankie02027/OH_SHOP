@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol
 
@@ -28,6 +28,16 @@ class AlfredIdProvider(Protocol):
     def mint_event_id(self, task_id: str) -> str: ...
 
     def mint_checkpoint_id(self, task_id: str) -> str: ...
+
+
+@dataclass(frozen=True)
+class GarageOfficialBundle:
+    """One official Alfred-produced bundle for a single processed call."""
+
+    call_type: str
+    result: Any
+    events: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    records: tuple[GarageRecordWrite, ...] = field(default_factory=tuple)
 
 
 class GarageAlfredProcessingError(RuntimeError):
@@ -72,9 +82,14 @@ class GarageAlfredProcessor:
         *,
         event_recorder: Callable[[dict[str, Any]], Any] | None = None,
         record_writer: Callable[[str, dict[str, Any]], Any] | None = None,
+        bundle_applier: Callable[[GarageOfficialBundle], tuple[tuple[Any, ...], tuple[Any, ...]]] | None = None,
         now_provider: Clock | None = None,
         id_allocator: AlfredIdProvider | None = None,
     ) -> None:
+        self._bundle_applier = bundle_applier
+        if bundle_applier is not None:
+            event_recorder = self._collect_event_for_bundle
+            record_writer = self._collect_record_for_bundle
         self._runtime = GarageRuntimeProcessor(
             event_recorder=event_recorder,
             record_writer=record_writer,
@@ -86,7 +101,26 @@ class GarageAlfredProcessor:
     def process_call(self, data: dict[str, Any]) -> GarageProcessingResult:
         """Process one official Garage call through the Alfred slice."""
 
-        return self._runtime.process_call(data)
+        runtime_result = self._runtime.process_call(data)
+        if self._bundle_applier is None:
+            return runtime_result
+
+        bundle = GarageOfficialBundle(
+            call_type=runtime_result.call_type,
+            result=runtime_result.result,
+            events=tuple(dict(event) for event in runtime_result.recorded_events),
+            records=tuple(
+                self._coerce_record_write(record)
+                for record in runtime_result.written_records
+            ),
+        )
+        recorded_events, written_records = self._bundle_applier(bundle)
+        return GarageProcessingResult(
+            call_type=bundle.call_type,
+            result=bundle.result,
+            recorded_events=recorded_events,
+            written_records=written_records,
+        )
 
     def supported_call_types(self) -> tuple[str, ...]:
         return (
@@ -504,9 +538,34 @@ class GarageAlfredProcessor:
     def _event_record_write(self, event: dict[str, Any]) -> GarageRecordWrite:
         return GarageRecordWrite("event-record", dict(event))
 
+    @staticmethod
+    def _collect_event_for_bundle(event: dict[str, Any]) -> dict[str, Any]:
+        return dict(event)
+
+    @staticmethod
+    def _collect_record_for_bundle(
+        schema_name: str,
+        data: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
+        return (schema_name, dict(data))
+
+    @staticmethod
+    def _coerce_record_write(record: Any) -> GarageRecordWrite:
+        if isinstance(record, GarageRecordWrite):
+            return record
+        if (
+            isinstance(record, tuple)
+            and len(record) == 2
+            and isinstance(record[0], str)
+            and isinstance(record[1], dict)
+        ):
+            return GarageRecordWrite(record[0], record[1])
+        raise GarageAlfredProcessingError("Bundle write intent is malformed")
+
 
 __all__ = [
     "AlfredIdAllocator",
+    "GarageOfficialBundle",
     "GarageAlfredProcessingError",
     "GarageAlfredProcessor",
     "GarageProcessingResult",
