@@ -147,15 +147,19 @@ Only create these if the runtime actually activates them:
 Do not treat them as required v0.1 runtime authority unless they are deliberately promoted.
 
 ## 4.4 Shared object schemas
-- `task.schema.json`
-- `job.schema.json`
-- `event.schema.json`
-- `checkpoint.schema.json`
+- `call-object.schema.json`
+- `event-object.schema.json`
+- `task-record.schema.json`
+- `job-record.schema.json`
+- `event-record.schema.json`
+- `checkpoint-record.schema.json`
+- `content-ref.schema.json`
 - `artifact-ref.schema.json`
 - `workspace-ref.schema.json`
 - `payload-ref.schema.json`
 - `tracked-plan.schema.json`
 - `plan-item.schema.json`
+- `policy-record.schema.json`
 
 ---
 
@@ -890,15 +894,19 @@ schemas/
     artifact.registered.schema.json
 
   objects/
-    task.schema.json
-    job.schema.json
-    event.schema.json
-    checkpoint.schema.json
+    call-object.schema.json
+    event-object.schema.json
+    task-record.schema.json
+    job-record.schema.json
+    event-record.schema.json
+    checkpoint-record.schema.json
+    content-ref.schema.json
     artifact-ref.schema.json
     workspace-ref.schema.json
     payload-ref.schema.json
     tracked-plan.schema.json
     plan-item.schema.json
+    policy-record.schema.json
 ```
 
 ---
