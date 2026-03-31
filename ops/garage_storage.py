@@ -381,6 +381,21 @@ class GarageStorageAdapter:
                 if isinstance(task_policy, dict)
                 else None
             ),
+            "best_next_move_effect_kind": (
+                task_policy.get("best_next_move_effect_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "allowed_call_policy": (
+                task_policy.get("allowed_call_policy")
+                if isinstance(task_policy, dict)
+                else ()
+            ),
+            "blocked_call_policy": (
+                task_policy.get("blocked_call_policy")
+                if isinstance(task_policy, dict)
+                else ()
+            ),
             "effective_waiting_on_proof": (
                 task_policy.get("effective_waiting_on_proof") if isinstance(task_policy, dict) else False
             ),
@@ -539,6 +554,16 @@ class GarageStorageAdapter:
                 if isinstance(task_policy, dict)
                 else None
             ),
+            "task_best_next_move_effect_kind": (
+                task_policy.get("best_next_move_effect_kind")
+                if isinstance(task_policy, dict)
+                else None
+            ),
+            "task_allowed_call_policy": (
+                task_policy.get("allowed_call_policy")
+                if isinstance(task_policy, dict)
+                else ()
+            ),
             "current_job_is_primary_focus": (
                 bool(task_record is not None and task_record.get("current_job_id") == job_id)
                 and bool(
@@ -685,6 +710,24 @@ class GarageStorageAdapter:
             return None
         return policy.get("best_next_move")
 
+    def evaluate_supported_call_posture_effect(
+        self,
+        task_id: str,
+        call_type: str,
+    ) -> dict[str, Any] | None:
+        policy = self.effective_task_policy_summary(task_id)
+        if not isinstance(policy, dict):
+            return None
+        allowed_policy = policy.get("allowed_call_policy", ())
+        for entry in allowed_policy:
+            if isinstance(entry, dict) and entry.get("call_type") == call_type:
+                return dict(entry)
+        blocked_policy = policy.get("blocked_call_policy", ())
+        for entry in blocked_policy:
+            if isinstance(entry, dict) and entry.get("call_type") == call_type:
+                return dict(entry)
+        return None
+
     def evaluate_supported_call_policy(
         self,
         task_id: str,
@@ -766,8 +809,14 @@ class GarageStorageAdapter:
             "current_job_id": current_job_id,
             "parent_job_id": parent_job_id,
             "allowed_call_types": allowed_call_types,
+            "allowed_call_policy": tuple(policy.get("allowed_call_policy", ())),
             "blocked_call_types": tuple(policy.get("blocked_call_types", ())),
+            "blocked_call_policy": tuple(policy.get("blocked_call_policy", ())),
             "best_next_move": policy.get("best_next_move"),
+            "posture_effect": self.evaluate_supported_call_posture_effect(
+                task_id,
+                call_type,
+            ),
             "rejection_reason": rejection_reason,
         }
 
@@ -855,6 +904,11 @@ class GarageStorageAdapter:
             ),
             "allowed_call_types": (
                 task_policy.get("allowed_call_types")
+                if isinstance(task_policy, dict)
+                else ()
+            ),
+            "allowed_call_policy": (
+                task_policy.get("allowed_call_policy")
                 if isinstance(task_policy, dict)
                 else ()
             ),
@@ -1219,6 +1273,11 @@ class GarageStorageAdapter:
         allowed_call_types = GarageStorageAdapter._allowed_call_types_for_dominant_target(
             dominant_target_kind
         )
+        allowed_call_policy = GarageStorageAdapter._allowed_call_policy_for_dominant_target(
+            dominant_target_kind=dominant_target_kind,
+            dominant_target=dominant_target,
+            current_job_state=current_job_state,
+        )
         blocked_call_types = tuple(
             call_type
             for call_type in SUPPORTED_POLICY_CALL_TYPES
@@ -1234,12 +1293,25 @@ class GarageStorageAdapter:
             if isinstance(best_next_move, dict)
             else None
         )
+        best_next_move_effect_kind = (
+            best_next_move.get("effect_kind")
+            if isinstance(best_next_move, dict)
+            else None
+        )
         secondary_allowed_call_types = tuple(
             call_type
             for call_type in allowed_call_types
             if call_type != best_next_call_type
         )
         blocked_call_reason = execution_hold_reason if execution_held else None
+        blocked_call_policy = tuple(
+            {
+                "call_type": call_type,
+                "effect_kind": "blocked",
+                "reason": blocked_call_reason or "call_not_allowed_for_current_target",
+            }
+            for call_type in blocked_call_types
+        )
 
         current_job_is_primary_focus = dominant_target_kind in {"active-item", "waiting-on-child"}
         relevant_plan_item_is_primary_focus = dominant_target_kind in {
@@ -1262,11 +1334,14 @@ class GarageStorageAdapter:
             "execution_hold_kind": execution_hold_kind,
             "execution_hold_reason": execution_hold_reason,
             "allowed_call_types": allowed_call_types,
+            "allowed_call_policy": allowed_call_policy,
             "secondary_allowed_call_types": secondary_allowed_call_types,
             "blocked_call_types": blocked_call_types,
             "blocked_call_reason": blocked_call_reason,
+            "blocked_call_policy": blocked_call_policy,
             "best_next_move": best_next_move,
             "best_next_call_type": best_next_call_type,
+            "best_next_move_effect_kind": best_next_move_effect_kind,
             "effective_waiting_on_proof": dominant_target_kind == "proof-gathering",
             "effective_waiting_on_review": dominant_target_kind == "review-needed",
             "effective_blocked_evidence_review": dominant_target_kind == "blocked-evidence-review",
@@ -1318,6 +1393,229 @@ class GarageStorageAdapter:
         return ("checkpoint.create", "continuation.record")
 
     @staticmethod
+    def _allowed_call_policy_for_dominant_target(
+        *,
+        dominant_target_kind: str | None,
+        dominant_target: dict[str, Any] | None,
+        current_job_state: str | None,
+    ) -> tuple[dict[str, Any], ...]:
+        if dominant_target_kind == "proof-gathering":
+            reason = "can enrich evidence; resolves only if the proof gate becomes satisfied"
+            return (
+                {
+                    "call_type": "checkpoint.create",
+                    "effect_kind": "preserve_or_resolve",
+                    "reason": reason,
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "continuation.record",
+                    "effect_kind": "preserve_or_resolve",
+                    "reason": reason,
+                    "target": dominant_target,
+                },
+            )
+        if dominant_target_kind == "review-needed":
+            reason = (
+                "can capture more evidence or resume context but cannot resolve manual or unsupported review"
+            )
+            return (
+                {
+                    "call_type": "checkpoint.create",
+                    "effect_kind": "preserve",
+                    "reason": reason,
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "continuation.record",
+                    "effect_kind": "preserve",
+                    "reason": reason,
+                    "target": dominant_target,
+                },
+            )
+        if dominant_target_kind == "blocked-evidence-review":
+            return (
+                {
+                    "call_type": "failure.report",
+                    "effect_kind": "refine",
+                    "reason": "can enrich blocked evidence context while blocked posture remains",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "checkpoint.create",
+                    "effect_kind": "preserve",
+                    "reason": "captures blocked evidence context without unblocking the item",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "continuation.record",
+                    "effect_kind": "preserve",
+                    "reason": "captures blocked resume context without unblocking the item",
+                    "target": dominant_target,
+                },
+            )
+        if dominant_target_kind == "waiting-on-child":
+            child_progress_reason = "current child leg remains the dominant dependency"
+            if current_job_state in {"queued", "dispatched"}:
+                child_progress_reason = "starts the current child leg while child-held posture remains"
+            return (
+                {
+                    "call_type": "job.start",
+                    "effect_kind": "preserve",
+                    "reason": child_progress_reason,
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "child_job.request",
+                    "effect_kind": "refine",
+                    "reason": "extends child-job lineage while the task remains child-held",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "result.submit",
+                    "effect_kind": "resolve",
+                    "reason": "child-leg return can release child-held posture into proof, review, or next execution",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "failure.report",
+                    "effect_kind": "resolve",
+                    "reason": "child-leg failure can shift posture into blocked-evidence review",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "checkpoint.create",
+                    "effect_kind": "preserve",
+                    "reason": "captures child-held evidence without releasing the child dependency",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "continuation.record",
+                    "effect_kind": "preserve",
+                    "reason": "captures child-held resume context without releasing the child dependency",
+                    "target": dominant_target,
+                },
+            )
+        if dominant_target_kind == "active-item":
+            return (
+                {
+                    "call_type": "job.start",
+                    "effect_kind": "preserve",
+                    "reason": "continues the current active execution leg",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "child_job.request",
+                    "effect_kind": "resolve",
+                    "reason": "hands the current active item into child-held posture",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "result.submit",
+                    "effect_kind": "resolve",
+                    "reason": "completes or returns the current active item into its next policy posture",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "failure.report",
+                    "effect_kind": "resolve",
+                    "reason": "moves the current active item into blocked evidence posture",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "checkpoint.create",
+                    "effect_kind": "preserve",
+                    "reason": "captures running-state context without changing the active posture",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "continuation.record",
+                    "effect_kind": "preserve",
+                    "reason": "captures running-state resume context without changing the active posture",
+                    "target": dominant_target,
+                },
+            )
+        if dominant_target_kind == "next-executable":
+            return (
+                {
+                    "call_type": "job.start",
+                    "effect_kind": "resolve",
+                    "reason": "begins the next executable item and makes active execution dominant",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "child_job.request",
+                    "effect_kind": "resolve",
+                    "reason": "delegates the next executable item into child-held posture",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "result.submit",
+                    "effect_kind": "refine",
+                    "reason": "can update residual execution state but does not define the ready successor by itself",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "failure.report",
+                    "effect_kind": "refine",
+                    "reason": "can update residual blocked state but does not define the ready successor by itself",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "checkpoint.create",
+                    "effect_kind": "preserve",
+                    "reason": "captures resume context while the task remains ready for next execution",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "continuation.record",
+                    "effect_kind": "preserve",
+                    "reason": "captures resume context while the task remains ready for next execution",
+                    "target": dominant_target,
+                },
+            )
+        if dominant_target_kind == "resume-anchor-only":
+            return (
+                {
+                    "call_type": "job.start",
+                    "effect_kind": "refine",
+                    "reason": "can restart execution from the available resume context",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "child_job.request",
+                    "effect_kind": "refine",
+                    "reason": "can delegate resumed execution into a child leg from the available context",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "result.submit",
+                    "effect_kind": "refine",
+                    "reason": "can update resumed execution state from the available context",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "failure.report",
+                    "effect_kind": "refine",
+                    "reason": "can update resumed blocked state from the available context",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "checkpoint.create",
+                    "effect_kind": "preserve",
+                    "reason": "refreshes checkpoint context without establishing a stronger execution posture",
+                    "target": dominant_target,
+                },
+                {
+                    "call_type": "continuation.record",
+                    "effect_kind": "preserve",
+                    "reason": "refreshes continuation context without establishing a stronger execution posture",
+                    "target": dominant_target,
+                },
+            )
+        return ()
+
+    @staticmethod
     def _best_next_move_for_policy(
         *,
         dominant_target_kind: str | None,
@@ -1329,6 +1627,7 @@ class GarageStorageAdapter:
                 "move_kind": "gather-proof",
                 "call_type": "continuation.record",
                 "reason": "current item still needs evidence before advancement",
+                "effect_kind": "preserve_or_resolve",
                 "target": dominant_target,
             }
         if dominant_target_kind == "review-needed":
@@ -1336,6 +1635,7 @@ class GarageStorageAdapter:
                 "move_kind": "capture-review-context",
                 "call_type": "continuation.record",
                 "reason": "current item requires manual or unsupported review",
+                "effect_kind": "preserve",
                 "target": dominant_target,
             }
         if dominant_target_kind == "blocked-evidence-review":
@@ -1343,6 +1643,7 @@ class GarageStorageAdapter:
                 "move_kind": "capture-blocked-evidence",
                 "call_type": "continuation.record",
                 "reason": "blocked item evidence should remain the current focus",
+                "effect_kind": "preserve",
                 "target": dominant_target,
             }
         if dominant_target_kind == "waiting-on-child":
@@ -1356,6 +1657,7 @@ class GarageStorageAdapter:
                 "move_kind": "progress-child-leg",
                 "call_type": call_type,
                 "reason": reason,
+                "effect_kind": "preserve",
                 "target": dominant_target,
             }
         if dominant_target_kind == "active-item":
@@ -1363,6 +1665,7 @@ class GarageStorageAdapter:
                 "move_kind": "continue-active-execution",
                 "call_type": None,
                 "reason": "current execution leg remains the primary focus",
+                "effect_kind": "preserve",
                 "target": dominant_target,
             }
         if dominant_target_kind == "next-executable":
@@ -1370,6 +1673,7 @@ class GarageStorageAdapter:
                 "move_kind": "start-next-executable",
                 "call_type": "job.start",
                 "reason": "a dependency-cleared plan item is ready to run",
+                "effect_kind": "resolve",
                 "target": dominant_target,
             }
         if dominant_target_kind == "resume-anchor-only":
@@ -1377,6 +1681,7 @@ class GarageStorageAdapter:
                 "move_kind": "refresh-resume-context",
                 "call_type": "continuation.record",
                 "reason": "resume context exists but no stronger execution target is available",
+                "effect_kind": "preserve",
                 "target": None,
             }
         return None
