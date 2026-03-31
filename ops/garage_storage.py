@@ -257,13 +257,32 @@ class GarageStorageAdapter:
                 if isinstance(relevant_plan_item, dict)
                 else None
             ),
+            "relevant_proof_policy_kind": (
+                relevant_plan_item.get("proof_policy_kind")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "relevant_proof_gate_supported": (
+                relevant_plan_item.get("proof_gate_supported")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_proof_satisfied": (
+                relevant_plan_item.get("proof_satisfied")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
             "is_verification_pending": (
                 isinstance(relevant_plan_item, dict)
                 and bool(relevant_plan_item.get("is_verification_pending"))
             ),
             "is_waiting_on_proof": (
                 isinstance(relevant_plan_item, dict)
-                and bool(relevant_plan_item.get("is_verification_pending"))
+                and bool(relevant_plan_item.get("is_waiting_on_proof"))
+            ),
+            "is_waiting_on_review": (
+                isinstance(relevant_plan_item, dict)
+                and bool(relevant_plan_item.get("is_waiting_on_review"))
             ),
             "is_waiting_on_child": task_record.get("task_state") == "waiting_on_child",
             "is_resuming": task_record.get("task_state") == "resuming",
@@ -333,6 +352,21 @@ class GarageStorageAdapter:
             ),
             "relevant_plan_item_proof_satisfied": (
                 relevant_plan_item.get("proof_satisfied")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_plan_item_proof_policy_kind": (
+                relevant_plan_item.get("proof_policy_kind")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "relevant_plan_item_waiting_on_proof": (
+                relevant_plan_item.get("is_waiting_on_proof")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_plan_item_waiting_on_review": (
+                relevant_plan_item.get("is_waiting_on_review")
                 if isinstance(relevant_plan_item, dict)
                 else False
             ),
@@ -410,6 +444,11 @@ class GarageStorageAdapter:
                 and relevant_plan_item_summary.get("is_verification_pending")
                 else None
             ),
+            "relevant_proof_policy_kind": (
+                relevant_plan_item_summary.get("proof_policy_kind")
+                if isinstance(relevant_plan_item_summary, dict)
+                else None
+            ),
         }
 
     def read_plan_item_summary(
@@ -473,6 +512,11 @@ class GarageStorageAdapter:
                 if isinstance(active_plan_summary, dict)
                 else None
             ),
+            "relevant_proof_policy_kind": (
+                active_plan_summary.get("relevant_proof_policy_kind")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
             "latest_checkpoint_id": latest_checkpoint_id,
             "latest_checkpoint_plan_version": (
                 latest_checkpoint.get("plan_version") if latest_checkpoint else None
@@ -519,6 +563,21 @@ class GarageStorageAdapter:
                     if isinstance(relevant_plan_item, dict)
                     else False
                 ),
+                "proof_policy_kind": (
+                    relevant_plan_item.get("proof_policy_kind")
+                    if isinstance(relevant_plan_item, dict)
+                    else None
+                ),
+                "waiting_on_proof": (
+                    relevant_plan_item.get("is_waiting_on_proof")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "waiting_on_review": (
+                    relevant_plan_item.get("is_waiting_on_review")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
                 "verification_rule_type": (
                     relevant_plan_item.get("verification_rule_type")
                     if isinstance(relevant_plan_item, dict)
@@ -548,6 +607,21 @@ class GarageStorageAdapter:
                 ),
                 "proof_satisfied": (
                     relevant_plan_item.get("proof_satisfied")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "proof_policy_kind": (
+                    relevant_plan_item.get("proof_policy_kind")
+                    if isinstance(relevant_plan_item, dict)
+                    else None
+                ),
+                "waiting_on_proof": (
+                    relevant_plan_item.get("is_waiting_on_proof")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "waiting_on_review": (
+                    relevant_plan_item.get("is_waiting_on_review")
                     if isinstance(relevant_plan_item, dict)
                     else False
                 ),
@@ -588,6 +662,21 @@ class GarageStorageAdapter:
                     if isinstance(relevant_plan_item, dict)
                     else False
                 ),
+                "proof_policy_kind": (
+                    relevant_plan_item.get("proof_policy_kind")
+                    if isinstance(relevant_plan_item, dict)
+                    else None
+                ),
+                "waiting_on_proof": (
+                    relevant_plan_item.get("is_waiting_on_proof")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "waiting_on_review": (
+                    relevant_plan_item.get("is_waiting_on_review")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
                 "verification_rule_type": (
                     relevant_plan_item.get("verification_rule_type")
                     if isinstance(relevant_plan_item, dict)
@@ -615,7 +704,11 @@ class GarageStorageAdapter:
             return {
                 "task_id": task_id,
                 "plan_version": active_plan_summary["plan_version"],
-                "target_kind": "verification-pending",
+                "target_kind": (
+                    "review-needed"
+                    if relevant_item.get("is_waiting_on_review")
+                    else "proof-gathering"
+                ),
                 "item": relevant_item,
                 "resume_anchor": resume_anchor,
                 "next_executable_unavailable_reason": next_executable_unavailable_reason,
@@ -695,9 +788,13 @@ class GarageStorageAdapter:
             "item_id": relevant_item.get("item_id"),
             "status": relevant_item.get("status"),
             "verification_rule_type": relevant_item.get("verification_rule_type"),
+            "proof_gate_supported": relevant_item.get("proof_gate_supported"),
             "proof_satisfied": relevant_item.get("proof_satisfied"),
             "proof_gate_reason": relevant_item.get("proof_gate_reason"),
+            "proof_policy_kind": relevant_item.get("proof_policy_kind"),
             "is_verification_pending": relevant_item.get("is_verification_pending"),
+            "is_waiting_on_proof": relevant_item.get("is_waiting_on_proof"),
+            "is_waiting_on_review": relevant_item.get("is_waiting_on_review"),
             "evidence_refs": relevant_item.get("evidence_refs", ()),
             "evidence_count": relevant_item.get("evidence_count", 0),
         }
@@ -783,6 +880,9 @@ class GarageStorageAdapter:
                         "blocking_dependency_item_id": dependency["item_id"],
                         "verification_rule_type": dependency.get("verification_rule_type"),
                         "proof_gate_reason": dependency.get("proof_gate_reason"),
+                        "blocking_policy_kind": dependency.get("proof_policy_kind"),
+                        "blocking_waiting_on_proof": dependency.get("is_waiting_on_proof"),
+                        "blocking_waiting_on_review": dependency.get("is_waiting_on_review"),
                     }
                 if dependency["status"] == "blocked":
                     return {
@@ -799,10 +899,15 @@ class GarageStorageAdapter:
                     }
         if isinstance(relevant_item, dict) and relevant_item.get("is_verification_pending"):
             return {
-                "reason": "verification_pending",
+                "reason": (
+                    "review_required"
+                    if relevant_item.get("is_waiting_on_review")
+                    else "proof_gathering_required"
+                ),
                 "blocking_item_id": relevant_item["item_id"],
                 "verification_rule_type": relevant_item.get("verification_rule_type"),
                 "proof_gate_reason": relevant_item.get("proof_gate_reason"),
+                "proof_policy_kind": relevant_item.get("proof_policy_kind"),
             }
         if isinstance(relevant_item, dict) and relevant_item.get("is_blocked"):
             return {
@@ -905,6 +1010,67 @@ class GarageStorageAdapter:
         }
 
     @staticmethod
+    def _proof_policy_summary(
+        *,
+        status: str,
+        proof_gate: dict[str, Any],
+    ) -> dict[str, Any]:
+        if status == "blocked":
+            return {
+                "policy_kind": "blocked-evidence-review",
+                "waiting_on_proof": False,
+                "waiting_on_review": False,
+                "advance_blocked": True,
+                "advance_blocked_reason": "blocked_failure_evidence",
+            }
+        if status == "verified":
+            return {
+                "policy_kind": "verified",
+                "waiting_on_proof": False,
+                "waiting_on_review": False,
+                "advance_blocked": False,
+                "advance_blocked_reason": None,
+            }
+        if status != "done_unverified":
+            return {
+                "policy_kind": "not_applicable",
+                "waiting_on_proof": False,
+                "waiting_on_review": False,
+                "advance_blocked": False,
+                "advance_blocked_reason": None,
+            }
+        if proof_gate["satisfied"]:
+            return {
+                "policy_kind": "mechanically-satisfied",
+                "waiting_on_proof": False,
+                "waiting_on_review": False,
+                "advance_blocked": False,
+                "advance_blocked_reason": None,
+            }
+        if proof_gate["reason"] in {
+            "manual_review_required",
+            "unsupported_verification_rule",
+            "downstream_item_confirms",
+            "test_pass_not_mechanically_supported",
+            "no_verification_rule",
+            "no_verification_rule_type",
+        }:
+            return {
+                "policy_kind": "review-needed",
+                "waiting_on_proof": False,
+                "waiting_on_review": True,
+                "advance_blocked": True,
+                "advance_blocked_reason": proof_gate["reason"],
+            }
+        return {
+            "policy_kind": "proof-gathering",
+            "waiting_on_proof": True,
+            "waiting_on_review": False,
+            "advance_blocked": True,
+            "advance_blocked_reason": proof_gate["reason"],
+        }
+
+    @staticmethod
     def _latest_job_state_event(
         history: list[dict[str, Any]],
     ) -> dict[str, Any] | None:
@@ -940,6 +1106,10 @@ class GarageStorageAdapter:
     ) -> dict[str, Any]:
         status = str(item["status"])
         proof_gate = GarageStorageAdapter._proof_gate_evaluation(item)
+        proof_policy = GarageStorageAdapter._proof_policy_summary(
+            status=status,
+            proof_gate=proof_gate,
+        )
         dependencies_resolved = GarageStorageAdapter._dependencies_resolved(
             plan.get("items", []),
             item,
@@ -977,6 +1147,11 @@ class GarageStorageAdapter:
             "proof_gate_supported": proof_gate["supported"],
             "proof_gate_reason": proof_gate["reason"],
             "is_verification_pending": status == "done_unverified" and not proof_gate["satisfied"],
+            "proof_policy_kind": proof_policy["policy_kind"],
+            "is_waiting_on_proof": proof_policy["waiting_on_proof"],
+            "is_waiting_on_review": proof_policy["waiting_on_review"],
+            "advance_blocked_by_proof_policy": proof_policy["advance_blocked"],
+            "advance_blocked_reason": proof_policy["advance_blocked_reason"],
         }
 
     @staticmethod

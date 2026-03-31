@@ -971,6 +971,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
                         "description": "Delegate the browser step to Robin.",
                         "status": "needs_child_job",
                         "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
                     },
                     {
                         "item_id": "I003",
@@ -997,7 +998,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("I003", next_executable["item_id"])
         self.assertTrue(task_summary["is_verification_pending"])
         self.assertTrue(task_summary["is_waiting_on_proof"])
-        self.assertEqual("verification-pending", task_summary["next_plan_resume_target"]["target_kind"])
+        self.assertFalse(task_summary["is_waiting_on_review"])
+        self.assertEqual("proof-gathering", task_summary["next_plan_resume_target"]["target_kind"])
         self.assertEqual("I002", task_summary["next_plan_resume_target"]["item"]["item_id"])
 
     def test_failure_report_marks_active_item_blocked_and_plan_blocked(self) -> None:
@@ -1187,11 +1189,17 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
 
         item_summary = storage.read_plan_item_summary("T000001", 1, "I002")
+        task_summary = storage.latest_task_state_summary("T000001")
         storage.close()
 
         self.assertEqual("done_unverified", item_summary["status"])
         self.assertFalse(item_summary["proof_satisfied"])
+        self.assertFalse(item_summary["proof_gate_supported"])
+        self.assertEqual("review-needed", item_summary["proof_policy_kind"])
+        self.assertTrue(item_summary["is_waiting_on_review"])
         self.assertEqual(2, item_summary["evidence_count"])
+        self.assertTrue(task_summary["is_waiting_on_review"])
+        self.assertFalse(task_summary["is_waiting_on_proof"])
 
     def test_done_unverified_item_is_surfaced_as_verification_pending(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -1231,16 +1239,73 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         proof_item = storage.read_relevant_proof_item_summary("T000001")
         task_summary = storage.latest_task_state_summary("T000001")
+        job_summary = storage.read_job_state_summary("T000001.J001")
         resume_target = storage.resolve_next_plan_resume_target("T000001")
         storage.close()
 
         self.assertEqual("I002", proof_item["item_id"])
         self.assertTrue(proof_item["is_verification_pending"])
+        self.assertEqual("review-needed", proof_item["proof_policy_kind"])
+        self.assertTrue(proof_item["is_waiting_on_review"])
         self.assertEqual("manual_review_required", proof_item["proof_gate_reason"])
         self.assertTrue(task_summary["is_verification_pending"])
+        self.assertTrue(task_summary["is_waiting_on_review"])
+        self.assertFalse(task_summary["is_waiting_on_proof"])
         self.assertEqual("manual_review_required", task_summary["relevant_proof_gate_reason"])
-        self.assertEqual("verification-pending", resume_target["target_kind"])
+        self.assertEqual("review-needed", job_summary["relevant_plan_item_proof_policy_kind"])
+        self.assertTrue(job_summary["relevant_plan_item_waiting_on_review"])
+        self.assertEqual("review-needed", resume_target["target_kind"])
         self.assertEqual("I002", resume_target["item"]["item_id"])
+
+    def test_unsupported_verification_rule_is_distinct_from_missing_evidence(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect proof needing test evaluation",
+                        "description": "Return evidence Alfred cannot judge mechanically.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "test_pass"},
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+
+        proof_item = storage.read_relevant_proof_item_summary("T000001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        resume_target = storage.resolve_next_plan_resume_target("T000001")
+        storage.close()
+
+        self.assertEqual("done_unverified", proof_item["status"])
+        self.assertFalse(proof_item["proof_gate_supported"])
+        self.assertEqual("test_pass_not_mechanically_supported", proof_item["proof_gate_reason"])
+        self.assertEqual("review-needed", proof_item["proof_policy_kind"])
+        self.assertTrue(proof_item["is_waiting_on_review"])
+        self.assertFalse(proof_item["is_waiting_on_proof"])
+        self.assertTrue(task_summary["is_waiting_on_review"])
+        self.assertEqual("review-needed", resume_target["target_kind"])
 
     def test_next_executable_unavailable_explains_dependency_unverified(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -1283,6 +1348,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         next_executable = storage.resolve_next_executable_plan_item("T000001")
         unavailable_reason = storage.explain_next_executable_unavailable("T000001")
         task_summary = storage.latest_task_state_summary("T000001")
+        job_summary = storage.read_job_state_summary("T000001.J001")
         storage.close()
 
         self.assertIsNone(next_executable)
@@ -1291,7 +1357,10 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("I002", unavailable_reason["blocking_dependency_item_id"])
         self.assertEqual("artifact_exists", unavailable_reason["verification_rule_type"])
         self.assertEqual("missing_artifact_ref", unavailable_reason["proof_gate_reason"])
+        self.assertEqual("proof-gathering", unavailable_reason["blocking_policy_kind"])
         self.assertEqual("dependency_unverified", task_summary["next_executable_unavailable_reason"]["reason"])
+        self.assertEqual("proof-gathering", job_summary["relevant_plan_item_proof_policy_kind"])
+        self.assertTrue(job_summary["relevant_plan_item_waiting_on_proof"])
 
     def test_continuation_record_can_promote_done_unverified_item_to_verified(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
