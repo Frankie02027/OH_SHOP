@@ -2384,6 +2384,405 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("continuation.record", after["best_next_call_type"])
         self.assertEqual("preserve", after["best_next_move_effect_kind"])
 
+    def test_checkpoint_call_preserves_proof_gathering_transition_when_gate_stays_unsatisfied(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need artifact proof",
+                        "description": "Still needs an official artifact ref.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        before = storage.latest_task_state_summary("T000001")
+
+        processor.process_call(make_checkpoint_create_call(plan_version=1))
+        transition = storage.summarize_applied_call_posture_transition(
+            "T000001",
+            "checkpoint.create",
+            before_task_summary=before,
+        )
+        after = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("preserved", transition["transition_kind"])
+        self.assertEqual("proof-gathering", transition["before_dominant_target_kind"])
+        self.assertEqual("proof-gathering", transition["after_dominant_target_kind"])
+        self.assertEqual("missing_artifact_ref", transition["after_unmet_requirement_kind"])
+        self.assertFalse(transition["best_next_move_changed"])
+        self.assertEqual("proof-gathering", after["dominant_target_kind"])
+        self.assertEqual("attach-artifact-ref", after["best_next_move"]["move_kind"])
+
+    def test_continuation_call_refines_proof_gathering_when_wrong_kind_evidence_arrives(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need screenshot proof",
+                        "description": "Needs a screenshot artifact before verification.",
+                        "status": "done_unverified",
+                        "depends_on": ["I001"],
+                        "verification_rule": {
+                            "type": "artifact_matches_kind",
+                            "params": {"kind": "screenshot"},
+                        },
+                    },
+                ],
+            )
+        )
+        before = storage.latest_task_state_summary("T000001")
+
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        transition = storage.summarize_applied_call_posture_transition(
+            "T000001",
+            "continuation.record",
+            before_task_summary=before,
+        )
+        after = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("refined", transition["transition_kind"])
+        self.assertEqual("proof-gathering", transition["before_dominant_target_kind"])
+        self.assertEqual("proof-gathering", transition["after_dominant_target_kind"])
+        self.assertEqual("missing_required_artifact_kind", transition["before_unmet_requirement_kind"])
+        self.assertEqual("missing_required_artifact_kind", transition["after_unmet_requirement_kind"])
+        self.assertNotEqual(
+            transition["before_unmet_requirement_detail"],
+            transition["after_unmet_requirement_detail"],
+        )
+        self.assertEqual("attach-required-artifact-kind", after["best_next_move"]["move_kind"])
+
+    def test_continuation_call_resolves_proof_gathering_into_next_executable_when_gate_satisfies(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        before = storage.latest_task_state_summary("T000001")
+
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        transition = storage.summarize_applied_call_posture_transition(
+            "T000001",
+            "continuation.record",
+            before_task_summary=before,
+        )
+        after = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("resolved", transition["transition_kind"])
+        self.assertEqual("proof-gathering", transition["before_dominant_target_kind"])
+        self.assertEqual("next-executable", transition["after_dominant_target_kind"])
+        self.assertTrue(transition["best_next_move_changed"])
+        self.assertEqual("next-executable", after["dominant_target_kind"])
+        self.assertEqual("start-next-executable", after["best_next_move"]["move_kind"])
+        self.assertTrue(after["execution_allowed"])
+
+    def test_continuation_call_preserves_review_needed_posture_for_manual_review_rule(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        before = storage.latest_task_state_summary("T000001")
+
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+        transition = storage.summarize_applied_call_posture_transition(
+            "T000001",
+            "continuation.record",
+            before_task_summary=before,
+        )
+        after = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("preserved", transition["transition_kind"])
+        self.assertEqual("review-needed", transition["before_dominant_target_kind"])
+        self.assertEqual("review-needed", transition["after_dominant_target_kind"])
+        self.assertEqual("manual_review_required", transition["after_unmet_requirement_kind"])
+        self.assertEqual("review-needed", after["dominant_target_kind"])
+        self.assertEqual("capture-manual-review-context", after["best_next_move"]["move_kind"])
+
+    def test_continuation_call_preserves_blocked_evidence_review_posture(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect blocked evidence",
+                        "description": "Capture failure evidence for the blocked step.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_failure_report_call(
+                reported_status="blocked",
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        before = storage.latest_task_state_summary("T000001")
+
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+        transition = storage.summarize_applied_call_posture_transition(
+            "T000001",
+            "continuation.record",
+            before_task_summary=before,
+        )
+        after = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("preserved", transition["transition_kind"])
+        self.assertEqual("blocked-evidence-review", transition["before_dominant_target_kind"])
+        self.assertEqual("blocked-evidence-review", transition["after_dominant_target_kind"])
+        self.assertEqual("blocked-evidence-review", after["dominant_target_kind"])
+        self.assertEqual("capture-blocked-evidence", after["best_next_move"]["move_kind"])
+
+    def test_child_return_resolves_waiting_on_child_into_next_posture(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run child leg",
+                        "description": "Delegate the blocking child work.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Continue follow-up",
+                        "description": "Continue once the child-backed proof is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        child = processor.process_call(make_child_job_request_call())
+        child_job_id = child.result["job_id"]
+        before = storage.latest_task_state_summary("T000001")
+
+        processor.process_call(
+            make_result_submit_call(
+                job_id=child_job_id,
+                reported_status="succeeded",
+            )
+        )
+        transition = storage.summarize_applied_call_posture_transition(
+            "T000001",
+            "result.submit",
+            before_task_summary=before,
+        )
+        after = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("resolved", transition["transition_kind"])
+        self.assertEqual("waiting-on-child", transition["before_dominant_target_kind"])
+        self.assertEqual("proof-gathering", transition["after_dominant_target_kind"])
+        self.assertFalse(after["current_job_is_primary_focus"])
+        self.assertTrue(after["relevant_plan_item_is_primary_focus"])
+
+    def test_job_start_can_restore_current_job_focus_after_next_executable_release(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        before = storage.latest_task_state_summary("T000001")
+
+        processor.process_call(make_job_start_call())
+        transition = storage.summarize_applied_call_posture_transition(
+            "T000001",
+            "job.start",
+            before_task_summary=before,
+        )
+        after = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("resolved", transition["transition_kind"])
+        self.assertEqual("next-executable", transition["before_dominant_target_kind"])
+        self.assertEqual("active-item", transition["after_dominant_target_kind"])
+        self.assertTrue(transition["current_job_focus_changed"])
+        self.assertTrue(transition["current_job_primary_focus_after"])
+        self.assertTrue(after["current_job_is_primary_focus"])
+        self.assertEqual("continue-active-execution", after["best_next_move"]["move_kind"])
+
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
             self.root,

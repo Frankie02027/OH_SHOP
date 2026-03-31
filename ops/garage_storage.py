@@ -835,6 +835,22 @@ class GarageStorageAdapter:
             return None
         return policy.get("best_next_move")
 
+    def summarize_applied_call_posture_transition(
+        self,
+        task_id: str,
+        call_type: str,
+        *,
+        before_task_summary: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        after_task_summary = self.latest_task_state_summary(task_id)
+        if not isinstance(before_task_summary, dict) or not isinstance(after_task_summary, dict):
+            return None
+        return self._classify_applied_call_posture_transition(
+            call_type=call_type,
+            before_task_summary=before_task_summary,
+            after_task_summary=after_task_summary,
+        )
+
     def evaluate_supported_call_posture_effect(
         self,
         task_id: str,
@@ -852,6 +868,133 @@ class GarageStorageAdapter:
             if isinstance(entry, dict) and entry.get("call_type") == call_type:
                 return dict(entry)
         return None
+
+    @staticmethod
+    def _classify_applied_call_posture_transition(
+        *,
+        call_type: str,
+        before_task_summary: dict[str, Any],
+        after_task_summary: dict[str, Any],
+    ) -> dict[str, Any]:
+        def _summary_target_item_id(summary: dict[str, Any]) -> str | None:
+            dominant_target = summary.get("dominant_target")
+            if not isinstance(dominant_target, dict):
+                return None
+            item = dominant_target.get("item")
+            if isinstance(item, dict):
+                return item.get("item_id")
+            return None
+
+        def _move_signature(move: Any) -> tuple[Any, Any, Any]:
+            if not isinstance(move, dict):
+                return (None, None, None)
+            return (move.get("move_kind"), move.get("call_type"), move.get("effect_kind"))
+
+        def _anchor_signature(summary: dict[str, Any]) -> tuple[Any, Any, Any]:
+            anchor = summary.get("resume_anchor")
+            if not isinstance(anchor, dict):
+                return (None, None, None)
+            record = anchor.get("record")
+            record_marker = None
+            if isinstance(record, dict):
+                record_marker = (
+                    record.get("checkpoint_id")
+                    or record.get("content_ref")
+                    or record.get("event_id")
+                )
+            return (anchor.get("anchor_kind"), anchor.get("job_id"), record_marker)
+
+        before_target_kind = before_task_summary.get("dominant_target_kind")
+        after_target_kind = after_task_summary.get("dominant_target_kind")
+        before_target_item_id = _summary_target_item_id(before_task_summary)
+        after_target_item_id = _summary_target_item_id(after_task_summary)
+        before_unmet = before_task_summary.get("dominant_unmet_requirement_kind")
+        after_unmet = after_task_summary.get("dominant_unmet_requirement_kind")
+        before_unmet_detail = before_task_summary.get("dominant_unmet_requirement_detail")
+        after_unmet_detail = after_task_summary.get("dominant_unmet_requirement_detail")
+        before_finality = before_task_summary.get("dominant_rule_finality_kind")
+        after_finality = after_task_summary.get("dominant_rule_finality_kind")
+        before_move = _move_signature(before_task_summary.get("best_next_move"))
+        after_move = _move_signature(after_task_summary.get("best_next_move"))
+        before_hold = before_task_summary.get("execution_hold_kind")
+        after_hold = after_task_summary.get("execution_hold_kind")
+        before_focus = (
+            before_task_summary.get("current_job_is_primary_focus"),
+            before_task_summary.get("relevant_plan_item_is_primary_focus"),
+        )
+        after_focus = (
+            after_task_summary.get("current_job_is_primary_focus"),
+            after_task_summary.get("relevant_plan_item_is_primary_focus"),
+        )
+        before_evidence = tuple(before_task_summary.get("relevant_evidence_refs") or ())
+        after_evidence = tuple(after_task_summary.get("relevant_evidence_refs") or ())
+        before_anchor = _anchor_signature(before_task_summary)
+        after_anchor = _anchor_signature(after_task_summary)
+
+        dominant_changed = (
+            before_target_kind != after_target_kind
+            or before_target_item_id != after_target_item_id
+        )
+        exact_rule_changed = (
+            before_unmet != after_unmet
+            or before_unmet_detail != after_unmet_detail
+            or before_finality != after_finality
+        )
+        guidance_changed = before_move != after_move or before_hold != after_hold
+        focus_changed = before_focus != after_focus
+        context_changed = before_evidence != after_evidence or before_anchor != after_anchor
+
+        if dominant_changed:
+            transition_kind = "resolved"
+            transition_reason = (
+                f"dominant posture moved from '{before_target_kind}' to '{after_target_kind}'"
+            )
+        elif exact_rule_changed or guidance_changed or focus_changed:
+            transition_kind = "refined"
+            if exact_rule_changed:
+                transition_reason = (
+                    f"dominant requirement/finality changed from "
+                    f"'{before_unmet or before_finality}' to '{after_unmet or after_finality}'"
+                )
+            elif guidance_changed:
+                transition_reason = "best-next-move or hold guidance changed while posture stayed dominant"
+            else:
+                transition_reason = "job vs proof/review focus changed while dominant posture stayed the same"
+        elif context_changed:
+            transition_kind = "preserved"
+            transition_reason = "dominant posture stayed the same while evidence/resume context was updated"
+        else:
+            transition_kind = "no_effect"
+            transition_reason = "dominant posture and supporting context stayed unchanged"
+
+        return {
+            "call_type": call_type,
+            "transition_kind": transition_kind,
+            "transition_reason": transition_reason,
+            "before_dominant_target_kind": before_target_kind,
+            "after_dominant_target_kind": after_target_kind,
+            "before_dominant_target_item_id": before_target_item_id,
+            "after_dominant_target_item_id": after_target_item_id,
+            "before_dominant_blocker_kind": before_task_summary.get("dominant_blocker_kind"),
+            "after_dominant_blocker_kind": after_task_summary.get("dominant_blocker_kind"),
+            "before_rule_finality_kind": before_finality,
+            "after_rule_finality_kind": after_finality,
+            "before_unmet_requirement_kind": before_unmet,
+            "after_unmet_requirement_kind": after_unmet,
+            "before_unmet_requirement_detail": before_unmet_detail,
+            "after_unmet_requirement_detail": after_unmet_detail,
+            "before_execution_allowed": before_task_summary.get("execution_allowed"),
+            "after_execution_allowed": after_task_summary.get("execution_allowed"),
+            "before_execution_hold_kind": before_hold,
+            "after_execution_hold_kind": after_hold,
+            "before_best_next_move": before_task_summary.get("best_next_move"),
+            "after_best_next_move": after_task_summary.get("best_next_move"),
+            "best_next_move_changed": before_move != after_move,
+            "current_job_primary_focus_before": before_focus[0],
+            "current_job_primary_focus_after": after_focus[0],
+            "current_job_focus_changed": before_focus != after_focus,
+            "context_changed": context_changed,
+        }
 
     def evaluate_supported_call_policy(
         self,
