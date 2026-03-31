@@ -338,7 +338,9 @@ class GarageAlfredProcessor:
     ) -> dict[str, Any]:
         resolved_task_id = self._resolve_submit_task_id(task_id, prepared_call)
         if not isinstance(resolved_task_id, str):
-            return {
+            return self._attach_submit_receipt(
+                task_id=None,
+                decision={
                 "decision_kind": "unavailable_in_slice",
                 "allowed_to_submit": False,
                 "submission_mode": None,
@@ -351,7 +353,10 @@ class GarageAlfredProcessor:
                 "context_only": False,
                 "unavailable_in_slice": True,
                 "productive_in_slice": False,
-            }
+                },
+                fresh_preflight=None,
+                submit_result=None,
+            )
 
         effective_supplied_fields = self._effective_submit_supplied_fields(
             resolved_task_id,
@@ -363,7 +368,9 @@ class GarageAlfredProcessor:
             supplied_fields=effective_supplied_fields,
         )
         if not isinstance(fresh_preflight, dict):
-            return {
+            return self._attach_submit_receipt(
+                task_id=resolved_task_id,
+                decision={
                 "decision_kind": "unavailable_in_slice",
                 "allowed_to_submit": False,
                 "submission_mode": None,
@@ -376,7 +383,10 @@ class GarageAlfredProcessor:
                 "context_only": False,
                 "unavailable_in_slice": True,
                 "productive_in_slice": False,
-            }
+                },
+                fresh_preflight=None,
+                submit_result=None,
+            )
 
         fresh_prepared_call = fresh_preflight.get("prepared_call")
         requested_matches_fresh = self._requested_prepared_call_matches_fresh(
@@ -384,17 +394,22 @@ class GarageAlfredProcessor:
             fresh_prepared_call=fresh_prepared_call,
         )
         if prepared_call is not None and not requested_matches_fresh:
-            return self._build_submit_prepared_call_decision(
-                decision_kind="stale_prepared_call",
-                allowed_to_submit=False,
-                submission_mode=self._resolve_submission_mode(fresh_preflight),
-                reason=(
-                    "prepared next call no longer matches fresh current-state preflight "
-                    "and must be regenerated before submission"
+            return self._attach_submit_receipt(
+                task_id=resolved_task_id,
+                decision=self._build_submit_prepared_call_decision(
+                    decision_kind="stale_prepared_call",
+                    allowed_to_submit=False,
+                    submission_mode=self._resolve_submission_mode(fresh_preflight),
+                    reason=(
+                        "prepared next call no longer matches fresh current-state preflight "
+                        "and must be regenerated before submission"
+                    ),
+                    fresh_preflight=fresh_preflight,
+                    submit_result=None,
+                    stale_or_blocked=True,
                 ),
                 fresh_preflight=fresh_preflight,
                 submit_result=None,
-                stale_or_blocked=True,
             )
 
         preflight_kind = str(fresh_preflight.get("preflight_kind") or "unavailable_in_slice")
@@ -402,17 +417,22 @@ class GarageAlfredProcessor:
         submission_mode = self._resolve_submission_mode(fresh_preflight)
 
         if missing_required_fields:
-            return self._build_submit_prepared_call_decision(
-                decision_kind="not_ready_missing_fields",
-                allowed_to_submit=False,
-                submission_mode=submission_mode,
-                reason=str(
-                    fresh_preflight.get("reason")
-                    or "prepared next call is still missing required fields"
+            return self._attach_submit_receipt(
+                task_id=resolved_task_id,
+                decision=self._build_submit_prepared_call_decision(
+                    decision_kind="not_ready_missing_fields",
+                    allowed_to_submit=False,
+                    submission_mode=submission_mode,
+                    reason=str(
+                        fresh_preflight.get("reason")
+                        or "prepared next call is still missing required fields"
+                    ),
+                    fresh_preflight=fresh_preflight,
+                    submit_result=None,
+                    stale_or_blocked=False,
                 ),
                 fresh_preflight=fresh_preflight,
                 submit_result=None,
-                stale_or_blocked=False,
             )
 
         if preflight_kind != "ready_to_submit":
@@ -424,72 +444,249 @@ class GarageAlfredProcessor:
                 try:
                     submit_result = self.process_call(dict(fresh_prepared_call))
                 except (GarageAlfredProcessingError, GarageProcessorError, ValueError) as exc:
-                    return self._build_submit_prepared_call_decision(
-                        decision_kind="policy_blocked",
-                        allowed_to_submit=False,
-                        submission_mode="context_capture",
-                        reason=str(exc),
+                    return self._attach_submit_receipt(
+                        task_id=resolved_task_id,
+                        decision=self._build_submit_prepared_call_decision(
+                            decision_kind="policy_blocked",
+                            allowed_to_submit=False,
+                            submission_mode="context_capture",
+                            reason=str(exc),
+                            fresh_preflight=fresh_preflight,
+                            submit_result=None,
+                            stale_or_blocked=True,
+                        ),
                         fresh_preflight=fresh_preflight,
                         submit_result=None,
-                        stale_or_blocked=True,
                     )
-                return self._build_submit_prepared_call_decision(
-                    decision_kind="submitted",
-                    allowed_to_submit=True,
-                    submission_mode="context_capture",
-                    reason=(
-                        "prepared context-capture call passed fresh revalidation "
-                        "and was processed"
+                return self._attach_submit_receipt(
+                    task_id=resolved_task_id,
+                    decision=self._build_submit_prepared_call_decision(
+                        decision_kind="submitted",
+                        allowed_to_submit=True,
+                        submission_mode="context_capture",
+                        reason=(
+                            "prepared context-capture call passed fresh revalidation "
+                            "and was processed"
+                        ),
+                        fresh_preflight=fresh_preflight,
+                        submit_result=submit_result,
+                        stale_or_blocked=False,
                     ),
                     fresh_preflight=fresh_preflight,
                     submit_result=submit_result,
-                    stale_or_blocked=False,
                 )
-            return self._build_submit_prepared_call_decision(
-                decision_kind=preflight_kind,
-                allowed_to_submit=False,
-                submission_mode=submission_mode,
-                reason=str(
-                    fresh_preflight.get("reason")
-                    or "prepared next call is not submittable in the current slice"
+            return self._attach_submit_receipt(
+                task_id=resolved_task_id,
+                decision=self._build_submit_prepared_call_decision(
+                    decision_kind=preflight_kind,
+                    allowed_to_submit=False,
+                    submission_mode=submission_mode,
+                    reason=str(
+                        fresh_preflight.get("reason")
+                        or "prepared next call is not submittable in the current slice"
+                    ),
+                    fresh_preflight=fresh_preflight,
+                    submit_result=None,
+                    stale_or_blocked=preflight_kind == "policy_blocked",
                 ),
                 fresh_preflight=fresh_preflight,
                 submit_result=None,
-                stale_or_blocked=preflight_kind == "policy_blocked",
             )
 
         if not isinstance(fresh_prepared_call, dict):
-            return self._build_submit_prepared_call_decision(
-                decision_kind="not_ready_missing_fields",
-                allowed_to_submit=False,
-                submission_mode=submission_mode,
-                reason="fresh preflight did not produce an honest prepared next call object",
+            return self._attach_submit_receipt(
+                task_id=resolved_task_id,
+                decision=self._build_submit_prepared_call_decision(
+                    decision_kind="not_ready_missing_fields",
+                    allowed_to_submit=False,
+                    submission_mode=submission_mode,
+                    reason="fresh preflight did not produce an honest prepared next call object",
+                    fresh_preflight=fresh_preflight,
+                    submit_result=None,
+                    stale_or_blocked=False,
+                ),
                 fresh_preflight=fresh_preflight,
                 submit_result=None,
-                stale_or_blocked=False,
             )
 
         try:
             submit_result = self.process_call(dict(fresh_prepared_call))
         except (GarageAlfredProcessingError, GarageProcessorError, ValueError) as exc:
-            return self._build_submit_prepared_call_decision(
-                decision_kind="policy_blocked",
-                allowed_to_submit=False,
-                submission_mode=submission_mode,
-                reason=str(exc),
+            return self._attach_submit_receipt(
+                task_id=resolved_task_id,
+                decision=self._build_submit_prepared_call_decision(
+                    decision_kind="policy_blocked",
+                    allowed_to_submit=False,
+                    submission_mode=submission_mode,
+                    reason=str(exc),
+                    fresh_preflight=fresh_preflight,
+                    submit_result=None,
+                    stale_or_blocked=True,
+                ),
                 fresh_preflight=fresh_preflight,
                 submit_result=None,
-                stale_or_blocked=True,
             )
-        return self._build_submit_prepared_call_decision(
-            decision_kind="submitted",
-            allowed_to_submit=True,
-            submission_mode=submission_mode,
-            reason="prepared next call passed fresh revalidation and was processed",
+        return self._attach_submit_receipt(
+            task_id=resolved_task_id,
+            decision=self._build_submit_prepared_call_decision(
+                decision_kind="submitted",
+                allowed_to_submit=True,
+                submission_mode=submission_mode,
+                reason="prepared next call passed fresh revalidation and was processed",
+                fresh_preflight=fresh_preflight,
+                submit_result=submit_result,
+                stale_or_blocked=False,
+            ),
             fresh_preflight=fresh_preflight,
             submit_result=submit_result,
-            stale_or_blocked=False,
         )
+
+    def _attach_submit_receipt(
+        self,
+        *,
+        task_id: str | None,
+        decision: dict[str, Any],
+        fresh_preflight: dict[str, Any] | None,
+        submit_result: GarageProcessingResult | None,
+    ) -> dict[str, Any]:
+        enriched = dict(decision)
+        enriched["submit_receipt"] = self._build_submit_receipt(
+            task_id=task_id,
+            decision=decision,
+            fresh_preflight=fresh_preflight,
+            submit_result=submit_result,
+        )
+        return enriched
+
+    def _build_submit_receipt(
+        self,
+        *,
+        task_id: str | None,
+        decision: dict[str, Any],
+        fresh_preflight: dict[str, Any] | None,
+        submit_result: GarageProcessingResult | None,
+    ) -> dict[str, Any]:
+        post_call_guidance = None
+        if submit_result is not None and isinstance(submit_result.result, dict):
+            guidance = submit_result.result.get("post_call_guidance")
+            if isinstance(guidance, dict):
+                post_call_guidance = guidance
+
+        current_summary = self._read_current_task_summary_for_receipt(task_id)
+        dominant_target_kind_now = None
+        dominant_blocker_kind_now = None
+        best_next_move_now = None
+        execution_allowed_now = None
+        execution_hold_kind_now = None
+        current_job_is_primary_focus_now = None
+        relevant_plan_item_is_primary_focus_now = None
+        posture_transition = None
+
+        if isinstance(post_call_guidance, dict):
+            dominant_target_kind_now = post_call_guidance.get("dominant_target_kind")
+            dominant_blocker_kind_now = post_call_guidance.get("dominant_blocker_kind")
+            best_next_move_now = post_call_guidance.get("best_next_move")
+            execution_allowed_now = post_call_guidance.get("execution_allowed")
+            execution_hold_kind_now = post_call_guidance.get("execution_hold_kind")
+            current_job_is_primary_focus_now = post_call_guidance.get(
+                "current_job_is_primary_focus"
+            )
+            relevant_plan_item_is_primary_focus_now = post_call_guidance.get(
+                "relevant_plan_item_is_primary_focus"
+            )
+            posture_transition = post_call_guidance.get("posture_transition")
+        elif isinstance(current_summary, dict):
+            dominant_target_kind_now = current_summary.get("dominant_target_kind")
+            dominant_blocker_kind_now = current_summary.get("dominant_blocker_kind")
+            best_next_move_now = current_summary.get("best_next_move")
+            execution_allowed_now = current_summary.get("execution_allowed")
+            execution_hold_kind_now = current_summary.get("execution_hold_kind")
+            current_job_is_primary_focus_now = current_summary.get(
+                "current_job_is_primary_focus"
+            )
+            relevant_plan_item_is_primary_focus_now = current_summary.get(
+                "relevant_plan_item_is_primary_focus"
+            )
+
+        return {
+            "decision_kind": decision.get("decision_kind"),
+            "allowed_to_submit": decision.get("allowed_to_submit"),
+            "submission_mode": decision.get("submission_mode"),
+            "reason": decision.get("reason"),
+            "submit_effect_kind": self._classify_submit_effect_kind(
+                decision=decision,
+                posture_transition=posture_transition,
+            ),
+            "productive_in_slice": decision.get("productive_in_slice"),
+            "context_capture_only": decision.get("submission_mode") == "context_capture",
+            "stale_or_blocked": decision.get("stale_or_blocked"),
+            "missing_required_fields": decision.get("missing_required_fields"),
+            "prepared_call": (
+                fresh_preflight.get("prepared_call")
+                if isinstance(fresh_preflight, dict)
+                else decision.get("prepared_call")
+            ),
+            "submit_result": submit_result,
+            "dominant_target_kind_now": dominant_target_kind_now,
+            "dominant_blocker_kind_now": dominant_blocker_kind_now,
+            "best_next_move_now": best_next_move_now,
+            "execution_allowed_now": execution_allowed_now,
+            "execution_hold_kind_now": execution_hold_kind_now,
+            "current_job_is_primary_focus_now": current_job_is_primary_focus_now,
+            "relevant_plan_item_is_primary_focus_now": (
+                relevant_plan_item_is_primary_focus_now
+            ),
+            "posture_transition_kind_now": (
+                posture_transition.get("transition_kind")
+                if isinstance(posture_transition, dict)
+                else None
+            ),
+            "posture_transition_reason_now": (
+                posture_transition.get("transition_reason")
+                if isinstance(posture_transition, dict)
+                else None
+            ),
+        }
+
+    def _read_current_task_summary_for_receipt(
+        self,
+        task_id: str | None,
+    ) -> dict[str, Any] | None:
+        if not isinstance(task_id, str) or self._state_reader is None:
+            return None
+        summary_reader = getattr(self._state_reader, "latest_task_state_summary", None)
+        if not callable(summary_reader):
+            return None
+        summary = summary_reader(task_id)
+        return dict(summary) if isinstance(summary, dict) else None
+
+    @staticmethod
+    def _classify_submit_effect_kind(
+        *,
+        decision: dict[str, Any],
+        posture_transition: dict[str, Any] | None,
+    ) -> str:
+        decision_kind = str(decision.get("decision_kind") or "unavailable_in_slice")
+        submission_mode = decision.get("submission_mode")
+        allowed_to_submit = bool(decision.get("allowed_to_submit"))
+        transition_kind = (
+            posture_transition.get("transition_kind")
+            if isinstance(posture_transition, dict)
+            else None
+        )
+        if not allowed_to_submit:
+            if decision_kind == "stale_prepared_call":
+                return "submission_refused_stale"
+            if decision_kind == "not_ready_missing_fields":
+                return "submission_refused_missing_fields"
+            return "submission_refused_unavailable"
+        if submission_mode == "context_capture":
+            if transition_kind == "preserved":
+                return "posture_preserved_after_context_capture"
+            return "context_capture_recorded"
+        if transition_kind in {"resolved", "refined"}:
+            return "productive_execution_advanced"
+        return "posture_changed_after_submission"
 
     def _effective_submit_supplied_fields(
         self,

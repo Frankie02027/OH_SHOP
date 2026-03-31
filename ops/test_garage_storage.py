@@ -3643,6 +3643,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         ]
 
         decision = processor.submit_prepared_next_call(prepared_call=prepared_call)
+        receipt = decision["submit_receipt"]
         storage.close()
 
         self.assertEqual("submitted", decision["decision_kind"])
@@ -3653,6 +3654,13 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertIsNotNone(decision["submit_result"])
         self.assertEqual("job.start", decision["submit_result"].call_type)
         self.assertEqual("active-item", decision["submit_result"].result["post_call_guidance"]["dominant_target_kind"])
+        self.assertEqual("submitted", receipt["decision_kind"])
+        self.assertEqual("productive_in_slice", receipt["submission_mode"])
+        self.assertEqual("productive_execution_advanced", receipt["submit_effect_kind"])
+        self.assertEqual("active-item", receipt["dominant_target_kind_now"])
+        self.assertEqual("continue-active-execution", receipt["best_next_move_now"]["move_kind"])
+        self.assertTrue(receipt["execution_allowed_now"])
+        self.assertTrue(receipt["current_job_is_primary_focus_now"])
 
     def test_submit_prepared_job_start_rejects_stale_call_after_posture_changes(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3702,6 +3710,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         processor.process_call(make_job_start_call())
 
         decision = processor.submit_prepared_next_call(prepared_call=prepared_call)
+        receipt = decision["submit_receipt"]
         storage.close()
 
         self.assertEqual("stale_prepared_call", decision["decision_kind"])
@@ -3711,6 +3720,10 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertIsNone(decision["submit_result"])
         self.assertEqual("unavailable_in_slice", decision["fresh_preflight"]["preflight_kind"])
         self.assertTrue(decision["unavailable_in_slice"])
+        self.assertEqual("submission_refused_stale", receipt["submit_effect_kind"])
+        self.assertEqual("active-item", receipt["dominant_target_kind_now"])
+        self.assertEqual("continue-active-execution", receipt["best_next_move_now"]["move_kind"])
+        self.assertTrue(receipt["execution_allowed_now"])
 
     def test_submit_prepared_proof_continuation_requires_real_content_before_submission(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3762,6 +3775,11 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(denied["productive_in_slice"])
         self.assertEqual(("payload_ref",), denied["missing_required_fields"])
         self.assertIsNone(denied["submit_result"])
+        self.assertEqual(
+            "submission_refused_missing_fields",
+            denied["submit_receipt"]["submit_effect_kind"],
+        )
+        self.assertEqual("proof-gathering", denied["submit_receipt"]["dominant_target_kind_now"])
         self.assertEqual("submitted", submitted["decision_kind"])
         self.assertTrue(submitted["allowed_to_submit"])
         self.assertEqual("productive_in_slice", submitted["submission_mode"])
@@ -3823,6 +3841,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
                 }
             },
         )
+        receipt = decision["submit_receipt"]
         storage.close()
 
         self.assertEqual("submitted", decision["decision_kind"])
@@ -3842,6 +3861,20 @@ class GarageStorageAdapterTests(unittest.TestCase):
                 "follow_up_behavior_kind"
             ],
         )
+        self.assertEqual("submitted", receipt["decision_kind"])
+        self.assertEqual("context_capture", receipt["submission_mode"])
+        self.assertEqual(
+            "posture_preserved_after_context_capture",
+            receipt["submit_effect_kind"],
+        )
+        self.assertFalse(receipt["productive_in_slice"])
+        self.assertTrue(receipt["context_capture_only"])
+        self.assertEqual("review-needed", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "capture-manual-review-context",
+            receipt["best_next_move_now"]["move_kind"],
+        )
+        self.assertFalse(receipt["execution_allowed_now"])
 
     def test_submit_prepared_blocked_evidence_call_stays_context_only(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3893,6 +3926,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
                 }
             },
         )
+        receipt = decision["submit_receipt"]
         storage.close()
 
         self.assertEqual("submitted", decision["decision_kind"])
@@ -3911,6 +3945,17 @@ class GarageStorageAdapterTests(unittest.TestCase):
             decision["submit_result"].result["post_call_guidance"]["immediate_follow_up"][
                 "follow_up_behavior_kind"
             ],
+        )
+        self.assertEqual(
+            "posture_preserved_after_context_capture",
+            receipt["submit_effect_kind"],
+        )
+        self.assertFalse(receipt["productive_in_slice"])
+        self.assertTrue(receipt["context_capture_only"])
+        self.assertEqual("blocked-evidence-review", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "capture-blocked-evidence",
+            receipt["best_next_move_now"]["move_kind"],
         )
 
     def test_submit_prepared_review_context_capture_rejects_when_posture_becomes_stale(self) -> None:
@@ -4000,6 +4045,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
 
         decision = processor.submit_prepared_next_call(prepared_call=prepared_call)
+        receipt = decision["submit_receipt"]
         storage.close()
 
         self.assertEqual("stale_prepared_call", decision["decision_kind"])
@@ -4008,6 +4054,9 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(decision["productive_in_slice"])
         self.assertFalse(decision["context_only"])
         self.assertIsNone(decision["submit_result"])
+        self.assertEqual("submission_refused_stale", receipt["submit_effect_kind"])
+        self.assertEqual("next-executable", receipt["dominant_target_kind_now"])
+        self.assertEqual("job.start", receipt["best_next_move_now"]["call_type"])
 
     def test_submit_prepared_child_job_start_rejects_when_child_leg_is_stale(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -4043,6 +4092,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         processor.process_call(make_job_start_call(job_id=child_job_id))
 
         decision = processor.submit_prepared_next_call(prepared_call=prepared_call)
+        receipt = decision["submit_receipt"]
         storage.close()
 
         self.assertEqual("stale_prepared_call", decision["decision_kind"])
@@ -4051,6 +4101,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(decision["stale_or_blocked"])
         self.assertIsNone(decision["submit_result"])
         self.assertEqual("unavailable_in_slice", decision["fresh_preflight"]["preflight_kind"])
+        self.assertEqual("submission_refused_stale", receipt["submit_effect_kind"])
+        self.assertEqual("waiting-on-child", receipt["dominant_target_kind_now"])
 
     def test_submit_prepared_call_does_not_fabricate_active_leg_path(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -4097,6 +4149,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         processor.process_call(make_job_start_call())
 
         decision = processor.submit_prepared_next_call(task_id="T000001")
+        receipt = decision["submit_receipt"]
         storage.close()
 
         self.assertEqual("unavailable_in_slice", decision["decision_kind"])
@@ -4104,6 +4157,9 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertIsNone(decision["submission_mode"])
         self.assertTrue(decision["unavailable_in_slice"])
         self.assertIsNone(decision["submit_result"])
+        self.assertEqual("submission_refused_unavailable", receipt["submit_effect_kind"])
+        self.assertEqual("active-item", receipt["dominant_target_kind_now"])
+        self.assertEqual("continue-active-execution", receipt["best_next_move_now"]["move_kind"])
 
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
