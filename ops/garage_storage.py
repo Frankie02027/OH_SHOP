@@ -224,6 +224,7 @@ class GarageStorageAdapter:
         relevant_plan_item = self.resolve_relevant_plan_item(task_id)
         resume_anchor = self.resolve_task_resume_anchor(task_id)
         task_policy = self.effective_task_policy_summary(task_id)
+        immediate_follow_up = self.summarize_immediate_follow_up_behavior(task_id)
         return {
             "task_record": task_record,
             "latest_event": latest_event,
@@ -351,6 +352,7 @@ class GarageStorageAdapter:
                 else None
             ),
             "effective_task_policy": task_policy,
+            "immediate_follow_up_behavior": immediate_follow_up,
             "dominant_target": (
                 task_policy.get("dominant_target") if isinstance(task_policy, dict) else None
             ),
@@ -445,6 +447,21 @@ class GarageStorageAdapter:
                 task_policy.get("best_next_move_effect_kind")
                 if isinstance(task_policy, dict)
                 else None
+            ),
+            "follow_up_behavior_kind": (
+                immediate_follow_up.get("follow_up_behavior_kind")
+                if isinstance(immediate_follow_up, dict)
+                else None
+            ),
+            "follow_up_behavior_reason": (
+                immediate_follow_up.get("follow_up_behavior_reason")
+                if isinstance(immediate_follow_up, dict)
+                else None
+            ),
+            "productive_in_slice": (
+                immediate_follow_up.get("productive_in_slice")
+                if isinstance(immediate_follow_up, dict)
+                else False
             ),
             "allowed_call_policy": (
                 task_policy.get("allowed_call_policy")
@@ -835,6 +852,15 @@ class GarageStorageAdapter:
             return None
         return policy.get("best_next_move")
 
+    def summarize_immediate_follow_up_behavior(
+        self,
+        task_id: str,
+    ) -> dict[str, Any] | None:
+        task_policy = self.effective_task_policy_summary(task_id)
+        if not isinstance(task_policy, dict):
+            return None
+        return self._classify_immediate_follow_up_behavior(task_policy)
+
     def summarize_applied_call_posture_transition(
         self,
         task_id: str,
@@ -994,6 +1020,94 @@ class GarageStorageAdapter:
             "current_job_primary_focus_after": after_focus[0],
             "current_job_focus_changed": before_focus != after_focus,
             "context_changed": context_changed,
+        }
+
+    @staticmethod
+    def _classify_immediate_follow_up_behavior(
+        task_policy: dict[str, Any],
+    ) -> dict[str, Any]:
+        dominant_target_kind = task_policy.get("dominant_target_kind")
+        best_next_move = task_policy.get("best_next_move")
+        best_next_call_type = (
+            best_next_move.get("call_type") if isinstance(best_next_move, dict) else None
+        )
+        allowed_call_policy = tuple(task_policy.get("allowed_call_policy", ()))
+        blocked_call_policy = tuple(task_policy.get("blocked_call_policy", ()))
+        secondary_allowed_moves = tuple(
+            dict(entry)
+            for entry in allowed_call_policy
+            if isinstance(entry, dict) and entry.get("call_type") != best_next_call_type
+        )
+        blocked_moves = tuple(
+            dict(entry) for entry in blocked_call_policy if isinstance(entry, dict)
+        )
+
+        follow_up_behavior_kind = "no-productive-follow-up-in-slice"
+        follow_up_behavior_reason = (
+            best_next_move.get("reason")
+            if isinstance(best_next_move, dict)
+            else "no productive next work is available in this supported slice"
+        )
+        productive_in_slice = False
+        requires_non_mechanical_review = False
+        holds_on_blocked_evidence = False
+        waits_on_child_progress = False
+        actionable_evidence_gathering = False
+        actionable_execution = False
+        child_held_progression = False
+        review_context_capture_only = False
+        blocked_evidence_context_capture_only = False
+
+        if dominant_target_kind == "proof-gathering":
+            follow_up_behavior_kind = "gather-proof-next"
+            productive_in_slice = True
+            actionable_evidence_gathering = True
+        elif dominant_target_kind == "review-needed":
+            follow_up_behavior_kind = "capture-review-context-next"
+            requires_non_mechanical_review = True
+            review_context_capture_only = True
+        elif dominant_target_kind == "blocked-evidence-review":
+            follow_up_behavior_kind = "capture-blocked-evidence-next"
+            holds_on_blocked_evidence = True
+            blocked_evidence_context_capture_only = True
+        elif dominant_target_kind == "waiting-on-child":
+            follow_up_behavior_kind = "progress-child-leg-next"
+            waits_on_child_progress = True
+            child_held_progression = True
+            productive_in_slice = isinstance(best_next_call_type, str)
+        elif dominant_target_kind == "active-item":
+            follow_up_behavior_kind = "resume-active-leg-next"
+            productive_in_slice = True
+            actionable_execution = True
+        elif dominant_target_kind == "next-executable":
+            follow_up_behavior_kind = "start-next-executable-next"
+            productive_in_slice = True
+            actionable_execution = True
+
+        no_productive_follow_up_in_slice = not productive_in_slice
+        if not isinstance(follow_up_behavior_reason, str) or not follow_up_behavior_reason:
+            follow_up_behavior_reason = (
+                "no productive next work is available in this supported slice"
+                if no_productive_follow_up_in_slice
+                else "refreshed task policy defines the next supported move"
+            )
+
+        return {
+            "follow_up_behavior_kind": follow_up_behavior_kind,
+            "follow_up_behavior_reason": follow_up_behavior_reason,
+            "best_next_move": dict(best_next_move) if isinstance(best_next_move, dict) else None,
+            "secondary_allowed_moves": secondary_allowed_moves,
+            "blocked_moves": blocked_moves,
+            "productive_in_slice": productive_in_slice,
+            "requires_non_mechanical_review": requires_non_mechanical_review,
+            "holds_on_blocked_evidence": holds_on_blocked_evidence,
+            "waits_on_child_progress": waits_on_child_progress,
+            "actionable_evidence_gathering": actionable_evidence_gathering,
+            "actionable_execution": actionable_execution,
+            "child_held_progression": child_held_progression,
+            "review_context_capture_only": review_context_capture_only,
+            "blocked_evidence_context_capture_only": blocked_evidence_context_capture_only,
+            "no_productive_follow_up_in_slice": no_productive_follow_up_in_slice,
         }
 
     def evaluate_supported_call_policy(
