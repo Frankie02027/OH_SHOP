@@ -18,6 +18,8 @@ from ops.garage_runtime import (
 
 
 Clock = Callable[[], str]
+PLAN_ACTIVEISH_STATUSES = {"in_progress", "needs_child_job", "blocked"}
+PLAN_RESOLVED_STATUSES = {"verified", "abandoned"}
 
 
 class AlfredIdProvider(Protocol):
@@ -38,6 +40,12 @@ class AlfredStateReader(Protocol):
     def read_task_record(self, task_id: str) -> dict[str, Any] | None: ...
 
     def read_job_record(self, job_id: str) -> dict[str, Any] | None: ...
+
+    def read_tracked_plan(
+        self,
+        task_id: str,
+        plan_version: int,
+    ) -> dict[str, Any] | None: ...
 
 
 @dataclass(frozen=True)
@@ -214,10 +222,13 @@ class GarageAlfredProcessor:
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
         tracked_plan = dict(payload)
+        tracked_plan["items"] = [dict(item) for item in payload.get("items", [])]
         tracked_plan.setdefault("created_at", recorded_at)
         tracked_plan["updated_at"] = recorded_at
         if "job_id" in call and "job_id" not in tracked_plan:
             tracked_plan["job_id"] = call["job_id"]
+        tracked_plan = self._normalize_recorded_plan(tracked_plan)
+        tracked_plan["plan_status"] = self._derive_plan_status(tracked_plan)
 
         event = self._build_plan_recorded_event(
             call,
@@ -252,6 +263,10 @@ class GarageAlfredProcessor:
             forbidden_job_ids={str(call["job_id"]), lineage_parent_job_id},
         )
         recorded_at = self._recorded_at(call)
+        tracked_plan_write = self._mutate_tracked_plan_for_child_job_request(
+            task_id,
+            recorded_at,
+        )
         created_event_id = self._ids.mint_event_id(task_id)
         created_event = self._build_job_created_event(
             call,
@@ -297,6 +312,7 @@ class GarageAlfredProcessor:
             records=(
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
+                *(() if tracked_plan_write is None else (tracked_plan_write,)),
                 self._event_record_write(created_event),
                 self._event_record_write(dispatched_event),
             ),
@@ -311,6 +327,10 @@ class GarageAlfredProcessor:
             existing_job_record,
         )
         recorded_at = self._recorded_at(call)
+        tracked_plan_write = self._mutate_tracked_plan_for_job_start(
+            task_id,
+            recorded_at,
+        )
         event_id = self._ids.mint_event_id(task_id)
         event = self._build_job_started_event(
             call,
@@ -345,6 +365,7 @@ class GarageAlfredProcessor:
             records=(
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
+                *(() if tracked_plan_write is None else (tracked_plan_write,)),
                 self._event_record_write(event),
             ),
         )
@@ -353,6 +374,10 @@ class GarageAlfredProcessor:
         task_id = call["task_id"]
         job_id = call["job_id"]
         recorded_at = self._recorded_at(call)
+        tracked_plan_write = self._mutate_tracked_plan_for_result_submit(
+            call,
+            recorded_at,
+        )
         event_id = self._ids.mint_event_id(task_id)
         event = self._build_job_returned_event(call, event_id, recorded_at)
         task_record = self._build_task_record(
@@ -382,6 +407,7 @@ class GarageAlfredProcessor:
             records=(
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
+                *(() if tracked_plan_write is None else (tracked_plan_write,)),
                 self._event_record_write(event),
             ),
         )
@@ -402,6 +428,10 @@ class GarageAlfredProcessor:
             )
 
         recorded_at = self._recorded_at(call)
+        tracked_plan_write = self._mutate_tracked_plan_for_failure_report(
+            task_id,
+            recorded_at,
+        )
         event_id = self._ids.mint_event_id(task_id)
         event = self._build_failure_event(
             call,
@@ -436,6 +466,7 @@ class GarageAlfredProcessor:
             records=(
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("job-record", job_record),
+                *(() if tracked_plan_write is None else (tracked_plan_write,)),
                 self._event_record_write(event),
             ),
         )
@@ -841,6 +872,267 @@ class GarageAlfredProcessor:
                 f"{expected_attempt} but received {explicit_value}"
             )
         return explicit_value
+
+    def _mutate_tracked_plan_for_job_start(
+        self,
+        task_id: str,
+        recorded_at: str,
+    ) -> GarageRecordWrite | None:
+        plan = self._existing_active_tracked_plan(task_id)
+        if plan is None:
+            return None
+        current_item = self._current_plan_item(plan)
+        if current_item is None:
+            current_item = self._next_executable_item(plan)
+            if current_item is None:
+                raise GarageAlfredProcessingError(
+                    f"job.start for task '{task_id}' cannot select a coherent active plan item"
+                )
+            plan["current_active_item"] = current_item["item_id"]
+
+        status = str(current_item["status"])
+        if status == "todo":
+            if not self._dependencies_resolved(plan["items"], current_item):
+                raise GarageAlfredProcessingError(
+                    f"job.start for task '{task_id}' cannot advance blocked dependencies for "
+                    f"plan item '{current_item['item_id']}'"
+                )
+            current_item["status"] = "in_progress"
+        elif status == "in_progress":
+            pass
+        else:
+            raise GarageAlfredProcessingError(
+                f"job.start for task '{task_id}' cannot treat plan item "
+                f"'{current_item['item_id']}' in status '{status}' as executable"
+            )
+        return self._tracked_plan_write(plan, recorded_at)
+
+    def _mutate_tracked_plan_for_child_job_request(
+        self,
+        task_id: str,
+        recorded_at: str,
+    ) -> GarageRecordWrite | None:
+        plan = self._existing_active_tracked_plan(task_id)
+        if plan is None:
+            return None
+        current_item = self._current_plan_item(plan)
+        if current_item is None:
+            current_item = self._next_executable_item(plan)
+            if current_item is None:
+                raise GarageAlfredProcessingError(
+                    f"child_job.request for task '{task_id}' cannot select a coherent active plan item"
+                )
+            plan["current_active_item"] = current_item["item_id"]
+
+        status = str(current_item["status"])
+        if status == "todo":
+            if not self._dependencies_resolved(plan["items"], current_item):
+                raise GarageAlfredProcessingError(
+                    f"child_job.request for task '{task_id}' cannot hand off blocked dependencies for "
+                    f"plan item '{current_item['item_id']}'"
+                )
+            current_item["status"] = "needs_child_job"
+        elif status == "in_progress":
+            current_item["status"] = "needs_child_job"
+        elif status == "needs_child_job":
+            pass
+        else:
+            raise GarageAlfredProcessingError(
+                f"child_job.request for task '{task_id}' cannot treat plan item "
+                f"'{current_item['item_id']}' in status '{status}' as handoff-ready"
+            )
+        return self._tracked_plan_write(plan, recorded_at)
+
+    def _mutate_tracked_plan_for_result_submit(
+        self,
+        call: dict[str, Any],
+        recorded_at: str,
+    ) -> GarageRecordWrite | None:
+        task_id = call["task_id"]
+        plan = self._existing_active_tracked_plan(task_id)
+        if plan is None:
+            return None
+        current_item = self._current_plan_item(plan)
+        if current_item is None:
+            raise GarageAlfredProcessingError(
+                f"result.submit for task '{task_id}' has no coherent active plan item"
+            )
+
+        reported_status = str(call["reported_status"])
+        status = str(current_item["status"])
+        if reported_status == "succeeded":
+            if status not in {"in_progress", "needs_child_job"}:
+                raise GarageAlfredProcessingError(
+                    f"result.submit for task '{task_id}' cannot complete plan item "
+                    f"'{current_item['item_id']}' from status '{status}'"
+                )
+            current_item["status"] = "done_unverified"
+            next_item = self._next_executable_item(plan, exclude_item_id=current_item["item_id"])
+            if next_item is None:
+                plan.pop("current_active_item", None)
+            else:
+                plan["current_active_item"] = next_item["item_id"]
+        elif reported_status == "partial":
+            if status == "needs_child_job":
+                current_item["status"] = "in_progress"
+            elif status != "in_progress":
+                raise GarageAlfredProcessingError(
+                    f"result.submit for task '{task_id}' cannot keep plan item "
+                    f"'{current_item['item_id']}' active from status '{status}'"
+                )
+            plan["current_active_item"] = current_item["item_id"]
+        else:
+            plan["current_active_item"] = current_item["item_id"]
+        return self._tracked_plan_write(plan, recorded_at)
+
+    def _mutate_tracked_plan_for_failure_report(
+        self,
+        task_id: str,
+        recorded_at: str,
+    ) -> GarageRecordWrite | None:
+        plan = self._existing_active_tracked_plan(task_id)
+        if plan is None:
+            return None
+        current_item = self._current_plan_item(plan)
+        if current_item is None:
+            raise GarageAlfredProcessingError(
+                f"failure.report for task '{task_id}' has no coherent active plan item"
+            )
+        status = str(current_item["status"])
+        if status not in {"in_progress", "needs_child_job", "blocked"}:
+            raise GarageAlfredProcessingError(
+                f"failure.report for task '{task_id}' cannot block plan item "
+                f"'{current_item['item_id']}' from status '{status}'"
+            )
+        current_item["status"] = "blocked"
+        plan["current_active_item"] = current_item["item_id"]
+        return self._tracked_plan_write(plan, recorded_at)
+
+    def _tracked_plan_write(
+        self,
+        plan: dict[str, Any],
+        recorded_at: str,
+    ) -> GarageRecordWrite:
+        if plan.get("current_active_item") is None:
+            plan.pop("current_active_item", None)
+        plan["updated_at"] = recorded_at
+        plan["plan_status"] = self._derive_plan_status(plan)
+        return GarageRecordWrite("tracked-plan", plan)
+
+    def _existing_active_tracked_plan(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self._existing_task_record(task_id)
+        if task_record is None:
+            return None
+        plan_version = task_record.get("current_plan_version")
+        if not isinstance(plan_version, int) or self._state_reader is None:
+            return None
+        plan = self._state_reader.read_tracked_plan(task_id, plan_version)
+        if not isinstance(plan, dict):
+            raise GarageAlfredProcessingError(
+                f"task '{task_id}' points at missing tracked plan version '{plan_version}'"
+            )
+        return self._normalize_recorded_plan(
+            {
+                **dict(plan),
+                "items": [dict(item) for item in plan.get("items", [])],
+            }
+        )
+
+    def _normalize_recorded_plan(self, plan: dict[str, Any]) -> dict[str, Any]:
+        items = plan.get("items")
+        if not isinstance(items, list) or not items:
+            raise GarageAlfredProcessingError("tracked plan requires a non-empty items list")
+        items_by_id = {
+            str(item["item_id"]): item
+            for item in items
+            if isinstance(item, dict) and "item_id" in item
+        }
+        current_active_item = plan.get("current_active_item")
+        if current_active_item is not None:
+            current_active_item = str(current_active_item)
+            if current_active_item not in items_by_id:
+                raise GarageAlfredProcessingError(
+                    f"tracked plan current_active_item '{current_active_item}' is not present in items"
+                )
+            plan["current_active_item"] = current_active_item
+
+        activeish_ids = [
+            item_id
+            for item_id, item in items_by_id.items()
+            if item.get("status") in PLAN_ACTIVEISH_STATUSES
+        ]
+        if len(activeish_ids) > 1:
+            raise GarageAlfredProcessingError(
+                f"tracked plan has incoherent multiple active items: {activeish_ids}"
+            )
+        if len(activeish_ids) == 1:
+            activeish_item_id = activeish_ids[0]
+            if current_active_item is None:
+                plan["current_active_item"] = activeish_item_id
+            elif current_active_item != activeish_item_id:
+                raise GarageAlfredProcessingError(
+                    "tracked plan current_active_item conflicts with reconstructed active item"
+                )
+        return plan
+
+    def _current_plan_item(self, plan: dict[str, Any]) -> dict[str, Any] | None:
+        current_active_item = plan.get("current_active_item")
+        if isinstance(current_active_item, str):
+            return self._find_plan_item(plan, current_active_item)
+        return None
+
+    def _find_plan_item(
+        self,
+        plan: dict[str, Any],
+        item_id: str,
+    ) -> dict[str, Any] | None:
+        for item in plan.get("items", []):
+            if item.get("item_id") == item_id:
+                return item
+        return None
+
+    def _next_executable_item(
+        self,
+        plan: dict[str, Any],
+        *,
+        exclude_item_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        for item in plan.get("items", []):
+            if exclude_item_id is not None and item.get("item_id") == exclude_item_id:
+                continue
+            if item.get("status") != "todo":
+                continue
+            if self._dependencies_resolved(plan.get("items", []), item):
+                return item
+        return None
+
+    def _dependencies_resolved(
+        self,
+        items: list[dict[str, Any]],
+        item: dict[str, Any],
+    ) -> bool:
+        items_by_id = {entry["item_id"]: entry for entry in items if "item_id" in entry}
+        for dependency_id in item.get("depends_on", []):
+            dependency = items_by_id.get(dependency_id)
+            if dependency is None:
+                return False
+            if dependency.get("status") not in PLAN_RESOLVED_STATUSES:
+                return False
+        return True
+
+    def _derive_plan_status(self, plan: dict[str, Any]) -> str:
+        plan_status = str(plan.get("plan_status") or "active")
+        if plan_status in {"abandoned", "superseded"}:
+            return plan_status
+        items = [
+            item for item in plan.get("items", [])
+            if isinstance(item, dict) and "status" in item
+        ]
+        if items and all(item.get("status") in PLAN_RESOLVED_STATUSES for item in items):
+            return "completed"
+        if any(item.get("status") == "blocked" for item in items):
+            return "blocked"
+        return "active"
 
     def _mint_distinct_child_job_id(
         self,

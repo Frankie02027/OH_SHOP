@@ -125,6 +125,7 @@ def make_result_submit_call(
     *,
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
+    reported_status: str = "succeeded",
 ) -> dict[str, object]:
     return {
         "schema_version": "v0.1",
@@ -134,10 +135,33 @@ def make_result_submit_call(
         "from_role": "robin",
         "to_role": "alfred",
         "reported_at": "2026-03-30T12:02:00Z",
-        "reported_status": "succeeded",
+        "reported_status": reported_status,
         "payload_ref": {
             "kind": "result-json",
             "path": f"/workspace/robin/tasks/{task_id}/jobs/{job_id.split('.J', 1)[1]}/result.json",
+            "role": "robin",
+        },
+    }
+
+
+def make_failure_report_call(
+    *,
+    task_id: str = "T000001",
+    job_id: str = "T000001.J001",
+    reported_status: str = "blocked",
+) -> dict[str, object]:
+    return {
+        "schema_version": "v0.1",
+        "call_type": "failure.report",
+        "task_id": task_id,
+        "job_id": job_id,
+        "from_role": "robin",
+        "to_role": "alfred",
+        "reported_at": "2026-03-30T12:03:00Z",
+        "reported_status": reported_status,
+        "payload_ref": {
+            "kind": "failure-json",
+            "path": f"/workspace/robin/tasks/{task_id}/jobs/{job_id.split('.J', 1)[1]}/failure.json",
             "role": "robin",
         },
     }
@@ -807,6 +831,238 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("I002", next_target["item"]["item_id"])
         self.assertTrue(next_target["item"]["dependencies_resolved"])
         self.assertEqual("job-state-event", resume_anchor["anchor_kind"])
+
+    def test_job_start_mutates_ready_plan_item_to_in_progress(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                job_id="T000001.J001",
+                plan_version=1,
+                current_active_item=None,
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Start local work",
+                        "description": "Kick off the next executable item.",
+                        "status": "todo",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(make_job_start_call())
+
+        active_plan = storage.read_active_plan_summary("T000001")
+        active_item = storage.resolve_active_plan_item("T000001")
+        next_executable = storage.resolve_next_executable_plan_item("T000001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("I002", active_plan["current_active_item"])
+        self.assertEqual("I002", active_item["item_id"])
+        self.assertEqual("in_progress", active_item["status"])
+        self.assertIsNone(next_executable)
+        self.assertEqual("I002", task_summary["current_active_plan_item"]["item_id"])
+        self.assertTrue(task_summary["is_running"])
+
+    def test_child_job_request_marks_active_plan_item_needs_child_job(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run Robin child leg",
+                        "description": "Delegate the browser step to Robin.",
+                        "status": "todo",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_job_start_call())
+        processor.process_call(make_child_job_request_call())
+
+        active_item = storage.resolve_active_plan_item("T000001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("needs_child_job", active_item["status"])
+        self.assertTrue(active_item["is_active"])
+        self.assertEqual("I002", task_summary["resume_anchor"]["current_active_item"])
+        self.assertTrue(task_summary["is_waiting_on_child"])
+
+    def test_result_submit_marks_active_item_done_unverified_and_selects_next_ready_item(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run Robin child leg",
+                        "description": "Delegate the browser step to Robin.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume local follow-up",
+                        "description": "Continue with independent local follow-up.",
+                        "status": "todo",
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+
+        completed_item = storage.read_plan_item_summary("T000001", 1, "I002")
+        active_item = storage.resolve_active_plan_item("T000001")
+        next_executable = storage.resolve_next_executable_plan_item("T000001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("done_unverified", completed_item["status"])
+        self.assertTrue(completed_item["is_completed"])
+        self.assertEqual("I003", active_item["item_id"])
+        self.assertEqual("todo", active_item["status"])
+        self.assertEqual("I003", next_executable["item_id"])
+        self.assertEqual("I003", task_summary["next_plan_resume_target"]["item"]["item_id"])
+
+    def test_failure_report_marks_active_item_blocked_and_plan_blocked(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run Robin child leg",
+                        "description": "Delegate the browser step to Robin.",
+                        "status": "todo",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_job_start_call())
+        processor.process_call(make_failure_report_call(reported_status="blocked"))
+
+        active_plan = storage.read_active_plan_summary("T000001")
+        active_item = storage.resolve_active_plan_item("T000001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("blocked", active_plan["plan_status"])
+        self.assertEqual("I002", active_plan["current_active_item"])
+        self.assertEqual("blocked", active_item["status"])
+        self.assertTrue(active_item["is_blocked"])
+        self.assertEqual("I002", task_summary["current_active_plan_item"]["item_id"])
+        self.assertEqual("I002", task_summary["next_plan_resume_target"]["item"]["item_id"])
+
+    def test_partial_result_submit_keeps_current_item_active_in_progress(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_plan_record_call(plan_version=1, current_active_item="I002"))
+        processor.process_call(make_child_job_request_call())
+        processor.process_call(make_result_submit_call(reported_status="partial"))
+
+        active_item = storage.resolve_active_plan_item("T000001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("in_progress", active_item["status"])
+        self.assertEqual("I002", task_summary["current_active_plan_item"]["item_id"])
+        self.assertTrue(task_summary["is_resuming"])
+
+    def test_incoherent_plan_transition_is_rejected_before_durable_side_effects(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        with self.assertRaises(GarageAlfredProcessingError) as ctx:
+            processor.process_call(
+                make_plan_record_call(
+                    plan_version=1,
+                    current_active_item="I003",
+                    items=[
+                        {
+                            "item_id": "I001",
+                            "title": "Prepare runtime",
+                            "description": "Set up the execution slice.",
+                            "status": "verified",
+                        },
+                        {
+                            "item_id": "I002",
+                            "title": "Run Robin child leg",
+                            "description": "Delegate the browser step to Robin.",
+                            "status": "in_progress",
+                            "depends_on": ["I001"],
+                        },
+                        {
+                            "item_id": "I003",
+                            "title": "Resume local follow-up",
+                            "description": "Continue with local follow-up.",
+                            "status": "todo",
+                        },
+                    ],
+                )
+            )
+
+        self.assertIn("conflicts with reconstructed active item", str(ctx.exception))
+        self.assertIsNone(storage.read_tracked_plan("T000001", 1))
+        self.assertEqual(["task.created"], [event["event_type"] for event in storage.read_event_history("T000001")])
+        storage.close()
 
 
 if __name__ == "__main__":

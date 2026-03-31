@@ -294,6 +294,10 @@ class GarageStorageAdapter:
         if plan is None:
             return None
         items = [self._plan_item_summary(plan, item) for item in plan.get("items", [])]
+        next_executable_item = next(
+            (item for item in items if item["is_executable"]),
+            None,
+        )
         return {
             "task_id": task_id,
             "plan_version": plan_version,
@@ -302,6 +306,7 @@ class GarageStorageAdapter:
             "plan": plan,
             "items": items,
             "current_active_item_summary": self.resolve_active_plan_item(task_id),
+            "next_executable_item_summary": next_executable_item,
         }
 
     def read_plan_item_summary(
@@ -413,12 +418,15 @@ class GarageStorageAdapter:
             else None
         )
         if isinstance(current_job, dict) and isinstance(current_job.get("latest_state_event"), dict):
+            active_plan_item = self.resolve_active_plan_item(task_id)
             return {
                 "anchor_kind": "job-state-event",
                 "task_id": task_id,
                 "job_id": current_job["job_record"]["job_id"],
                 "plan_version": task_record.get("current_plan_version"),
-                "current_active_item": None,
+                "current_active_item": (
+                    active_plan_item.get("item_id") if isinstance(active_plan_item, dict) else None
+                ),
                 "record": current_job["latest_state_event"],
             }
         return None
@@ -436,15 +444,23 @@ class GarageStorageAdapter:
                 "item": current_item,
                 "resume_anchor": resume_anchor,
             }
-        items = active_plan_summary.get("items", [])
-        for item in items:
-            if item["is_pending"] and item["dependencies_resolved"]:
-                return {
-                    "task_id": task_id,
-                    "plan_version": active_plan_summary["plan_version"],
-                    "item": item,
-                    "resume_anchor": resume_anchor,
-                }
+        next_item = self.resolve_next_executable_plan_item(task_id)
+        if isinstance(next_item, dict):
+            return {
+                "task_id": task_id,
+                "plan_version": active_plan_summary["plan_version"],
+                "item": next_item,
+                "resume_anchor": resume_anchor,
+            }
+        return None
+
+    def resolve_next_executable_plan_item(self, task_id: str) -> dict[str, Any] | None:
+        active_plan_summary = self.read_active_plan_summary(task_id)
+        if active_plan_summary is None:
+            return None
+        for item in active_plan_summary.get("items", []):
+            if item["is_executable"]:
+                return item
         return None
 
     @staticmethod
@@ -482,6 +498,10 @@ class GarageStorageAdapter:
         item: dict[str, Any],
     ) -> dict[str, Any]:
         status = str(item["status"])
+        dependencies_resolved = GarageStorageAdapter._dependencies_resolved(
+            plan.get("items", []),
+            item,
+        )
         return {
             "item": item,
             "item_id": item["item_id"],
@@ -492,10 +512,9 @@ class GarageStorageAdapter:
             "is_active": status in {"in_progress", "needs_child_job"},
             "is_completed": status in {"done_unverified", "verified"},
             "is_blocked": status == "blocked",
-            "dependencies_resolved": GarageStorageAdapter._dependencies_resolved(
-                plan.get("items", []),
-                item,
-            ),
+            "dependencies_resolved": dependencies_resolved,
+            "is_executable": status == "todo" and dependencies_resolved,
+            "is_current_target": plan.get("current_active_item") == item.get("item_id"),
         }
 
     @staticmethod
