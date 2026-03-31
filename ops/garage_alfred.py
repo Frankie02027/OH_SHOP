@@ -613,6 +613,69 @@ class GarageAlfredProcessor:
             fresh_preflight=fresh_preflight,
         )
 
+    def attempt_best_next_call_with_guarded_rebase(
+        self,
+        task_id: str,
+        *,
+        supplied_fields: dict[str, Any] | None = None,
+        expected: dict[str, Any] | None = None,
+        allowed_rebased: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        guarded_attempt = self.attempt_best_next_call_with_guards(
+            task_id,
+            supplied_fields=supplied_fields,
+            expected=expected,
+        )
+        if bool(guarded_attempt.get("guard_match")):
+            result = dict(guarded_attempt)
+            result["rebase_considered"] = False
+            result["rebase_allowed"] = None
+            result["rebase_failure_kind"] = None
+            result["rebase_failure_reason"] = None
+            return result
+
+        rebase_result = self._evaluate_rebased_attempt_approval(
+            allowed_rebased=allowed_rebased,
+            guarded_attempt=guarded_attempt,
+        )
+        if not bool(rebase_result.get("rebase_allowed")):
+            result = dict(guarded_attempt)
+            result["rebase_considered"] = True
+            result["rebase_allowed"] = False
+            result["rebase_failure_kind"] = rebase_result.get("rebase_failure_kind")
+            result["rebase_failure_reason"] = rebase_result.get("rebase_failure_reason")
+            return result
+
+        rebased_attempt = self.attempt_best_next_call(
+            task_id,
+            supplied_fields=supplied_fields,
+        )
+        result = dict(rebased_attempt)
+        result["attempt_kind"] = self._classify_rebased_attempt_kind(
+            str(rebased_attempt.get("attempt_kind") or "attempt_refused_unavailable")
+        )
+        result["guard_match"] = False
+        result["guard_failure_kind"] = guarded_attempt.get("guard_failure_kind")
+        result["guard_failure_reason"] = guarded_attempt.get("guard_failure_reason")
+        result["expected"] = dict(guarded_attempt.get("expected") or {})
+        result["actual"] = dict(guarded_attempt.get("actual") or {})
+        result["rebase_considered"] = True
+        result["rebase_allowed"] = True
+        result["rebase_failure_kind"] = None
+        result["rebase_failure_reason"] = None
+        result["rebased_best_next_move"] = guarded_attempt.get("rebased_best_next_move")
+        result["rebased_follow_up_behavior"] = guarded_attempt.get(
+            "rebased_follow_up_behavior"
+        )
+        result["rebased_next_call_hint"] = guarded_attempt.get("rebased_next_call_hint")
+        result["rebased_next_call_draft"] = guarded_attempt.get("rebased_next_call_draft")
+        result["rebased_next_call_preflight"] = guarded_attempt.get(
+            "rebased_next_call_preflight"
+        )
+        result["rebased_candidate_kind"] = guarded_attempt.get("rebased_candidate_kind")
+        result["rebased_candidate_reason"] = guarded_attempt.get("rebased_candidate_reason")
+        return result
+
     def _attach_submit_receipt(
         self,
         *,
@@ -1007,6 +1070,138 @@ class GarageAlfredProcessor:
         if bool(actual.get("context_only")):
             return "context_capture_replacement_candidate"
         return "productive_replacement_candidate"
+
+    @staticmethod
+    def _evaluate_rebased_attempt_approval(
+        *,
+        allowed_rebased: dict[str, Any] | None,
+        guarded_attempt: dict[str, Any],
+    ) -> dict[str, Any]:
+        candidate_kind = guarded_attempt.get("rebased_candidate_kind")
+        candidate_call_type = None
+        candidate_hint = guarded_attempt.get("rebased_next_call_hint")
+        if isinstance(candidate_hint, dict):
+            candidate_call_type = candidate_hint.get("recommended_call_type")
+        candidate_follow_up = guarded_attempt.get("rebased_follow_up_behavior")
+        candidate_follow_up_kind = (
+            candidate_follow_up.get("follow_up_behavior_kind")
+            if isinstance(candidate_follow_up, dict)
+            else None
+        )
+        candidate_preflight = guarded_attempt.get("rebased_next_call_preflight")
+        candidate_submission_mode = None
+        if isinstance(candidate_preflight, dict):
+            if bool(candidate_preflight.get("context_only")):
+                candidate_submission_mode = "context_capture"
+            elif not bool(candidate_preflight.get("unavailable_in_slice")):
+                candidate_submission_mode = "productive_in_slice"
+
+        if candidate_kind == "unavailable_replacement_candidate":
+            return {
+                "rebase_allowed": False,
+                "rebase_failure_kind": "rebased_candidate_unavailable",
+                "rebase_failure_reason": "fresh rebased candidate is unavailable in the current slice",
+            }
+
+        if allowed_rebased is None:
+            return {
+                "rebase_allowed": False,
+                "rebase_failure_kind": "rebased_candidate_not_approved",
+                "rebase_failure_reason": "caller did not approve rebased attempts",
+            }
+        if not isinstance(allowed_rebased, dict):
+            return {
+                "rebase_allowed": False,
+                "rebase_failure_kind": "invalid_rebase_approval_shape",
+                "rebase_failure_reason": "allowed_rebased must be a dict when provided",
+            }
+
+        allowed_copy = dict(allowed_rebased)
+        allowed_keys = {
+            "allow_rebased_productive_candidate",
+            "allow_rebased_context_capture_candidate",
+            "allow_rebased_missing_input_candidate",
+            "expected_rebased_call_type",
+            "expected_rebased_submission_mode",
+            "expected_rebased_follow_up_behavior_kind",
+        }
+        unsupported_keys = tuple(
+            key for key in allowed_copy.keys() if key not in allowed_keys
+        )
+        if unsupported_keys:
+            return {
+                "rebase_allowed": False,
+                "rebase_failure_kind": "unsupported_rebase_approval_key",
+                "rebase_failure_reason": (
+                    "unsupported rebase approval keys: "
+                    + ", ".join(sorted(unsupported_keys))
+                ),
+            }
+
+        allow_flag_by_kind = {
+            "productive_replacement_candidate": bool(
+                allowed_copy.get("allow_rebased_productive_candidate")
+            ),
+            "context_capture_replacement_candidate": bool(
+                allowed_copy.get("allow_rebased_context_capture_candidate")
+            ),
+            "missing_input_replacement_candidate": bool(
+                allowed_copy.get("allow_rebased_missing_input_candidate")
+            ),
+        }
+        if not allow_flag_by_kind.get(str(candidate_kind), False):
+            return {
+                "rebase_allowed": False,
+                "rebase_failure_kind": "rebased_candidate_not_approved",
+                "rebase_failure_reason": (
+                    f"caller did not approve rebased candidate kind {candidate_kind!r}"
+                ),
+            }
+
+        expected_call_type = allowed_copy.get("expected_rebased_call_type")
+        if expected_call_type is not None and expected_call_type != candidate_call_type:
+            return {
+                "rebase_allowed": False,
+                "rebase_failure_kind": "rebased_call_type_mismatch",
+                "rebase_failure_reason": (
+                    f"rebased call type changed from expected {expected_call_type!r} "
+                    f"to actual {candidate_call_type!r}"
+                ),
+            }
+        expected_submission_mode = allowed_copy.get("expected_rebased_submission_mode")
+        if (
+            expected_submission_mode is not None
+            and expected_submission_mode != candidate_submission_mode
+        ):
+            return {
+                "rebase_allowed": False,
+                "rebase_failure_kind": "rebased_submission_mode_mismatch",
+                "rebase_failure_reason": (
+                    f"rebased submission mode changed from expected {expected_submission_mode!r} "
+                    f"to actual {candidate_submission_mode!r}"
+                ),
+            }
+        expected_follow_up = allowed_copy.get("expected_rebased_follow_up_behavior_kind")
+        if expected_follow_up is not None and expected_follow_up != candidate_follow_up_kind:
+            return {
+                "rebase_allowed": False,
+                "rebase_failure_kind": "rebased_follow_up_behavior_kind_mismatch",
+                "rebase_failure_reason": (
+                    f"rebased follow-up behavior changed from expected {expected_follow_up!r} "
+                    f"to actual {candidate_follow_up_kind!r}"
+                ),
+            }
+        return {
+            "rebase_allowed": True,
+            "rebase_failure_kind": None,
+            "rebase_failure_reason": None,
+        }
+
+    @staticmethod
+    def _classify_rebased_attempt_kind(attempt_kind: str) -> str:
+        if attempt_kind.startswith("attempted_") or attempt_kind.startswith("attempt_refused_"):
+            return f"rebased_{attempt_kind}"
+        return f"rebased_{attempt_kind}"
 
     def _build_submit_receipt(
         self,
