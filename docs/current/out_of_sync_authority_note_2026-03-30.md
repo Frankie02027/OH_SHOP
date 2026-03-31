@@ -55,7 +55,7 @@ For current authority, prefer this order:
 2. `docs/architecture/ai_garage_library_and_policy_contract_v_0_1.md`
 3. `docs/architecture/ALFRED_MASTER_CONTRACT_v_0_2.md`
 4. `docs/architecture/JARVIS_MASTER_CONTRACT_v_0_2.md`
-5. `docs/architecture/ROBIN_MASTER_CONTRACT_v_0_2.md`
+5. `docs/architecture/ROBIN_MASTER_CONTRACT_v_0_3.md`
 6. `docs/architecture/LIBRARY_SCHEMA_CONTRACT_v_0_1.md`
 7. `docs/current/post_action_observation_path_investigation.md`
 8. `docs/current/contract_stage_review_and_next_move.md`

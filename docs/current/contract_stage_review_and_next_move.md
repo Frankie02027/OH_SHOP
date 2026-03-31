@@ -16,7 +16,7 @@ Reviewed in `docs/architecture`:
 - `garage_universal_language_dictionary_v0_1.md`
 - `ALFRED_MASTER_CONTRACT_v_0_2.md`
 - `JARVIS_MASTER_CONTRACT_v_0_2.md`
-- `ROBIN_MASTER_CONTRACT_v_0_2.md`
+- `ROBIN_MASTER_CONTRACT_v_0_3.md`
 - `LIBRARY_SCHEMA_CONTRACT_v_0_1.md`
 
 Compared against current repo/runtime evidence:

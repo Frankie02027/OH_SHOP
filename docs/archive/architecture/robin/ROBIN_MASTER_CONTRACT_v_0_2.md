@@ -1,3 +1,7 @@
+> Archived and superseded by [ROBIN_MASTER_CONTRACT_v_0_3.md](/home/dev/OH_SHOP/docs/architecture/ROBIN_MASTER_CONTRACT_v_0_3.md).
+>
+> This file is retained as historical Robin authority only.
+
 # ROBIN Master Contract v0.2
 ## Expanded Working Draft
 
