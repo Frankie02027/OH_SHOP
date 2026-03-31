@@ -4635,6 +4635,15 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(attempt["attempt_allowed"])
         self.assertEqual("job.start", attempt["actual"]["best_next_call_type"])
         self.assertIsNone(attempt["submit_receipt"])
+        self.assertEqual(
+            "productive_replacement_candidate",
+            attempt["rebased_candidate_kind"],
+        )
+        self.assertEqual("job.start", attempt["rebased_best_next_move"]["call_type"])
+        self.assertEqual(
+            "ready_to_submit",
+            attempt["rebased_next_call_preflight"]["preflight_kind"],
+        )
 
     def test_guarded_attempt_refuses_when_dominant_target_changed(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -4692,6 +4701,18 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(attempt["attempt_allowed"])
         self.assertEqual("active-item", attempt["actual"]["dominant_target_kind"])
         self.assertIsNone(attempt["submit_receipt"])
+        self.assertEqual(
+            "unavailable_replacement_candidate",
+            attempt["rebased_candidate_kind"],
+        )
+        self.assertEqual(
+            "continue-active-execution",
+            attempt["rebased_best_next_move"]["move_kind"],
+        )
+        self.assertEqual(
+            "unavailable_in_slice",
+            attempt["rebased_next_call_preflight"]["preflight_kind"],
+        )
 
     def test_guarded_attempt_refuses_when_productive_expected_but_context_capture_is_current(
         self,
@@ -4759,6 +4780,22 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("context_capture", attempt["actual"]["submission_mode"])
         self.assertTrue(attempt["actual"]["context_only"])
         self.assertIsNone(attempt["submit_receipt"])
+        self.assertEqual(
+            "context_capture_replacement_candidate",
+            attempt["rebased_candidate_kind"],
+        )
+        self.assertEqual(
+            "capture-review-context-next",
+            attempt["rebased_follow_up_behavior"]["follow_up_behavior_kind"],
+        )
+        self.assertEqual(
+            "continuation.record",
+            attempt["rebased_next_call_hint"]["recommended_call_type"],
+        )
+        self.assertEqual(
+            "context_only_not_submittable",
+            attempt["rebased_next_call_preflight"]["preflight_kind"],
+        )
 
     def test_guarded_context_capture_attempt_succeeds_when_expectations_match(
         self,
@@ -4947,6 +4984,75 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(attempt["unavailable_in_slice"])
         self.assertIsNotNone(receipt)
         self.assertEqual("submission_refused_unavailable", receipt["submit_effect_kind"])
+
+    def test_guarded_attempt_context_mismatch_rebases_without_auto_attempting_replacement(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+        before_summary = storage.latest_task_state_summary("T000001")
+
+        attempt = processor.attempt_best_next_call_with_guards(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review.md",
+                    "role": "jarvis",
+                }
+            },
+            expected={"expected_submission_mode": "productive_in_slice"},
+        )
+        after_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertFalse(attempt["guard_match"])
+        self.assertIsNone(attempt["submit_receipt"])
+        self.assertEqual(
+            before_summary["event_count"],
+            after_summary["event_count"],
+        )
+        self.assertEqual(
+            before_summary["latest_event"]["event_id"],
+            after_summary["latest_event"]["event_id"],
+        )
 
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(

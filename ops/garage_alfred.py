@@ -862,6 +862,10 @@ class GarageAlfredProcessor:
         attempt_receipt: dict[str, Any] | None,
         fresh_preflight: dict[str, Any] | None,
     ) -> dict[str, Any]:
+        rebased_candidate = self._build_rebased_candidate_package(
+            actual=actual,
+            fresh_preflight=fresh_preflight,
+        )
         if isinstance(attempt_receipt, dict):
             guarded = dict(attempt_receipt)
             guarded["guard_match"] = bool(guard_result.get("guard_match"))
@@ -869,6 +873,13 @@ class GarageAlfredProcessor:
             guarded["guard_failure_reason"] = guard_result.get("guard_failure_reason")
             guarded["expected"] = dict(guard_result.get("expected") or {})
             guarded["actual"] = dict(actual)
+            guarded["rebased_best_next_move"] = None
+            guarded["rebased_follow_up_behavior"] = None
+            guarded["rebased_next_call_hint"] = None
+            guarded["rebased_next_call_draft"] = None
+            guarded["rebased_next_call_preflight"] = None
+            guarded["rebased_candidate_kind"] = None
+            guarded["rebased_candidate_reason"] = None
             return guarded
         prepared_call = (
             fresh_preflight.get("prepared_call")
@@ -898,7 +909,104 @@ class GarageAlfredProcessor:
             "productive_in_slice": bool(actual.get("productive_in_slice")),
             "context_capture_only": bool(actual.get("context_only")),
             "unavailable_in_slice": bool(actual.get("unavailable_in_slice")),
+            "rebased_best_next_move": rebased_candidate.get("rebased_best_next_move"),
+            "rebased_follow_up_behavior": rebased_candidate.get("rebased_follow_up_behavior"),
+            "rebased_next_call_hint": rebased_candidate.get("rebased_next_call_hint"),
+            "rebased_next_call_draft": rebased_candidate.get("rebased_next_call_draft"),
+            "rebased_next_call_preflight": rebased_candidate.get("rebased_next_call_preflight"),
+            "rebased_candidate_kind": rebased_candidate.get("rebased_candidate_kind"),
+            "rebased_candidate_reason": rebased_candidate.get("rebased_candidate_reason"),
         }
+
+    def _build_rebased_candidate_package(
+        self,
+        *,
+        actual: dict[str, Any],
+        fresh_preflight: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        best_next_move = actual.get("best_next_move")
+        follow_up_behavior_kind = actual.get("follow_up_behavior_kind")
+        next_call_hint = {
+            "recommended_call_type": actual.get("best_next_call_type"),
+            "hint_kind": (
+                "unavailable-in-slice"
+                if bool(actual.get("unavailable_in_slice"))
+                else (
+                    "context-only"
+                    if bool(actual.get("context_only"))
+                    else (
+                        "caller-input-still-required"
+                        if tuple(actual.get("missing_required_fields") or ())
+                        else "executable-now"
+                    )
+                )
+            ),
+            "requires_additional_user_or_agent_input": bool(
+                actual.get("requires_additional_user_or_agent_input")
+            ),
+            "context_only": bool(actual.get("context_only")),
+            "unavailable_in_slice": bool(actual.get("unavailable_in_slice")),
+            "dominant_target_kind": actual.get("dominant_target_kind"),
+        }
+        next_call_draft = {
+            "call_type": actual.get("best_next_call_type"),
+            "known_fields": {},
+            "missing_required_fields": tuple(actual.get("missing_required_fields") or ()),
+            "context_only": bool(actual.get("context_only")),
+            "unavailable_in_slice": bool(actual.get("unavailable_in_slice")),
+            "partially_ready": bool(actual.get("requires_additional_user_or_agent_input")),
+            "executable_now": (
+                not bool(actual.get("context_only"))
+                and not bool(actual.get("unavailable_in_slice"))
+                and not tuple(actual.get("missing_required_fields") or ())
+            ),
+        }
+        if isinstance(actual.get("prepared_call"), dict):
+            next_call_draft["known_fields"] = dict(actual["prepared_call"])
+        return {
+            "rebased_best_next_move": dict(best_next_move) if isinstance(best_next_move, dict) else None,
+            "rebased_follow_up_behavior": (
+                {
+                    "follow_up_behavior_kind": follow_up_behavior_kind,
+                    "productive_in_slice": bool(actual.get("productive_in_slice")),
+                    "context_capture_only": bool(actual.get("context_only")),
+                }
+                if isinstance(follow_up_behavior_kind, str)
+                else None
+            ),
+            "rebased_next_call_hint": next_call_hint,
+            "rebased_next_call_draft": next_call_draft,
+            "rebased_next_call_preflight": (
+                dict(fresh_preflight) if isinstance(fresh_preflight, dict) else None
+            ),
+            "rebased_candidate_kind": self._classify_rebased_candidate_kind(
+                actual=actual,
+                fresh_preflight=fresh_preflight,
+            ),
+            "rebased_candidate_reason": (
+                str(fresh_preflight.get("reason"))
+                if isinstance(fresh_preflight, dict) and isinstance(fresh_preflight.get("reason"), str)
+                else (
+                    best_next_move.get("reason")
+                    if isinstance(best_next_move, dict) and isinstance(best_next_move.get("reason"), str)
+                    else "fresh current best-next was rebased after guard mismatch"
+                )
+            ),
+        }
+
+    @staticmethod
+    def _classify_rebased_candidate_kind(
+        *,
+        actual: dict[str, Any],
+        fresh_preflight: dict[str, Any] | None,
+    ) -> str:
+        if bool(actual.get("unavailable_in_slice")):
+            return "unavailable_replacement_candidate"
+        if tuple(actual.get("missing_required_fields") or ()):
+            return "missing_input_replacement_candidate"
+        if bool(actual.get("context_only")):
+            return "context_capture_replacement_candidate"
+        return "productive_replacement_candidate"
 
     def _build_submit_receipt(
         self,
