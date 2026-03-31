@@ -277,8 +277,43 @@ class GarageStorageAdapter:
                 if isinstance(relevant_plan_item, dict)
                 else False
             ),
+            "relevant_rule_mechanical": (
+                relevant_plan_item.get("rule_mechanical")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_rule_finality_kind": (
+                relevant_plan_item.get("rule_finality_kind")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
             "relevant_proof_satisfied": (
                 relevant_plan_item.get("proof_satisfied")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_unmet_requirement_kind": (
+                relevant_plan_item.get("unmet_requirement_kind")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "relevant_unmet_requirement_detail": (
+                relevant_plan_item.get("unmet_requirement_detail")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "relevant_review_required": (
+                relevant_plan_item.get("review_required")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_can_be_satisfied_by_supported_evidence_calls": (
+                relevant_plan_item.get("can_be_satisfied_by_supported_evidence_calls")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_can_only_remain_review_needed": (
+                relevant_plan_item.get("can_only_remain_review_needed")
                 if isinstance(relevant_plan_item, dict)
                 else False
             ),
@@ -498,10 +533,40 @@ class GarageStorageAdapter:
                 if isinstance(relevant_plan_item, dict)
                 else False
             ),
+            "relevant_plan_item_rule_mechanical": (
+                relevant_plan_item.get("rule_mechanical")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_plan_item_rule_finality_kind": (
+                relevant_plan_item.get("rule_finality_kind")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
             "relevant_plan_item_proof_policy_kind": (
                 relevant_plan_item.get("proof_policy_kind")
                 if isinstance(relevant_plan_item, dict)
                 else None
+            ),
+            "relevant_plan_item_unmet_requirement_kind": (
+                relevant_plan_item.get("unmet_requirement_kind")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "relevant_plan_item_unmet_requirement_detail": (
+                relevant_plan_item.get("unmet_requirement_detail")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "relevant_plan_item_review_required": (
+                relevant_plan_item.get("review_required")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_plan_item_can_be_satisfied_by_supported_evidence_calls": (
+                relevant_plan_item.get("can_be_satisfied_by_supported_evidence_calls")
+                if isinstance(relevant_plan_item, dict)
+                else False
             ),
             "relevant_plan_item_waiting_on_proof": (
                 relevant_plan_item.get("is_waiting_on_proof")
@@ -1161,6 +1226,17 @@ class GarageStorageAdapter:
             "proof_satisfied": relevant_item.get("proof_satisfied"),
             "proof_gate_reason": relevant_item.get("proof_gate_reason"),
             "proof_policy_kind": relevant_item.get("proof_policy_kind"),
+            "rule_mechanical": relevant_item.get("rule_mechanical"),
+            "rule_finality_kind": relevant_item.get("rule_finality_kind"),
+            "unmet_requirement_kind": relevant_item.get("unmet_requirement_kind"),
+            "unmet_requirement_detail": relevant_item.get("unmet_requirement_detail"),
+            "review_required": relevant_item.get("review_required"),
+            "can_be_satisfied_by_supported_evidence_calls": (
+                relevant_item.get("can_be_satisfied_by_supported_evidence_calls")
+            ),
+            "can_only_remain_review_needed": (
+                relevant_item.get("can_only_remain_review_needed")
+            ),
             "is_verification_pending": relevant_item.get("is_verification_pending"),
             "is_waiting_on_proof": relevant_item.get("is_waiting_on_proof"),
             "is_waiting_on_review": relevant_item.get("is_waiting_on_review"),
@@ -1795,6 +1871,12 @@ class GarageStorageAdapter:
                 "verification_rule_type": relevant_item.get("verification_rule_type"),
                 "proof_gate_reason": relevant_item.get("proof_gate_reason"),
                 "proof_policy_kind": relevant_item.get("proof_policy_kind"),
+                "rule_finality_kind": relevant_item.get("rule_finality_kind"),
+                "unmet_requirement_kind": relevant_item.get("unmet_requirement_kind"),
+                "unmet_requirement_detail": relevant_item.get("unmet_requirement_detail"),
+                "can_be_satisfied_by_supported_evidence_calls": (
+                    relevant_item.get("can_be_satisfied_by_supported_evidence_calls")
+                ),
             }
         if isinstance(relevant_item, dict) and relevant_item.get("is_blocked"):
             return {
@@ -1811,8 +1893,17 @@ class GarageStorageAdapter:
             return {
                 "rule_type": None,
                 "supported": False,
+                "mechanical": False,
                 "satisfied": False,
                 "reason": "no_verification_rule",
+                "finality_kind": "ill-defined",
+                "unmet_requirement_kind": "no_verification_rule",
+                "unmet_requirement_detail": {
+                    "expected_field": "verification_rule",
+                },
+                "review_required": False,
+                "can_be_satisfied_by_supported_evidence_calls": False,
+                "can_only_remain_review_needed": True,
             }
 
         rule_type = verification_rule.get("type")
@@ -1820,80 +1911,215 @@ class GarageStorageAdapter:
             return {
                 "rule_type": None,
                 "supported": False,
+                "mechanical": False,
                 "satisfied": False,
                 "reason": "no_verification_rule_type",
+                "finality_kind": "ill-defined",
+                "unmet_requirement_kind": "no_verification_rule_type",
+                "unmet_requirement_detail": {
+                    "expected_field": "verification_rule.type",
+                },
+                "review_required": False,
+                "can_be_satisfied_by_supported_evidence_calls": False,
+                "can_only_remain_review_needed": True,
             }
 
         evidence_refs = [ref for ref in item.get("evidence_refs", []) if isinstance(ref, dict)]
         artifact_refs = [ref for ref in evidence_refs if "artifact_id" in ref]
+        evidence_kinds = tuple(
+            str(ref.get("kind"))
+            for ref in evidence_refs
+            if isinstance(ref.get("kind"), str)
+        )
+        artifact_kinds = tuple(
+            str(ref.get("kind"))
+            for ref in artifact_refs
+            if isinstance(ref.get("kind"), str)
+        )
         params = verification_rule.get("params") if isinstance(verification_rule.get("params"), dict) else {}
 
         if rule_type not in MECHANICAL_PROOF_RULE_TYPES:
             reason = "unsupported_verification_rule"
+            finality_kind = "unsupported-in-slice"
+            review_required = False
             if rule_type == "manual_review_required":
                 reason = "manual_review_required"
+                finality_kind = "review-required"
+                review_required = True
             elif rule_type == "downstream_item_confirms":
                 reason = "downstream_item_confirms"
+                finality_kind = "review-required"
+                review_required = True
             elif rule_type == "test_pass":
                 reason = "test_pass_not_mechanically_supported"
+                finality_kind = "unsupported-in-slice"
             return {
                 "rule_type": rule_type,
                 "supported": False,
+                "mechanical": False,
                 "satisfied": False,
                 "reason": reason,
+                "finality_kind": finality_kind,
+                "unmet_requirement_kind": reason,
+                "unmet_requirement_detail": {
+                    "rule_type": rule_type,
+                },
+                "review_required": review_required,
+                "can_be_satisfied_by_supported_evidence_calls": False,
+                "can_only_remain_review_needed": True,
             }
 
         if rule_type == "no_extra_requirement":
             return {
                 "rule_type": rule_type,
                 "supported": True,
+                "mechanical": True,
                 "satisfied": True,
                 "reason": None,
+                "finality_kind": "satisfied",
+                "unmet_requirement_kind": None,
+                "unmet_requirement_detail": None,
+                "review_required": False,
+                "can_be_satisfied_by_supported_evidence_calls": False,
+                "can_only_remain_review_needed": False,
             }
         if rule_type == "artifact_exists":
             satisfied = bool(artifact_refs)
             return {
                 "rule_type": rule_type,
                 "supported": True,
+                "mechanical": True,
                 "satisfied": satisfied,
                 "reason": None if satisfied else "missing_artifact_ref",
+                "finality_kind": "satisfied" if satisfied else "mechanically-satisfiable-later",
+                "unmet_requirement_kind": None if satisfied else "missing_artifact_ref",
+                "unmet_requirement_detail": None
+                if satisfied
+                else {
+                    "required_artifact_count": 1,
+                    "current_artifact_count": len(artifact_refs),
+                    "observed_artifact_kinds": artifact_kinds,
+                },
+                "review_required": False,
+                "can_be_satisfied_by_supported_evidence_calls": not satisfied,
+                "can_only_remain_review_needed": False,
             }
         if rule_type == "artifact_matches_kind":
             required_kind = params.get("kind")
+            if not isinstance(required_kind, str) or not required_kind:
+                return {
+                    "rule_type": rule_type,
+                    "supported": False,
+                    "mechanical": False,
+                    "satisfied": False,
+                    "reason": "missing_required_kind_param",
+                    "finality_kind": "ill-defined",
+                    "unmet_requirement_kind": "missing_required_kind_param",
+                    "unmet_requirement_detail": {
+                        "required_param": "params.kind",
+                    },
+                    "review_required": False,
+                    "can_be_satisfied_by_supported_evidence_calls": False,
+                    "can_only_remain_review_needed": True,
+                }
             satisfied = any(ref.get("kind") == required_kind for ref in artifact_refs)
             return {
                 "rule_type": rule_type,
                 "supported": True,
+                "mechanical": True,
                 "satisfied": satisfied,
                 "reason": None if satisfied else "missing_required_artifact_kind",
+                "finality_kind": "satisfied" if satisfied else "mechanically-satisfiable-later",
+                "unmet_requirement_kind": None if satisfied else "missing_required_artifact_kind",
+                "unmet_requirement_detail": None
+                if satisfied
+                else {
+                    "required_kind": required_kind,
+                    "observed_artifact_kinds": artifact_kinds,
+                    "current_artifact_count": len(artifact_refs),
+                },
+                "review_required": False,
+                "can_be_satisfied_by_supported_evidence_calls": not satisfied,
+                "can_only_remain_review_needed": False,
             }
         if rule_type == "result_present":
-            satisfied = any(ref.get("kind") in {"result-json", "summary"} for ref in evidence_refs)
+            satisfied = any(ref.get("kind") == "result-json" for ref in evidence_refs)
             return {
                 "rule_type": rule_type,
                 "supported": True,
+                "mechanical": True,
                 "satisfied": satisfied,
                 "reason": None if satisfied else "missing_result_evidence",
+                "finality_kind": "satisfied" if satisfied else "mechanically-satisfiable-later",
+                "unmet_requirement_kind": None if satisfied else "missing_result_evidence",
+                "unmet_requirement_detail": None
+                if satisfied
+                else {
+                    "required_evidence_kind": "result-json",
+                    "observed_evidence_kinds": evidence_kinds,
+                },
+                "review_required": False,
+                "can_be_satisfied_by_supported_evidence_calls": not satisfied,
+                "can_only_remain_review_needed": False,
             }
         if rule_type == "summary_present":
             satisfied = any(ref.get("kind") == "summary" for ref in evidence_refs)
             return {
                 "rule_type": rule_type,
                 "supported": True,
+                "mechanical": True,
                 "satisfied": satisfied,
                 "reason": None if satisfied else "missing_summary_evidence",
+                "finality_kind": "satisfied" if satisfied else "mechanically-satisfiable-later",
+                "unmet_requirement_kind": None if satisfied else "missing_summary_evidence",
+                "unmet_requirement_detail": None
+                if satisfied
+                else {
+                    "required_evidence_kind": "summary",
+                    "observed_evidence_kinds": evidence_kinds,
+                },
+                "review_required": False,
+                "can_be_satisfied_by_supported_evidence_calls": not satisfied,
+                "can_only_remain_review_needed": False,
             }
-        minimum_count = params.get("minimum_count", 1)
+        minimum_count = params.get("minimum_count", params.get("min_count", 2))
         try:
             minimum_count = int(minimum_count)
         except (TypeError, ValueError):
-            minimum_count = 1
+            return {
+                "rule_type": rule_type,
+                "supported": False,
+                "mechanical": False,
+                "satisfied": False,
+                "reason": "invalid_minimum_count_param",
+                "finality_kind": "ill-defined",
+                "unmet_requirement_kind": "invalid_minimum_count_param",
+                "unmet_requirement_detail": {
+                    "provided_minimum_count": params.get("minimum_count", params.get("min_count")),
+                },
+                "review_required": False,
+                "can_be_satisfied_by_supported_evidence_calls": False,
+                "can_only_remain_review_needed": True,
+            }
         satisfied = len(evidence_refs) >= max(1, minimum_count)
         return {
             "rule_type": rule_type,
             "supported": True,
+            "mechanical": True,
             "satisfied": satisfied,
             "reason": None if satisfied else "insufficient_evidence_bundle",
+            "finality_kind": "satisfied" if satisfied else "mechanically-satisfiable-later",
+            "unmet_requirement_kind": None if satisfied else "insufficient_evidence_bundle",
+            "unmet_requirement_detail": None
+            if satisfied
+            else {
+                "required_minimum_count": max(1, minimum_count),
+                "current_evidence_count": len(evidence_refs),
+                "observed_evidence_kinds": evidence_kinds,
+            },
+            "review_required": False,
+            "can_be_satisfied_by_supported_evidence_calls": not satisfied,
+            "can_only_remain_review_needed": False,
         }
 
     @staticmethod
@@ -1934,14 +2160,7 @@ class GarageStorageAdapter:
                 "advance_blocked": False,
                 "advance_blocked_reason": None,
             }
-        if proof_gate["reason"] in {
-            "manual_review_required",
-            "unsupported_verification_rule",
-            "downstream_item_confirms",
-            "test_pass_not_mechanically_supported",
-            "no_verification_rule",
-            "no_verification_rule_type",
-        }:
+        if proof_gate["can_only_remain_review_needed"]:
             return {
                 "policy_kind": "review-needed",
                 "waiting_on_proof": False,
@@ -2033,6 +2252,15 @@ class GarageStorageAdapter:
             "proof_satisfied": proof_gate["satisfied"],
             "proof_gate_supported": proof_gate["supported"],
             "proof_gate_reason": proof_gate["reason"],
+            "rule_mechanical": proof_gate["mechanical"],
+            "rule_finality_kind": proof_gate["finality_kind"],
+            "unmet_requirement_kind": proof_gate["unmet_requirement_kind"],
+            "unmet_requirement_detail": proof_gate["unmet_requirement_detail"],
+            "review_required": proof_gate["review_required"],
+            "can_be_satisfied_by_supported_evidence_calls": (
+                proof_gate["can_be_satisfied_by_supported_evidence_calls"]
+            ),
+            "can_only_remain_review_needed": proof_gate["can_only_remain_review_needed"],
             "is_verification_pending": status == "done_unverified" and not proof_gate["satisfied"],
             "proof_policy_kind": proof_policy["policy_kind"],
             "is_waiting_on_proof": proof_policy["waiting_on_proof"],

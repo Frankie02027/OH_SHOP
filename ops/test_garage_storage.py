@@ -1226,6 +1226,229 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("verified", task_summary["relevant_plan_item"]["status"])
         self.assertEqual("T000001.J001.A001", task_summary["relevant_evidence_refs"][0]["artifact_id"])
 
+    def test_artifact_matches_kind_exposes_unmet_requirement_and_later_promotes(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Capture screenshot proof",
+                        "description": "Need a screenshot artifact before the step is verified.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {
+                            "type": "artifact_matches_kind",
+                            "params": {"kind": "screenshot"},
+                        },
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Continue follow-up",
+                        "description": "Only continue once screenshot proof is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+
+        unmet_item = storage.read_plan_item_summary("T000001", 1, "I002")
+        unmet_task_summary = storage.latest_task_state_summary("T000001")
+
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[
+                    make_summary_artifact_ref(
+                        artifact_id="T000001.J001.A002",
+                        kind="screenshot",
+                    )
+                ],
+            )
+        )
+
+        promoted_item = storage.read_plan_item_summary("T000001", 1, "I002")
+        promoted_task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("done_unverified", unmet_item["status"])
+        self.assertTrue(unmet_item["proof_gate_supported"])
+        self.assertTrue(unmet_item["rule_mechanical"])
+        self.assertEqual("mechanically-satisfiable-later", unmet_item["rule_finality_kind"])
+        self.assertEqual("missing_required_artifact_kind", unmet_item["unmet_requirement_kind"])
+        self.assertEqual(
+            "screenshot",
+            unmet_item["unmet_requirement_detail"]["required_kind"],
+        )
+        self.assertEqual(
+            ("summary",),
+            unmet_item["unmet_requirement_detail"]["observed_artifact_kinds"],
+        )
+        self.assertTrue(unmet_item["can_be_satisfied_by_supported_evidence_calls"])
+        self.assertFalse(unmet_item["can_only_remain_review_needed"])
+        self.assertEqual(
+            "missing_required_artifact_kind",
+            unmet_task_summary["relevant_unmet_requirement_kind"],
+        )
+        self.assertTrue(
+            unmet_task_summary["relevant_can_be_satisfied_by_supported_evidence_calls"]
+        )
+        self.assertEqual("verified", promoted_item["status"])
+        self.assertTrue(promoted_item["proof_satisfied"])
+        self.assertEqual("next-executable", promoted_task_summary["dominant_target_kind"])
+        self.assertEqual("job.start", promoted_task_summary["best_next_call_type"])
+
+    def test_result_present_rule_does_not_treat_summary_only_followup_as_result_proof(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Attach result payload",
+                        "description": "Needs a result-json style proof object, not only a summary.",
+                        "status": "done_unverified",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "result_present"},
+                        "evidence_refs": [make_summary_artifact_ref()],
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[
+                    make_summary_artifact_ref(
+                        artifact_id="T000001.J001.A002",
+                        kind="summary",
+                    )
+                ],
+            )
+        )
+
+        proof_item = storage.read_relevant_proof_item_summary("T000001")
+        task_summary = storage.latest_task_state_summary("T000001")
+        storage.close()
+
+        self.assertEqual("done_unverified", proof_item["status"])
+        self.assertTrue(proof_item["rule_mechanical"])
+        self.assertTrue(proof_item["proof_gate_supported"])
+        self.assertFalse(proof_item["proof_satisfied"])
+        self.assertEqual("mechanically-satisfiable-later", proof_item["rule_finality_kind"])
+        self.assertEqual("missing_result_evidence", proof_item["unmet_requirement_kind"])
+        self.assertEqual(
+            "result-json",
+            proof_item["unmet_requirement_detail"]["required_evidence_kind"],
+        )
+        self.assertIn("summary", proof_item["unmet_requirement_detail"]["observed_evidence_kinds"])
+        self.assertEqual("proof-gathering", task_summary["dominant_target_kind"])
+        self.assertEqual(
+            "missing_result_evidence",
+            task_summary["relevant_unmet_requirement_kind"],
+        )
+
+    def test_evidence_bundle_rule_uses_minimum_count_param_consistently(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect a full evidence bundle",
+                        "description": "Need a larger evidence bundle before verification.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {
+                            "type": "evidence_bundle_present",
+                            "params": {"minimum_count": 4},
+                        },
+                    },
+                ],
+            )
+        )
+
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        before = storage.read_relevant_proof_item_summary("T000001")
+
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[
+                    make_summary_artifact_ref(
+                        artifact_id="T000001.J001.A002",
+                        kind="screenshot",
+                    )
+                ],
+            )
+        )
+        after = storage.read_relevant_proof_item_summary("T000001")
+        storage.close()
+
+        self.assertEqual("done_unverified", before["status"])
+        self.assertEqual("insufficient_evidence_bundle", before["unmet_requirement_kind"])
+        self.assertEqual(
+            4,
+            before["unmet_requirement_detail"]["required_minimum_count"],
+        )
+        self.assertEqual(
+            2,
+            before["unmet_requirement_detail"]["current_evidence_count"],
+        )
+        self.assertTrue(before["can_be_satisfied_by_supported_evidence_calls"])
+        self.assertEqual("verified", after["status"])
+        self.assertTrue(after["proof_satisfied"])
+
     def test_manual_review_rule_keeps_item_done_unverified_even_with_evidence(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
             self.root,
@@ -1269,6 +1492,12 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("done_unverified", item_summary["status"])
         self.assertFalse(item_summary["proof_satisfied"])
         self.assertFalse(item_summary["proof_gate_supported"])
+        self.assertFalse(item_summary["rule_mechanical"])
+        self.assertEqual("review-required", item_summary["rule_finality_kind"])
+        self.assertEqual("manual_review_required", item_summary["unmet_requirement_kind"])
+        self.assertTrue(item_summary["review_required"])
+        self.assertFalse(item_summary["can_be_satisfied_by_supported_evidence_calls"])
+        self.assertTrue(item_summary["can_only_remain_review_needed"])
         self.assertEqual("review-needed", item_summary["proof_policy_kind"])
         self.assertTrue(item_summary["is_waiting_on_review"])
         self.assertEqual(2, item_summary["evidence_count"])
@@ -1276,6 +1505,9 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(task_summary["is_waiting_on_proof"])
         self.assertEqual("review-needed", task_summary["dominant_target_kind"])
         self.assertEqual("review-needed", task_summary["dominant_blocker_kind"])
+        self.assertEqual("review-required", task_summary["relevant_rule_finality_kind"])
+        self.assertTrue(task_summary["relevant_review_required"])
+        self.assertTrue(task_summary["relevant_can_only_remain_review_needed"])
         self.assertTrue(task_summary["execution_held"])
         self.assertFalse(task_summary["execution_allowed"])
         self.assertEqual("review-needed", task_summary["execution_hold_kind"])
@@ -1403,11 +1635,17 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("done_unverified", proof_item["status"])
         self.assertFalse(proof_item["proof_gate_supported"])
         self.assertEqual("test_pass_not_mechanically_supported", proof_item["proof_gate_reason"])
+        self.assertEqual("unsupported-in-slice", proof_item["rule_finality_kind"])
+        self.assertFalse(proof_item["review_required"])
+        self.assertFalse(proof_item["can_be_satisfied_by_supported_evidence_calls"])
+        self.assertTrue(proof_item["can_only_remain_review_needed"])
         self.assertEqual("review-needed", proof_item["proof_policy_kind"])
         self.assertTrue(proof_item["is_waiting_on_review"])
         self.assertFalse(proof_item["is_waiting_on_proof"])
         self.assertTrue(task_summary["is_waiting_on_review"])
         self.assertEqual("review-needed", task_summary["dominant_target_kind"])
+        self.assertEqual("unsupported-in-slice", task_summary["relevant_rule_finality_kind"])
+        self.assertFalse(task_summary["relevant_review_required"])
         self.assertTrue(task_summary["execution_held"])
         self.assertEqual("review-needed", task_summary["execution_hold_kind"])
         self.assertEqual("review-needed", resume_target["target_kind"])

@@ -1296,19 +1296,19 @@ class GarageAlfredProcessor:
             return bool(artifact_refs)
         if rule_type == "artifact_matches_kind":
             required_kind = params.get("kind")
-            if required_kind is None:
-                return bool(artifact_refs)
+            if not isinstance(required_kind, str) or not required_kind:
+                return False
             return any(ref.get("kind") == required_kind for ref in artifact_refs)
         if rule_type == "result_present":
-            return any(ref.get("kind") in {"result-json", "summary"} for ref in evidence_refs)
+            return any(ref.get("kind") == "result-json" for ref in evidence_refs)
         if rule_type == "summary_present":
             return any(ref.get("kind") == "summary" for ref in evidence_refs)
         if rule_type == "evidence_bundle_present":
-            minimum_count = params.get("min_count", 2)
+            minimum_count = params.get("minimum_count", params.get("min_count", 2))
             try:
                 minimum_count = int(minimum_count)
             except Exception:
-                minimum_count = 2
+                return False
             return len(evidence_refs) >= max(1, minimum_count)
         return False
 
