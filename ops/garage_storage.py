@@ -168,21 +168,31 @@ class GarageStorageAdapter:
         current_job_id = task_record.get("current_job_id")
         latest_checkpoint_id = task_record.get("latest_checkpoint_id")
         latest_continuation = self.latest_continuation_for_task(task_id)
+        current_job_summary = (
+            self.read_job_state_summary(current_job_id)
+            if isinstance(current_job_id, str)
+            else None
+        )
+        plan_linkage = self.active_plan_linkage_summary(task_id)
         return {
             "task_record": task_record,
             "latest_event": latest_event,
             "event_count": len(history),
-            "current_job": self.read_job_state_summary(current_job_id)
-            if isinstance(current_job_id, str)
-            else None,
+            "latest_meaningful_event": self._latest_meaningful_task_event(
+                current_job_summary=current_job_summary,
+                latest_event=latest_event,
+            ),
+            "current_job": current_job_summary,
             "latest_checkpoint": self.read_checkpoint_record(latest_checkpoint_id)
             if isinstance(latest_checkpoint_id, str)
             else None,
             "latest_continuation": latest_continuation,
             "current_plan_version": task_record.get("current_plan_version"),
+            "active_plan_linkage": plan_linkage,
             "is_waiting_on_child": task_record.get("task_state") == "waiting_on_child",
             "is_resuming": task_record.get("task_state") == "resuming",
             "is_running": task_record.get("task_state") == "running",
+            "has_resume_anchor": self.resolve_task_resume_anchor(task_id) is not None,
         }
 
     def read_job_state_summary(self, job_id: str) -> dict[str, Any] | None:
@@ -192,17 +202,26 @@ class GarageStorageAdapter:
         history = self.read_event_history(job_id=job_id)
         latest_event = history[-1] if history else None
         attempt_no = self.latest_attempt_for_job(job_id)
+        latest_state_event = self._latest_job_state_event(history)
+        task_record = self.read_task_record(str(job_record["task_id"]))
         return {
             "job_record": job_record,
             "latest_event": latest_event,
+            "latest_state_event": latest_state_event,
             "attempt_no": attempt_no,
             "event_count": len(history),
             "job_state": job_record.get("job_state"),
             "latest_event_type": latest_event.get("event_type") if latest_event else None,
+            "latest_state_event_type": latest_state_event.get("event_type")
+            if latest_state_event
+            else None,
             "latest_reported_status": job_record.get("last_reported_status"),
             "parent_job_id": job_record.get("parent_job_id"),
             "is_same_job_retry": bool(attempt_no and attempt_no > 1),
             "is_materially_new_child_leg": job_record.get("parent_job_id") is not None,
+            "is_current_task_leg": (
+                task_record is not None and task_record.get("current_job_id") == job_id
+            ),
         }
 
     def list_child_jobs(self, parent_job_id: str) -> list[dict[str, Any]]:
@@ -234,6 +253,99 @@ class GarageStorageAdapter:
         if not continuations:
             return None
         return continuations[-1]
+
+    def active_plan_linkage_summary(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        latest_checkpoint = None
+        latest_checkpoint_id = task_record.get("latest_checkpoint_id")
+        if isinstance(latest_checkpoint_id, str):
+            latest_checkpoint = self.read_checkpoint_record(latest_checkpoint_id)
+        latest_continuation = self.latest_continuation_for_task(task_id)
+        return {
+            "task_id": task_id,
+            "current_plan_version": task_record.get("current_plan_version"),
+            "latest_checkpoint_id": latest_checkpoint_id,
+            "latest_checkpoint_plan_version": (
+                latest_checkpoint.get("plan_version") if latest_checkpoint else None
+            ),
+            "latest_continuation_plan_version": (
+                latest_continuation.get("plan_version") if latest_continuation else None
+            ),
+            "latest_checkpoint": latest_checkpoint,
+            "latest_continuation": latest_continuation,
+        }
+
+    def resolve_task_resume_anchor(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        latest_continuation = self.latest_continuation_for_task(task_id)
+        if isinstance(latest_continuation, dict):
+            return {
+                "anchor_kind": "continuation-record",
+                "task_id": task_id,
+                "job_id": latest_continuation.get("job_id"),
+                "plan_version": latest_continuation.get("plan_version"),
+                "record": latest_continuation,
+            }
+        latest_checkpoint = None
+        latest_checkpoint_id = task_record.get("latest_checkpoint_id")
+        if isinstance(latest_checkpoint_id, str):
+            latest_checkpoint = self.read_checkpoint_record(latest_checkpoint_id)
+        if isinstance(latest_checkpoint, dict):
+            return {
+                "anchor_kind": "checkpoint-record",
+                "task_id": task_id,
+                "job_id": latest_checkpoint.get("job_id"),
+                "plan_version": latest_checkpoint.get("plan_version"),
+                "record": latest_checkpoint,
+            }
+        current_job_id = task_record.get("current_job_id")
+        current_job = (
+            self.read_job_state_summary(current_job_id)
+            if isinstance(current_job_id, str)
+            else None
+        )
+        if isinstance(current_job, dict) and isinstance(current_job.get("latest_state_event"), dict):
+            return {
+                "anchor_kind": "job-state-event",
+                "task_id": task_id,
+                "job_id": current_job["job_record"]["job_id"],
+                "plan_version": task_record.get("current_plan_version"),
+                "record": current_job["latest_state_event"],
+            }
+        return None
+
+    @staticmethod
+    def _latest_job_state_event(
+        history: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        state_event_types = {
+            "job.created",
+            "job.dispatched",
+            "job.started",
+            "job.returned",
+            "job.blocked",
+            "job.failed",
+        }
+        for event in reversed(history):
+            if event.get("event_type") in state_event_types:
+                return event
+        return None
+
+    @staticmethod
+    def _latest_meaningful_task_event(
+        *,
+        current_job_summary: dict[str, Any] | None,
+        latest_event: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if isinstance(current_job_summary, dict):
+            latest_state_event = current_job_summary.get("latest_state_event")
+            if isinstance(latest_state_event, dict):
+                return latest_state_event
+        return latest_event
 
     def _initialize_storage(self) -> None:
         self._conn.executescript(

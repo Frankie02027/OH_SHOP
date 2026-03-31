@@ -528,22 +528,33 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         task_summary = storage.latest_task_state_summary("T000001")
         job_summary = storage.read_job_state_summary("T000001.J001")
+        plan_linkage = storage.active_plan_linkage_summary("T000001")
+        resume_anchor = storage.resolve_task_resume_anchor("T000001")
         job_history = storage.read_event_history(job_id="T000001.J001")
         continuations = storage.list_continuation_records("T000001")
 
         self.assertEqual("resuming", task_summary["task_record"]["task_state"])
         self.assertTrue(task_summary["is_resuming"])
+        self.assertTrue(task_summary["has_resume_anchor"])
         self.assertEqual(2, task_summary["current_plan_version"])
         self.assertEqual("continuation.recorded", task_summary["latest_event"]["event_type"])
+        self.assertEqual("job.returned", task_summary["latest_meaningful_event"]["event_type"])
         self.assertEqual("T000001.J001", task_summary["current_job"]["job_record"]["job_id"])
         self.assertEqual(2, task_summary["latest_checkpoint"]["plan_version"])
         self.assertEqual(2, task_summary["latest_continuation"]["plan_version"])
+        self.assertEqual(2, plan_linkage["current_plan_version"])
+        self.assertEqual(2, plan_linkage["latest_checkpoint_plan_version"])
+        self.assertEqual(2, plan_linkage["latest_continuation_plan_version"])
+        self.assertEqual("continuation-record", resume_anchor["anchor_kind"])
+        self.assertEqual(2, resume_anchor["plan_version"])
         self.assertEqual("returned", job_summary["job_record"]["job_state"])
         self.assertEqual("returned", job_summary["job_state"])
         self.assertEqual("continuation.recorded", job_summary["latest_event_type"])
+        self.assertEqual("job.returned", job_summary["latest_state_event_type"])
         self.assertEqual("succeeded", job_summary["latest_reported_status"])
         self.assertFalse(job_summary["is_same_job_retry"])
         self.assertFalse(job_summary["is_materially_new_child_leg"])
+        self.assertTrue(job_summary["is_current_task_leg"])
         self.assertEqual(1, storage.latest_attempt_for_job("T000001.J001"))
         self.assertEqual(1, len(continuations))
         self.assertEqual(4, len(job_history))
@@ -564,6 +575,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         task_summary = storage.latest_task_state_summary("T000001")
         child_summary = storage.read_job_state_summary(child.result["job_id"])
+        parent_summary = storage.read_job_state_summary("T000001.J001")
         storage.close()
 
         self.assertTrue(task_summary["is_waiting_on_child"])
@@ -571,9 +583,29 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual(child.result["job_id"], task_summary["task_record"]["current_job_id"])
         self.assertEqual("dispatched", child_summary["job_state"])
         self.assertEqual("job.dispatched", child_summary["latest_event_type"])
+        self.assertEqual("job.dispatched", child_summary["latest_state_event_type"])
         self.assertEqual(1, child_summary["attempt_no"])
         self.assertFalse(child_summary["is_same_job_retry"])
         self.assertTrue(child_summary["is_materially_new_child_leg"])
+        self.assertTrue(child_summary["is_current_task_leg"])
+        self.assertFalse(parent_summary["is_current_task_leg"])
+
+    def test_resume_anchor_falls_back_to_checkpoint_when_no_continuation_exists(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(make_result_submit_call())
+        checkpoint = processor.process_call(make_checkpoint_create_call(plan_version=3))
+
+        resume_anchor = storage.resolve_task_resume_anchor("T000001")
+        storage.close()
+
+        self.assertEqual("checkpoint-record", resume_anchor["anchor_kind"])
+        self.assertEqual(checkpoint.result["checkpoint_id"], resume_anchor["record"]["checkpoint_id"])
+        self.assertEqual(3, resume_anchor["plan_version"])
 
 
 if __name__ == "__main__":
