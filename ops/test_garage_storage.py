@@ -5778,6 +5778,507 @@ class GarageStorageAdapterTests(unittest.TestCase):
             final_receipt["best_next_move_now"]["move_kind"],
         )
 
+    def test_continue_from_final_receipt_can_resume_missing_input_when_content_added(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need artifact proof",
+                        "description": "Still needs an official artifact ref.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(make_checkpoint_create_call(plan_version=1))
+
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={"expected_dominant_target_kind": "next-executable"},
+            allowed_rebased={
+                "allow_rebased_missing_input_candidate": True,
+                "expected_rebased_call_type": "continuation.record",
+                "expected_rebased_submission_mode": "productive_in_slice",
+                "expected_rebased_follow_up_behavior_kind": "gather-proof-next",
+            },
+        )
+
+        continuation = processor.continue_from_final_receipt(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/proof.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        storage.close()
+
+        self.assertEqual(
+            "guard_mismatch_rebased_missing_input_refused",
+            continuation["prior_final_attempt_path_kind"],
+        )
+        self.assertTrue(continuation["prior_receipt_compatible"])
+        self.assertTrue(continuation["supplied_fields_resolved_missing_input"])
+        self.assertEqual(
+            "continued_productive_execution",
+            continuation["continuation_kind"],
+        )
+        self.assertTrue(continuation["attempt_allowed"])
+        self.assertEqual("continuation.record", continuation["attempted_call_type"])
+        self.assertEqual(
+            "productive_in_slice",
+            continuation["attempted_submission_mode"],
+        )
+        self.assertIsNotNone(continuation["submit_receipt"])
+        self.assertEqual(
+            "submitted",
+            continuation["submit_receipt"]["decision_kind"],
+        )
+        self.assertIsNotNone(continuation["final_receipt"])
+
+    def test_continue_from_final_receipt_can_continue_review_context_capture_when_compatible(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review.md",
+                    "role": "jarvis",
+                }
+            },
+            expected={
+                "expected_submission_mode": "productive_in_slice",
+                "expected_productive_in_slice": True,
+            },
+            allowed_rebased={
+                "allow_rebased_context_capture_candidate": True,
+                "expected_rebased_call_type": "continuation.record",
+                "expected_rebased_submission_mode": "context_capture",
+                "expected_rebased_follow_up_behavior_kind": "capture-review-context-next",
+            },
+        )
+
+        continuation = processor.continue_from_final_receipt(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review-2.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        storage.close()
+
+        self.assertEqual(
+            "guard_mismatch_rebased_context_capture",
+            continuation["prior_final_attempt_path_kind"],
+        )
+        self.assertTrue(continuation["prior_receipt_compatible"])
+        self.assertEqual(
+            "continued_context_capture",
+            continuation["continuation_kind"],
+        )
+        self.assertTrue(continuation["attempt_allowed"])
+        self.assertEqual("continuation.record", continuation["attempted_call_type"])
+        self.assertEqual("context_capture", continuation["attempted_submission_mode"])
+        self.assertEqual("review-needed", continuation["fresh_dominant_target_kind"])
+        self.assertEqual(
+            "capture-review-context-next",
+            continuation["fresh_follow_up_behavior_kind"],
+        )
+        self.assertIsNotNone(continuation["submit_receipt"])
+        self.assertEqual(
+            "context_capture",
+            continuation["submit_receipt"]["submission_mode"],
+        )
+
+    def test_continue_from_final_receipt_can_continue_blocked_evidence_context_capture_when_compatible(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect blocked evidence",
+                        "description": "Capture failure evidence for the blocked step.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_failure_report_call(
+                reported_status="blocked",
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/blocked.md",
+                    "role": "jarvis",
+                }
+            },
+            expected={"expected_submission_mode": "productive_in_slice"},
+            allowed_rebased={
+                "allow_rebased_context_capture_candidate": True,
+                "expected_rebased_call_type": "continuation.record",
+                "expected_rebased_submission_mode": "context_capture",
+                "expected_rebased_follow_up_behavior_kind": "capture-blocked-evidence-next",
+            },
+        )
+
+        continuation = processor.continue_from_final_receipt(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/blocked-2.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        storage.close()
+
+        self.assertEqual(
+            "guard_mismatch_rebased_context_capture",
+            continuation["prior_final_attempt_path_kind"],
+        )
+        self.assertTrue(continuation["prior_receipt_compatible"])
+        self.assertEqual(
+            "continued_context_capture",
+            continuation["continuation_kind"],
+        )
+        self.assertTrue(continuation["attempt_allowed"])
+        self.assertEqual("context_capture", continuation["attempted_submission_mode"])
+        self.assertEqual(
+            "blocked-evidence-review",
+            continuation["fresh_dominant_target_kind"],
+        )
+        self.assertEqual(
+            "capture-blocked-evidence-next",
+            continuation["fresh_follow_up_behavior_kind"],
+        )
+        self.assertIsNotNone(continuation["submit_receipt"])
+
+    def test_continue_from_final_receipt_refuses_stale_receipt_when_state_drifted(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need artifact proof",
+                        "description": "Still needs an official artifact ref.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(make_checkpoint_create_call(plan_version=1))
+
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={"expected_dominant_target_kind": "next-executable"},
+            allowed_rebased={
+                "allow_rebased_missing_input_candidate": True,
+                "expected_rebased_call_type": "continuation.record",
+                "expected_rebased_submission_mode": "productive_in_slice",
+                "expected_rebased_follow_up_behavior_kind": "gather-proof-next",
+            },
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+
+        continuation = processor.continue_from_final_receipt(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/stale.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        storage.close()
+
+        self.assertFalse(continuation["prior_receipt_compatible"])
+        self.assertEqual("stale_receipt_refused", continuation["continuation_kind"])
+        self.assertIn(
+            continuation["continuation_failure_kind"],
+            {
+                "dominant_target_kind_now_mismatch",
+                "best_next_move_kind_now_mismatch",
+                "best_next_call_type_now_mismatch",
+            },
+        )
+        self.assertIsNone(continuation["submit_receipt"])
+        self.assertIsNone(continuation["final_receipt"])
+
+    def test_continue_from_final_receipt_waiting_on_child_stays_explicit(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run child leg",
+                        "description": "Delegate the blocking child work.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_child_job_request_call())
+
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={"expected_dominant_target_kind": "next-executable"},
+            allowed_rebased={
+                "allow_rebased_productive_candidate": True,
+                "expected_rebased_call_type": "job.start",
+                "expected_rebased_submission_mode": "productive_in_slice",
+            },
+        )
+
+        continuation = processor.continue_from_final_receipt(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+        )
+        storage.close()
+
+        self.assertEqual(
+            "guard_mismatch_rebased_productive_execution",
+            continuation["prior_final_attempt_path_kind"],
+        )
+        self.assertTrue(continuation["prior_receipt_compatible"])
+        self.assertEqual(
+            "continued_unavailable_refused",
+            continuation["continuation_kind"],
+        )
+        self.assertFalse(continuation["attempt_allowed"])
+        self.assertEqual("waiting-on-child", continuation["fresh_dominant_target_kind"])
+        self.assertEqual(
+            "progress-child-leg",
+            continuation["fresh_best_next_move"]["move_kind"],
+        )
+        self.assertEqual(
+            "progress-child-leg-next",
+            continuation["fresh_follow_up_behavior_kind"],
+        )
+
+    def test_continue_from_final_receipt_from_unavailable_active_leg_does_not_fabricate_path(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(make_job_start_call())
+
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={
+                "expected_dominant_target_kind": "active-item",
+                "expected_context_only": False,
+                "expected_productive_in_slice": False,
+            },
+            allowed_rebased={"allow_rebased_productive_candidate": True},
+        )
+
+        continuation = processor.continue_from_final_receipt(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+        )
+        storage.close()
+
+        self.assertEqual(
+            "guard_match_unavailable_refused",
+            continuation["prior_final_attempt_path_kind"],
+        )
+        self.assertTrue(continuation["prior_receipt_compatible"])
+        self.assertEqual(
+            "continued_unavailable_refused",
+            continuation["continuation_kind"],
+        )
+        self.assertFalse(continuation["attempt_allowed"])
+        self.assertIsNotNone(continuation["submit_receipt"])
+        self.assertEqual(
+            "submission_refused_unavailable",
+            continuation["submit_receipt"]["submit_effect_kind"],
+        )
+        self.assertEqual("active-item", continuation["fresh_dominant_target_kind"])
+        self.assertEqual(
+            "continue-active-execution",
+            continuation["fresh_best_next_move"]["move_kind"],
+        )
+
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
             self.root,

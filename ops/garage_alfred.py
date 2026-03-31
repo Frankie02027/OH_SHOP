@@ -676,6 +676,262 @@ class GarageAlfredProcessor:
         result["rebased_candidate_reason"] = guarded_attempt.get("rebased_candidate_reason")
         return self._attach_guarded_rebase_final_receipt(task_id=task_id, result=result)
 
+    def continue_from_final_receipt(
+        self,
+        task_id: str,
+        *,
+        final_receipt: dict[str, Any] | None,
+        supplied_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        current_summary = self._read_current_task_summary_for_receipt(task_id)
+        fresh_preflight = self.prepare_next_call_from_draft(
+            task_id,
+            supplied_fields=supplied_fields,
+        )
+        actual = self._build_guarded_attempt_actuals(
+            current_summary=current_summary,
+            fresh_preflight=fresh_preflight,
+        )
+        compatibility = self._evaluate_final_receipt_compatibility(
+            final_receipt=final_receipt,
+            current_summary=current_summary,
+            actual=actual,
+        )
+        if not bool(compatibility.get("prior_receipt_compatible")):
+            return self._build_continue_from_final_receipt_receipt(
+                task_id=task_id,
+                prior_final_receipt=final_receipt,
+                compatibility=compatibility,
+                continued_result=None,
+            )
+
+        continued_result = self.attempt_best_next_call_with_guarded_rebase(
+            task_id,
+            supplied_fields=supplied_fields,
+            expected=dict(compatibility.get("expected") or {}),
+        )
+        if not bool(continued_result.get("guard_match")):
+            compatibility = {
+                "prior_receipt_compatible": False,
+                "continuation_failure_kind": (
+                    continued_result.get("guard_failure_kind") or "receipt_state_mismatch"
+                ),
+                "continuation_failure_reason": (
+                    continued_result.get("guard_failure_reason")
+                    or "prior final receipt no longer matches fresh current state"
+                ),
+                "expected": dict(compatibility.get("expected") or {}),
+                "actual": dict(continued_result.get("actual") or {}),
+            }
+        return self._build_continue_from_final_receipt_receipt(
+            task_id=task_id,
+            prior_final_receipt=final_receipt,
+            compatibility=compatibility,
+            continued_result=continued_result,
+        )
+
+    @staticmethod
+    def _evaluate_final_receipt_compatibility(
+        *,
+        final_receipt: dict[str, Any] | None,
+        current_summary: dict[str, Any] | None,
+        actual: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not isinstance(final_receipt, dict):
+            return {
+                "prior_receipt_compatible": False,
+                "continuation_failure_kind": "invalid_final_receipt_shape",
+                "continuation_failure_reason": "final_receipt must be a dict when provided",
+                "expected": {},
+                "actual": dict(actual),
+            }
+        prior_path_kind = final_receipt.get("final_attempt_path_kind")
+        if not isinstance(prior_path_kind, str) or not prior_path_kind:
+            return {
+                "prior_receipt_compatible": False,
+                "continuation_failure_kind": "invalid_final_receipt_path",
+                "continuation_failure_reason": (
+                    "final_receipt must include a non-empty final_attempt_path_kind"
+                ),
+                "expected": {},
+                "actual": dict(actual),
+            }
+        if not isinstance(current_summary, dict):
+            return {
+                "prior_receipt_compatible": False,
+                "continuation_failure_kind": "fresh_state_unavailable",
+                "continuation_failure_reason": (
+                    "fresh task state summary is unavailable for receipt continuation"
+                ),
+                "expected": {},
+                "actual": dict(actual),
+            }
+
+        current_best_next_move = current_summary.get("best_next_move")
+        prior_best_next_move = final_receipt.get("best_next_move_now")
+        prior_move_kind = (
+            prior_best_next_move.get("move_kind")
+            if isinstance(prior_best_next_move, dict)
+            else None
+        )
+        prior_call_type = (
+            prior_best_next_move.get("call_type")
+            if isinstance(prior_best_next_move, dict)
+            else None
+        )
+        current_move_kind = (
+            current_best_next_move.get("move_kind")
+            if isinstance(current_best_next_move, dict)
+            else None
+        )
+        current_call_type = actual.get("best_next_call_type")
+        comparisons = (
+            (
+                "dominant_target_kind_now",
+                final_receipt.get("dominant_target_kind_now"),
+                current_summary.get("dominant_target_kind"),
+            ),
+            ("best_next_move_kind_now", prior_move_kind, current_move_kind),
+            ("best_next_call_type_now", prior_call_type, current_call_type),
+            (
+                "execution_allowed_now",
+                final_receipt.get("execution_allowed_now"),
+                current_summary.get("execution_allowed"),
+            ),
+            (
+                "current_job_is_primary_focus_now",
+                final_receipt.get("current_job_is_primary_focus_now"),
+                current_summary.get("current_job_is_primary_focus"),
+            ),
+            (
+                "relevant_plan_item_is_primary_focus_now",
+                final_receipt.get("relevant_plan_item_is_primary_focus_now"),
+                current_summary.get("relevant_plan_item_is_primary_focus"),
+            ),
+        )
+        for field_name, expected_value, actual_value in comparisons:
+            if expected_value != actual_value:
+                return {
+                    "prior_receipt_compatible": False,
+                    "continuation_failure_kind": f"{field_name}_mismatch",
+                    "continuation_failure_reason": (
+                        f"{field_name} changed from expected {expected_value!r} "
+                        f"to actual {actual_value!r}"
+                    ),
+                    "expected": {},
+                    "actual": dict(actual),
+                }
+
+        expected = {
+            "expected_dominant_target_kind": current_summary.get("dominant_target_kind"),
+            "expected_best_next_call_type": current_call_type,
+            "expected_submission_mode": actual.get("submission_mode"),
+            "expected_context_only": bool(actual.get("context_only")),
+            "expected_productive_in_slice": bool(actual.get("productive_in_slice")),
+        }
+        return {
+            "prior_receipt_compatible": True,
+            "continuation_failure_kind": None,
+            "continuation_failure_reason": None,
+            "expected": expected,
+            "actual": dict(actual),
+        }
+
+    def _build_continue_from_final_receipt_receipt(
+        self,
+        *,
+        task_id: str,
+        prior_final_receipt: dict[str, Any] | None,
+        compatibility: dict[str, Any],
+        continued_result: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        latest_summary = self._read_current_task_summary_for_receipt(task_id)
+        latest_follow_up = (
+            latest_summary.get("immediate_follow_up_behavior")
+            if isinstance(latest_summary, dict)
+            else None
+        )
+        prior_missing_required_fields = tuple(
+            prior_final_receipt.get("missing_required_fields") or ()
+        ) if isinstance(prior_final_receipt, dict) else ()
+        current_missing_required_fields = tuple(
+            continued_result.get("missing_required_fields") or ()
+        ) if isinstance(continued_result, dict) else ()
+        submit_receipt = (
+            continued_result.get("submit_receipt")
+            if isinstance(continued_result, dict)
+            and isinstance(continued_result.get("submit_receipt"), dict)
+            else None
+        )
+        final_receipt = (
+            continued_result.get("final_receipt")
+            if isinstance(continued_result, dict)
+            and isinstance(continued_result.get("final_receipt"), dict)
+            else None
+        )
+        attempt_allowed = bool(
+            continued_result.get("attempt_allowed")
+            if isinstance(continued_result, dict)
+            else False
+        )
+        continuation_failure_kind = compatibility.get("continuation_failure_kind")
+        continuation_failure_reason = compatibility.get("continuation_failure_reason")
+        if bool(compatibility.get("prior_receipt_compatible")) and isinstance(
+            continued_result, dict
+        ):
+            continuation_failure_kind = None
+            continuation_failure_reason = None
+        return {
+            "continuation_kind": self._classify_continue_from_final_receipt_kind(
+                prior_receipt_compatible=bool(compatibility.get("prior_receipt_compatible")),
+                continued_result=continued_result,
+            ),
+            "prior_receipt_compatible": bool(compatibility.get("prior_receipt_compatible")),
+            "continuation_failure_kind": continuation_failure_kind,
+            "continuation_failure_reason": continuation_failure_reason,
+            "prior_final_attempt_path_kind": (
+                prior_final_receipt.get("final_attempt_path_kind")
+                if isinstance(prior_final_receipt, dict)
+                else None
+            ),
+            "supplied_fields_resolved_missing_input": bool(prior_missing_required_fields)
+            and not bool(current_missing_required_fields),
+            "fresh_best_next_move": (
+                latest_summary.get("best_next_move")
+                if isinstance(latest_summary, dict)
+                else None
+            ),
+            "fresh_dominant_target_kind": (
+                latest_summary.get("dominant_target_kind")
+                if isinstance(latest_summary, dict)
+                else None
+            ),
+            "fresh_follow_up_behavior_kind": (
+                latest_follow_up.get("follow_up_behavior_kind")
+                if isinstance(latest_follow_up, dict)
+                else None
+            ),
+            "attempt_allowed": attempt_allowed,
+            "attempted_call_type": (
+                continued_result.get("attempted_call_type")
+                if isinstance(continued_result, dict)
+                else None
+            ),
+            "attempted_submission_mode": (
+                continued_result.get("attempted_submission_mode")
+                if isinstance(continued_result, dict)
+                else None
+            ),
+            "missing_required_fields": current_missing_required_fields,
+            "requires_additional_user_or_agent_input": bool(
+                continued_result.get("requires_additional_user_or_agent_input")
+                if isinstance(continued_result, dict)
+                else False
+            ),
+            "submit_receipt": submit_receipt,
+            "final_receipt": final_receipt,
+        }
+
     def _attach_guarded_rebase_final_receipt(
         self,
         *,
@@ -1278,6 +1534,24 @@ class GarageAlfredProcessor:
         if attempt_kind.startswith("attempted_") or attempt_kind.startswith("attempt_refused_"):
             return f"rebased_{attempt_kind}"
         return f"rebased_{attempt_kind}"
+
+    @staticmethod
+    def _classify_continue_from_final_receipt_kind(
+        *,
+        prior_receipt_compatible: bool,
+        continued_result: dict[str, Any] | None,
+    ) -> str:
+        if not prior_receipt_compatible:
+            return "stale_receipt_refused"
+        if not isinstance(continued_result, dict):
+            return "unavailable_receipt_continuation"
+        if bool(continued_result.get("attempt_allowed")):
+            if continued_result.get("attempted_submission_mode") == "context_capture":
+                return "continued_context_capture"
+            return "continued_productive_execution"
+        if tuple(continued_result.get("missing_required_fields") or ()):
+            return "continued_missing_input_refused"
+        return "continued_unavailable_refused"
 
     @staticmethod
     def _classify_guarded_rebase_final_attempt_path(result: dict[str, Any]) -> str:
