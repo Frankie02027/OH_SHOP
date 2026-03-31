@@ -341,6 +341,7 @@ class GarageAlfredProcessor:
             return {
                 "decision_kind": "unavailable_in_slice",
                 "allowed_to_submit": False,
+                "submission_mode": None,
                 "reason": "task_id is required to re-check a prepared next call",
                 "prepared_call": None,
                 "submit_result": None,
@@ -349,6 +350,7 @@ class GarageAlfredProcessor:
                 "missing_required_fields": (),
                 "context_only": False,
                 "unavailable_in_slice": True,
+                "productive_in_slice": False,
             }
 
         effective_supplied_fields = self._effective_submit_supplied_fields(
@@ -364,6 +366,7 @@ class GarageAlfredProcessor:
             return {
                 "decision_kind": "unavailable_in_slice",
                 "allowed_to_submit": False,
+                "submission_mode": None,
                 "reason": "fresh next-call preflight is unavailable for the current task state",
                 "prepared_call": None,
                 "submit_result": None,
@@ -372,6 +375,7 @@ class GarageAlfredProcessor:
                 "missing_required_fields": (),
                 "context_only": False,
                 "unavailable_in_slice": True,
+                "productive_in_slice": False,
             }
 
         fresh_prepared_call = fresh_preflight.get("prepared_call")
@@ -383,6 +387,7 @@ class GarageAlfredProcessor:
             return self._build_submit_prepared_call_decision(
                 decision_kind="stale_prepared_call",
                 allowed_to_submit=False,
+                submission_mode=self._resolve_submission_mode(fresh_preflight),
                 reason=(
                     "prepared next call no longer matches fresh current-state preflight "
                     "and must be regenerated before submission"
@@ -393,10 +398,57 @@ class GarageAlfredProcessor:
             )
 
         preflight_kind = str(fresh_preflight.get("preflight_kind") or "unavailable_in_slice")
+        missing_required_fields = tuple(fresh_preflight.get("missing_required_fields") or ())
+        submission_mode = self._resolve_submission_mode(fresh_preflight)
+
+        if missing_required_fields:
+            return self._build_submit_prepared_call_decision(
+                decision_kind="not_ready_missing_fields",
+                allowed_to_submit=False,
+                submission_mode=submission_mode,
+                reason=str(
+                    fresh_preflight.get("reason")
+                    or "prepared next call is still missing required fields"
+                ),
+                fresh_preflight=fresh_preflight,
+                submit_result=None,
+                stale_or_blocked=False,
+            )
+
         if preflight_kind != "ready_to_submit":
+            if (
+                preflight_kind == "context_only_not_submittable"
+                and isinstance(fresh_prepared_call, dict)
+                and bool(fresh_preflight.get("context_only"))
+            ):
+                try:
+                    submit_result = self.process_call(dict(fresh_prepared_call))
+                except (GarageAlfredProcessingError, GarageProcessorError, ValueError) as exc:
+                    return self._build_submit_prepared_call_decision(
+                        decision_kind="policy_blocked",
+                        allowed_to_submit=False,
+                        submission_mode="context_capture",
+                        reason=str(exc),
+                        fresh_preflight=fresh_preflight,
+                        submit_result=None,
+                        stale_or_blocked=True,
+                    )
+                return self._build_submit_prepared_call_decision(
+                    decision_kind="submitted",
+                    allowed_to_submit=True,
+                    submission_mode="context_capture",
+                    reason=(
+                        "prepared context-capture call passed fresh revalidation "
+                        "and was processed"
+                    ),
+                    fresh_preflight=fresh_preflight,
+                    submit_result=submit_result,
+                    stale_or_blocked=False,
+                )
             return self._build_submit_prepared_call_decision(
                 decision_kind=preflight_kind,
                 allowed_to_submit=False,
+                submission_mode=submission_mode,
                 reason=str(
                     fresh_preflight.get("reason")
                     or "prepared next call is not submittable in the current slice"
@@ -410,16 +462,29 @@ class GarageAlfredProcessor:
             return self._build_submit_prepared_call_decision(
                 decision_kind="not_ready_missing_fields",
                 allowed_to_submit=False,
+                submission_mode=submission_mode,
                 reason="fresh preflight did not produce an honest prepared next call object",
                 fresh_preflight=fresh_preflight,
                 submit_result=None,
                 stale_or_blocked=False,
             )
 
-        submit_result = self.process_call(dict(fresh_prepared_call))
+        try:
+            submit_result = self.process_call(dict(fresh_prepared_call))
+        except (GarageAlfredProcessingError, GarageProcessorError, ValueError) as exc:
+            return self._build_submit_prepared_call_decision(
+                decision_kind="policy_blocked",
+                allowed_to_submit=False,
+                submission_mode=submission_mode,
+                reason=str(exc),
+                fresh_preflight=fresh_preflight,
+                submit_result=None,
+                stale_or_blocked=True,
+            )
         return self._build_submit_prepared_call_decision(
             decision_kind="submitted",
             allowed_to_submit=True,
+            submission_mode=submission_mode,
             reason="prepared next call passed fresh revalidation and was processed",
             fresh_preflight=fresh_preflight,
             submit_result=submit_result,
@@ -487,6 +552,7 @@ class GarageAlfredProcessor:
         *,
         decision_kind: str,
         allowed_to_submit: bool,
+        submission_mode: str | None,
         reason: str,
         fresh_preflight: dict[str, Any],
         submit_result: GarageProcessingResult | None,
@@ -495,6 +561,7 @@ class GarageAlfredProcessor:
         return {
             "decision_kind": decision_kind,
             "allowed_to_submit": allowed_to_submit,
+            "submission_mode": submission_mode,
             "reason": reason,
             "prepared_call": fresh_preflight.get("prepared_call"),
             "submit_result": submit_result,
@@ -505,7 +572,21 @@ class GarageAlfredProcessor:
             ),
             "context_only": bool(fresh_preflight.get("context_only")),
             "unavailable_in_slice": bool(fresh_preflight.get("unavailable_in_slice")),
+            "productive_in_slice": (
+                not bool(fresh_preflight.get("context_only"))
+                and not bool(fresh_preflight.get("unavailable_in_slice"))
+            ),
         }
+
+    @staticmethod
+    def _resolve_submission_mode(fresh_preflight: dict[str, Any] | None) -> str | None:
+        if not isinstance(fresh_preflight, dict):
+            return None
+        if bool(fresh_preflight.get("context_only")):
+            return "context_capture"
+        if not bool(fresh_preflight.get("unavailable_in_slice")):
+            return "productive_in_slice"
+        return None
 
     @staticmethod
     def _resolve_result_task_id(

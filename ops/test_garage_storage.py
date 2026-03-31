@@ -3647,6 +3647,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         self.assertEqual("submitted", decision["decision_kind"])
         self.assertTrue(decision["allowed_to_submit"])
+        self.assertEqual("productive_in_slice", decision["submission_mode"])
+        self.assertTrue(decision["productive_in_slice"])
         self.assertFalse(decision["stale_or_blocked"])
         self.assertIsNotNone(decision["submit_result"])
         self.assertEqual("job.start", decision["submit_result"].call_type)
@@ -3704,6 +3706,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         self.assertEqual("stale_prepared_call", decision["decision_kind"])
         self.assertFalse(decision["allowed_to_submit"])
+        self.assertIsNone(decision["submission_mode"])
         self.assertTrue(decision["stale_or_blocked"])
         self.assertIsNone(decision["submit_result"])
         self.assertEqual("unavailable_in_slice", decision["fresh_preflight"]["preflight_kind"])
@@ -3755,10 +3758,14 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         self.assertEqual("not_ready_missing_fields", denied["decision_kind"])
         self.assertFalse(denied["allowed_to_submit"])
+        self.assertEqual("productive_in_slice", denied["submission_mode"])
+        self.assertTrue(denied["productive_in_slice"])
         self.assertEqual(("payload_ref",), denied["missing_required_fields"])
         self.assertIsNone(denied["submit_result"])
         self.assertEqual("submitted", submitted["decision_kind"])
         self.assertTrue(submitted["allowed_to_submit"])
+        self.assertEqual("productive_in_slice", submitted["submission_mode"])
+        self.assertTrue(submitted["productive_in_slice"])
         self.assertEqual("continuation.record", submitted["submit_result"].call_type)
         self.assertEqual(
             "proof-gathering",
@@ -3818,10 +3825,23 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         storage.close()
 
-        self.assertEqual("context_only_not_submittable", decision["decision_kind"])
-        self.assertFalse(decision["allowed_to_submit"])
+        self.assertEqual("submitted", decision["decision_kind"])
+        self.assertTrue(decision["allowed_to_submit"])
+        self.assertEqual("context_capture", decision["submission_mode"])
+        self.assertFalse(decision["productive_in_slice"])
         self.assertTrue(decision["context_only"])
-        self.assertIsNone(decision["submit_result"])
+        self.assertIsNotNone(decision["submit_result"])
+        self.assertEqual("continuation.record", decision["submit_result"].call_type)
+        self.assertEqual(
+            "review-needed",
+            decision["submit_result"].result["post_call_guidance"]["dominant_target_kind"],
+        )
+        self.assertEqual(
+            "capture-review-context-next",
+            decision["submit_result"].result["post_call_guidance"]["immediate_follow_up"][
+                "follow_up_behavior_kind"
+            ],
+        )
 
     def test_submit_prepared_blocked_evidence_call_stays_context_only(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3875,9 +3895,118 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         storage.close()
 
-        self.assertEqual("context_only_not_submittable", decision["decision_kind"])
-        self.assertFalse(decision["allowed_to_submit"])
+        self.assertEqual("submitted", decision["decision_kind"])
+        self.assertTrue(decision["allowed_to_submit"])
+        self.assertEqual("context_capture", decision["submission_mode"])
+        self.assertFalse(decision["productive_in_slice"])
         self.assertTrue(decision["context_only"])
+        self.assertIsNotNone(decision["submit_result"])
+        self.assertEqual("continuation.record", decision["submit_result"].call_type)
+        self.assertEqual(
+            "blocked-evidence-review",
+            decision["submit_result"].result["post_call_guidance"]["dominant_target_kind"],
+        )
+        self.assertEqual(
+            "capture-blocked-evidence-next",
+            decision["submit_result"].result["post_call_guidance"]["immediate_follow_up"][
+                "follow_up_behavior_kind"
+            ],
+        )
+
+    def test_submit_prepared_review_context_capture_rejects_when_posture_becomes_stale(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is settled.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+        prepared_call = processor.prepare_next_call_from_draft(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review.md",
+                    "role": "jarvis",
+                }
+            },
+        )["prepared_call"]
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=2,
+                current_active_item="I003",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "verified",
+                        "depends_on": ["I001"],
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is settled.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+
+        decision = processor.submit_prepared_next_call(prepared_call=prepared_call)
+        storage.close()
+
+        self.assertEqual("stale_prepared_call", decision["decision_kind"])
+        self.assertFalse(decision["allowed_to_submit"])
+        self.assertTrue(decision["stale_or_blocked"])
+        self.assertTrue(decision["productive_in_slice"])
+        self.assertFalse(decision["context_only"])
         self.assertIsNone(decision["submit_result"])
 
     def test_submit_prepared_child_job_start_rejects_when_child_leg_is_stale(self) -> None:
@@ -3918,6 +4047,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         self.assertEqual("stale_prepared_call", decision["decision_kind"])
         self.assertFalse(decision["allowed_to_submit"])
+        self.assertIsNone(decision["submission_mode"])
         self.assertTrue(decision["stale_or_blocked"])
         self.assertIsNone(decision["submit_result"])
         self.assertEqual("unavailable_in_slice", decision["fresh_preflight"]["preflight_kind"])
@@ -3971,6 +4101,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         self.assertEqual("unavailable_in_slice", decision["decision_kind"])
         self.assertFalse(decision["allowed_to_submit"])
+        self.assertIsNone(decision["submission_mode"])
         self.assertTrue(decision["unavailable_in_slice"])
         self.assertIsNone(decision["submit_result"])
 
