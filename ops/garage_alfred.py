@@ -503,12 +503,17 @@ class GarageAlfredProcessor:
         checkpoint_id = call.get("checkpoint_id") or self._ids.mint_checkpoint_id(task_id)
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
-        _, artifact_writes = self._collect_registered_evidence(
+        evidence_refs, artifact_writes = self._collect_registered_evidence(
             call,
             task_id=task_id,
             job_id=str(call["job_id"]) if "job_id" in call else None,
             event_id=event_id,
             recorded_at=recorded_at,
+        )
+        tracked_plan_write = self._mutate_tracked_plan_for_supporting_evidence(
+            task_id,
+            recorded_at,
+            evidence_refs=evidence_refs,
         )
         event = self._build_checkpoint_created_event(
             call,
@@ -553,6 +558,7 @@ class GarageAlfredProcessor:
             records=(
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("checkpoint-record", checkpoint_record),
+                *(() if tracked_plan_write is None else (tracked_plan_write,)),
                 *artifact_writes,
                 self._event_record_write(event),
             ),
@@ -562,12 +568,17 @@ class GarageAlfredProcessor:
         task_id = call["task_id"]
         recorded_at = self._recorded_at(call)
         event_id = self._ids.mint_event_id(task_id)
-        _, artifact_writes = self._collect_registered_evidence(
+        evidence_refs, artifact_writes = self._collect_registered_evidence(
             call,
             task_id=task_id,
             job_id=str(call["job_id"]) if "job_id" in call else None,
             event_id=event_id,
             recorded_at=recorded_at,
+        )
+        tracked_plan_write = self._mutate_tracked_plan_for_supporting_evidence(
+            task_id,
+            recorded_at,
+            evidence_refs=evidence_refs,
         )
         event = self._build_continuation_recorded_event(call, event_id, recorded_at)
         continuation_record = {
@@ -601,6 +612,7 @@ class GarageAlfredProcessor:
             records=(
                 GarageRecordWrite("task-record", task_record),
                 GarageRecordWrite("continuation-record", continuation_record),
+                *(() if tracked_plan_write is None else (tracked_plan_write,)),
                 *artifact_writes,
                 self._event_record_write(event),
             ),
@@ -1018,11 +1030,14 @@ class GarageAlfredProcessor:
             current_item["status"] = (
                 "verified" if self._proof_gate_satisfied(current_item) else "done_unverified"
             )
-            next_item = self._next_executable_item(plan, exclude_item_id=current_item["item_id"])
-            if next_item is None:
-                plan.pop("current_active_item", None)
+            if current_item["status"] == "done_unverified":
+                plan["current_active_item"] = current_item["item_id"]
             else:
-                plan["current_active_item"] = next_item["item_id"]
+                next_item = self._next_executable_item(plan, exclude_item_id=current_item["item_id"])
+                if next_item is None:
+                    plan.pop("current_active_item", None)
+                else:
+                    plan["current_active_item"] = next_item["item_id"]
         elif reported_status == "partial":
             if status == "needs_child_job":
                 current_item["status"] = "in_progress"
@@ -1063,6 +1078,39 @@ class GarageAlfredProcessor:
             evidence_refs,
         )
         plan["current_active_item"] = current_item["item_id"]
+        return self._tracked_plan_write(plan, recorded_at)
+
+    def _mutate_tracked_plan_for_supporting_evidence(
+        self,
+        task_id: str,
+        recorded_at: str,
+        *,
+        evidence_refs: tuple[dict[str, Any], ...],
+    ) -> GarageRecordWrite | None:
+        if not evidence_refs:
+            return None
+        try:
+            plan = self._existing_active_tracked_plan(task_id)
+        except GarageAlfredProcessingError:
+            return None
+        if plan is None:
+            return None
+        target_item = self._verification_pending_plan_item(plan)
+        if target_item is None:
+            return None
+        target_item["evidence_refs"] = self._merge_evidence_refs(
+            target_item.get("evidence_refs"),
+            evidence_refs,
+        )
+        if self._proof_gate_satisfied(target_item):
+            target_item["status"] = "verified"
+            next_item = self._next_executable_item(plan, exclude_item_id=target_item["item_id"])
+            if next_item is None:
+                plan.pop("current_active_item", None)
+            else:
+                plan["current_active_item"] = next_item["item_id"]
+        else:
+            plan["current_active_item"] = target_item["item_id"]
         return self._tracked_plan_write(plan, recorded_at)
 
     def _tracked_plan_write(
@@ -1279,6 +1327,22 @@ class GarageAlfredProcessor:
         current_active_item = plan.get("current_active_item")
         if isinstance(current_active_item, str):
             return self._find_plan_item(plan, current_active_item)
+        return None
+
+    def _verification_pending_plan_item(self, plan: dict[str, Any]) -> dict[str, Any] | None:
+        current_item = self._current_plan_item(plan)
+        if (
+            isinstance(current_item, dict)
+            and current_item.get("status") == "done_unverified"
+            and not self._proof_gate_satisfied(current_item)
+        ):
+            return current_item
+        for item in reversed(plan.get("items", [])):
+            if (
+                item.get("status") == "done_unverified"
+                and not self._proof_gate_satisfied(item)
+            ):
+                return item
         return None
 
     def _find_plan_item(

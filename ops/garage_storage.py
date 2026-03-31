@@ -12,6 +12,7 @@ from ops.garage_alfred import (
     Clock,
     GarageAlfredProcessor,
     GarageOfficialBundle,
+    MECHANICAL_PROOF_RULE_TYPES,
 )
 from ops.garage_runtime import GarageRecordWrite
 
@@ -246,6 +247,24 @@ class GarageStorageAdapter:
                 if isinstance(current_active_plan_item, dict)
                 else False
             ),
+            "relevant_verification_rule_type": (
+                relevant_plan_item.get("verification_rule_type")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "relevant_proof_gate_reason": (
+                relevant_plan_item.get("proof_gate_reason")
+                if isinstance(relevant_plan_item, dict)
+                else None
+            ),
+            "is_verification_pending": (
+                isinstance(relevant_plan_item, dict)
+                and bool(relevant_plan_item.get("is_verification_pending"))
+            ),
+            "is_waiting_on_proof": (
+                isinstance(relevant_plan_item, dict)
+                and bool(relevant_plan_item.get("is_verification_pending"))
+            ),
             "is_waiting_on_child": task_record.get("task_state") == "waiting_on_child",
             "is_resuming": task_record.get("task_state") == "resuming",
             "is_running": task_record.get("task_state") == "running",
@@ -262,6 +281,11 @@ class GarageStorageAdapter:
             ),
             "resume_evidence_refs": self.resolve_resume_evidence_refs(task_id),
             "next_plan_resume_target": self.resolve_next_plan_resume_target(task_id),
+            "next_executable_unavailable_reason": (
+                active_plan_summary.get("next_executable_unavailable_reason")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
         }
 
     def read_job_state_summary(self, job_id: str) -> dict[str, Any] | None:
@@ -273,6 +297,11 @@ class GarageStorageAdapter:
         attempt_no = self.latest_attempt_for_job(job_id)
         latest_state_event = self._latest_job_state_event(history)
         task_record = self.read_task_record(str(job_record["task_id"]))
+        relevant_plan_item = (
+            self.resolve_relevant_plan_item(str(job_record["task_id"]))
+            if task_record is not None and task_record.get("current_job_id") == job_id
+            else None
+        )
         return {
             "job_record": job_record,
             "latest_event": latest_event,
@@ -293,6 +322,19 @@ class GarageStorageAdapter:
             "is_materially_new_child_leg": job_record.get("parent_job_id") is not None,
             "is_current_task_leg": (
                 task_record is not None and task_record.get("current_job_id") == job_id
+            ),
+            "relevant_plan_item_id": (
+                relevant_plan_item.get("item_id") if isinstance(relevant_plan_item, dict) else None
+            ),
+            "relevant_plan_item_verification_pending": (
+                relevant_plan_item.get("is_verification_pending")
+                if isinstance(relevant_plan_item, dict)
+                else False
+            ),
+            "relevant_plan_item_proof_satisfied": (
+                relevant_plan_item.get("proof_satisfied")
+                if isinstance(relevant_plan_item, dict)
+                else False
             ),
         }
 
@@ -337,9 +379,19 @@ class GarageStorageAdapter:
         if plan is None:
             return None
         items = [self._plan_item_summary(plan, item) for item in plan.get("items", [])]
+        current_active_item_summary = self._resolve_active_plan_item_summary(plan, items)
+        relevant_plan_item_summary = self._resolve_relevant_plan_item_summary(
+            items,
+            current_active_item_summary,
+        )
         next_executable_item = next(
             (item for item in items if item["is_executable"]),
             None,
+        )
+        next_executable_unavailable_reason = self._next_executable_unavailable_reason(
+            items,
+            relevant_plan_item_summary,
+            next_executable_item,
         )
         return {
             "task_id": task_id,
@@ -348,9 +400,16 @@ class GarageStorageAdapter:
             "current_active_item": plan.get("current_active_item"),
             "plan": plan,
             "items": items,
-            "current_active_item_summary": self.resolve_active_plan_item(task_id),
+            "current_active_item_summary": current_active_item_summary,
             "next_executable_item_summary": next_executable_item,
-            "relevant_plan_item_summary": self.resolve_relevant_plan_item(task_id),
+            "next_executable_unavailable_reason": next_executable_unavailable_reason,
+            "relevant_plan_item_summary": relevant_plan_item_summary,
+            "verification_pending_item_summary": (
+                relevant_plan_item_summary
+                if isinstance(relevant_plan_item_summary, dict)
+                and relevant_plan_item_summary.get("is_verification_pending")
+                else None
+            ),
         }
 
     def read_plan_item_summary(
@@ -377,17 +436,8 @@ class GarageStorageAdapter:
         plan = self.read_tracked_plan(task_id, plan_version)
         if plan is None:
             return None
-        current_active_item = plan.get("current_active_item")
-        if isinstance(current_active_item, str):
-            return self.read_plan_item_summary(task_id, plan_version, current_active_item)
-        active_candidates = [
-            self._plan_item_summary(plan, item)
-            for item in plan.get("items", [])
-            if item.get("status") in {"in_progress", "needs_child_job", "blocked"}
-        ]
-        if len(active_candidates) == 1:
-            return active_candidates[0]
-        return None
+        items = [self._plan_item_summary(plan, item) for item in plan.get("items", [])]
+        return self._resolve_active_plan_item_summary(plan, items)
 
     def active_plan_linkage_summary(self, task_id: str) -> dict[str, Any] | None:
         task_record = self.read_task_record(task_id)
@@ -413,6 +463,16 @@ class GarageStorageAdapter:
                 if isinstance(active_plan_summary, dict)
                 else None
             ),
+            "relevant_plan_item_summary": (
+                active_plan_summary.get("relevant_plan_item_summary")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
+            "verification_pending_item_summary": (
+                active_plan_summary.get("verification_pending_item_summary")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
             "latest_checkpoint_id": latest_checkpoint_id,
             "latest_checkpoint_plan_version": (
                 latest_checkpoint.get("plan_version") if latest_checkpoint else None
@@ -423,12 +483,18 @@ class GarageStorageAdapter:
             "latest_checkpoint": latest_checkpoint,
             "latest_continuation": latest_continuation,
             "next_plan_resume_target": self.resolve_next_plan_resume_target(task_id),
+            "next_executable_unavailable_reason": (
+                active_plan_summary.get("next_executable_unavailable_reason")
+                if isinstance(active_plan_summary, dict)
+                else None
+            ),
         }
 
     def resolve_task_resume_anchor(self, task_id: str) -> dict[str, Any] | None:
         task_record = self.read_task_record(task_id)
         if task_record is None:
             return None
+        relevant_plan_item = self.resolve_relevant_plan_item(task_id)
         latest_continuation = self.latest_continuation_for_task(task_id)
         if isinstance(latest_continuation, dict):
             active_plan_item = self.resolve_active_plan_item(task_id)
@@ -440,6 +506,25 @@ class GarageStorageAdapter:
                 "current_active_item": (
                     active_plan_item.get("item_id") if isinstance(active_plan_item, dict) else None
                 ),
+                "relevant_plan_item": (
+                    relevant_plan_item.get("item_id") if isinstance(relevant_plan_item, dict) else None
+                ),
+                "verification_pending": (
+                    relevant_plan_item.get("is_verification_pending")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "proof_satisfied": (
+                    relevant_plan_item.get("proof_satisfied")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "verification_rule_type": (
+                    relevant_plan_item.get("verification_rule_type")
+                    if isinstance(relevant_plan_item, dict)
+                    else None
+                ),
+                "evidence_refs": self.resolve_resume_evidence_refs(task_id),
                 "record": latest_continuation,
             }
         latest_checkpoint = None
@@ -453,6 +538,25 @@ class GarageStorageAdapter:
                 "job_id": latest_checkpoint.get("job_id"),
                 "plan_version": latest_checkpoint.get("plan_version"),
                 "current_active_item": latest_checkpoint.get("current_active_item"),
+                "relevant_plan_item": (
+                    relevant_plan_item.get("item_id") if isinstance(relevant_plan_item, dict) else None
+                ),
+                "verification_pending": (
+                    relevant_plan_item.get("is_verification_pending")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "proof_satisfied": (
+                    relevant_plan_item.get("proof_satisfied")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "verification_rule_type": (
+                    relevant_plan_item.get("verification_rule_type")
+                    if isinstance(relevant_plan_item, dict)
+                    else None
+                ),
+                "evidence_refs": self.resolve_resume_evidence_refs(task_id),
                 "record": latest_checkpoint,
             }
         current_job_id = task_record.get("current_job_id")
@@ -471,6 +575,25 @@ class GarageStorageAdapter:
                 "current_active_item": (
                     active_plan_item.get("item_id") if isinstance(active_plan_item, dict) else None
                 ),
+                "relevant_plan_item": (
+                    relevant_plan_item.get("item_id") if isinstance(relevant_plan_item, dict) else None
+                ),
+                "verification_pending": (
+                    relevant_plan_item.get("is_verification_pending")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "proof_satisfied": (
+                    relevant_plan_item.get("proof_satisfied")
+                    if isinstance(relevant_plan_item, dict)
+                    else False
+                ),
+                "verification_rule_type": (
+                    relevant_plan_item.get("verification_rule_type")
+                    if isinstance(relevant_plan_item, dict)
+                    else None
+                ),
+                "evidence_refs": self.resolve_resume_evidence_refs(task_id),
                 "record": current_job["latest_state_event"],
             }
         return None
@@ -480,21 +603,58 @@ class GarageStorageAdapter:
         if active_plan_summary is None:
             return None
         current_item = active_plan_summary.get("current_active_item_summary")
+        relevant_item = active_plan_summary.get("relevant_plan_item_summary")
         resume_anchor = self.resolve_task_resume_anchor(task_id)
+        next_executable_unavailable_reason = active_plan_summary.get(
+            "next_executable_unavailable_reason"
+        )
+        if (
+            isinstance(relevant_item, dict)
+            and relevant_item.get("is_verification_pending")
+        ):
+            return {
+                "task_id": task_id,
+                "plan_version": active_plan_summary["plan_version"],
+                "target_kind": "verification-pending",
+                "item": relevant_item,
+                "resume_anchor": resume_anchor,
+                "next_executable_unavailable_reason": next_executable_unavailable_reason,
+            }
+        if isinstance(relevant_item, dict) and relevant_item.get("is_blocked"):
+            return {
+                "task_id": task_id,
+                "plan_version": active_plan_summary["plan_version"],
+                "target_kind": "blocked-evidence-review",
+                "item": relevant_item,
+                "resume_anchor": resume_anchor,
+                "next_executable_unavailable_reason": next_executable_unavailable_reason,
+            }
         if isinstance(current_item, dict):
             return {
                 "task_id": task_id,
                 "plan_version": active_plan_summary["plan_version"],
+                "target_kind": "active-item",
                 "item": current_item,
                 "resume_anchor": resume_anchor,
+                "next_executable_unavailable_reason": next_executable_unavailable_reason,
             }
         next_item = self.resolve_next_executable_plan_item(task_id)
         if isinstance(next_item, dict):
             return {
                 "task_id": task_id,
                 "plan_version": active_plan_summary["plan_version"],
+                "target_kind": "next-executable",
                 "item": next_item,
                 "resume_anchor": resume_anchor,
+                "next_executable_unavailable_reason": next_executable_unavailable_reason,
+            }
+        if isinstance(resume_anchor, dict):
+            return {
+                "task_id": task_id,
+                "plan_version": active_plan_summary["plan_version"],
+                "target_kind": "resume-anchor-only",
+                "resume_anchor": resume_anchor,
+                "next_executable_unavailable_reason": next_executable_unavailable_reason,
             }
         return None
 
@@ -507,6 +667,12 @@ class GarageStorageAdapter:
                 return item
         return None
 
+    def explain_next_executable_unavailable(self, task_id: str) -> dict[str, Any] | None:
+        active_plan_summary = self.read_active_plan_summary(task_id)
+        if active_plan_summary is None:
+            return None
+        return active_plan_summary.get("next_executable_unavailable_reason")
+
     def resolve_relevant_plan_item(self, task_id: str) -> dict[str, Any] | None:
         task_record = self.read_task_record(task_id)
         if task_record is None:
@@ -517,14 +683,24 @@ class GarageStorageAdapter:
         plan = self.read_tracked_plan(task_id, plan_version)
         if plan is None:
             return None
-        current_item = self.resolve_active_plan_item(task_id)
-        if isinstance(current_item, dict):
-            return current_item
         item_summaries = [self._plan_item_summary(plan, item) for item in plan.get("items", [])]
-        for item in reversed(item_summaries):
-            if item["evidence_count"] > 0 or item["status"] in {"done_unverified", "verified", "blocked"}:
-                return item
-        return None
+        current_item = self._resolve_active_plan_item_summary(plan, item_summaries)
+        return self._resolve_relevant_plan_item_summary(item_summaries, current_item)
+
+    def read_relevant_proof_item_summary(self, task_id: str) -> dict[str, Any] | None:
+        relevant_item = self.resolve_relevant_plan_item(task_id)
+        if not isinstance(relevant_item, dict):
+            return None
+        return {
+            "item_id": relevant_item.get("item_id"),
+            "status": relevant_item.get("status"),
+            "verification_rule_type": relevant_item.get("verification_rule_type"),
+            "proof_satisfied": relevant_item.get("proof_satisfied"),
+            "proof_gate_reason": relevant_item.get("proof_gate_reason"),
+            "is_verification_pending": relevant_item.get("is_verification_pending"),
+            "evidence_refs": relevant_item.get("evidence_refs", ()),
+            "evidence_count": relevant_item.get("evidence_count", 0),
+        }
 
     def resolve_resume_evidence_refs(self, task_id: str) -> tuple[dict[str, Any], ...]:
         latest_continuation = self.latest_continuation_for_task(task_id)
@@ -544,6 +720,189 @@ class GarageStorageAdapter:
         if isinstance(relevant_item, dict):
             return tuple(dict(ref) for ref in relevant_item.get("evidence_refs", ()))
         return ()
+
+    @staticmethod
+    def _resolve_active_plan_item_summary(
+        plan: dict[str, Any],
+        item_summaries: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        current_active_item = plan.get("current_active_item")
+        if isinstance(current_active_item, str):
+            for item in item_summaries:
+                if item.get("item_id") == current_active_item:
+                    return item
+        active_candidates = [
+            item for item in item_summaries if item["status"] in {"in_progress", "needs_child_job", "blocked"}
+        ]
+        if len(active_candidates) == 1:
+            return active_candidates[0]
+        return None
+
+    @staticmethod
+    def _resolve_relevant_plan_item_summary(
+        item_summaries: list[dict[str, Any]],
+        current_item: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if isinstance(current_item, dict):
+            return current_item
+        for item in reversed(item_summaries):
+            if item.get("is_verification_pending"):
+                return item
+        for item in reversed(item_summaries):
+            if item["evidence_count"] > 0 or item["status"] in {"verified", "blocked"}:
+                return item
+        return None
+
+    @staticmethod
+    def _next_executable_unavailable_reason(
+        item_summaries: list[dict[str, Any]],
+        relevant_item: dict[str, Any] | None,
+        next_executable_item: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if isinstance(next_executable_item, dict):
+            return None
+        items_by_id = {item["item_id"]: item for item in item_summaries}
+        for item in item_summaries:
+            if item["status"] != "todo":
+                continue
+            dependency_ids = item.get("depends_on", ())
+            if not dependency_ids:
+                continue
+            for dependency_id in dependency_ids:
+                dependency = items_by_id.get(str(dependency_id))
+                if dependency is None:
+                    return {
+                        "reason": "missing_dependency",
+                        "waiting_item_id": item["item_id"],
+                        "blocking_dependency_item_id": dependency_id,
+                    }
+                if dependency["status"] == "done_unverified":
+                    return {
+                        "reason": "dependency_unverified",
+                        "waiting_item_id": item["item_id"],
+                        "blocking_dependency_item_id": dependency["item_id"],
+                        "verification_rule_type": dependency.get("verification_rule_type"),
+                        "proof_gate_reason": dependency.get("proof_gate_reason"),
+                    }
+                if dependency["status"] == "blocked":
+                    return {
+                        "reason": "dependency_blocked",
+                        "waiting_item_id": item["item_id"],
+                        "blocking_dependency_item_id": dependency["item_id"],
+                    }
+                if dependency["status"] not in {"verified", "abandoned"}:
+                    return {
+                        "reason": "dependency_incomplete",
+                        "waiting_item_id": item["item_id"],
+                        "blocking_dependency_item_id": dependency["item_id"],
+                        "blocking_dependency_status": dependency["status"],
+                    }
+        if isinstance(relevant_item, dict) and relevant_item.get("is_verification_pending"):
+            return {
+                "reason": "verification_pending",
+                "blocking_item_id": relevant_item["item_id"],
+                "verification_rule_type": relevant_item.get("verification_rule_type"),
+                "proof_gate_reason": relevant_item.get("proof_gate_reason"),
+            }
+        if isinstance(relevant_item, dict) and relevant_item.get("is_blocked"):
+            return {
+                "reason": "blocked_item",
+                "blocking_item_id": relevant_item["item_id"],
+                "evidence_count": relevant_item.get("evidence_count"),
+            }
+        return None
+
+    @staticmethod
+    def _proof_gate_evaluation(item: dict[str, Any]) -> dict[str, Any]:
+        verification_rule = item.get("verification_rule")
+        if not isinstance(verification_rule, dict):
+            return {
+                "rule_type": None,
+                "supported": False,
+                "satisfied": False,
+                "reason": "no_verification_rule",
+            }
+
+        rule_type = verification_rule.get("type")
+        if not isinstance(rule_type, str):
+            return {
+                "rule_type": None,
+                "supported": False,
+                "satisfied": False,
+                "reason": "no_verification_rule_type",
+            }
+
+        evidence_refs = [ref for ref in item.get("evidence_refs", []) if isinstance(ref, dict)]
+        artifact_refs = [ref for ref in evidence_refs if "artifact_id" in ref]
+        params = verification_rule.get("params") if isinstance(verification_rule.get("params"), dict) else {}
+
+        if rule_type not in MECHANICAL_PROOF_RULE_TYPES:
+            reason = "unsupported_verification_rule"
+            if rule_type == "manual_review_required":
+                reason = "manual_review_required"
+            elif rule_type == "downstream_item_confirms":
+                reason = "downstream_item_confirms"
+            elif rule_type == "test_pass":
+                reason = "test_pass_not_mechanically_supported"
+            return {
+                "rule_type": rule_type,
+                "supported": False,
+                "satisfied": False,
+                "reason": reason,
+            }
+
+        if rule_type == "no_extra_requirement":
+            return {
+                "rule_type": rule_type,
+                "supported": True,
+                "satisfied": True,
+                "reason": None,
+            }
+        if rule_type == "artifact_exists":
+            satisfied = bool(artifact_refs)
+            return {
+                "rule_type": rule_type,
+                "supported": True,
+                "satisfied": satisfied,
+                "reason": None if satisfied else "missing_artifact_ref",
+            }
+        if rule_type == "artifact_matches_kind":
+            required_kind = params.get("kind")
+            satisfied = any(ref.get("kind") == required_kind for ref in artifact_refs)
+            return {
+                "rule_type": rule_type,
+                "supported": True,
+                "satisfied": satisfied,
+                "reason": None if satisfied else "missing_required_artifact_kind",
+            }
+        if rule_type == "result_present":
+            satisfied = any(ref.get("kind") in {"result-json", "summary"} for ref in evidence_refs)
+            return {
+                "rule_type": rule_type,
+                "supported": True,
+                "satisfied": satisfied,
+                "reason": None if satisfied else "missing_result_evidence",
+            }
+        if rule_type == "summary_present":
+            satisfied = any(ref.get("kind") == "summary" for ref in evidence_refs)
+            return {
+                "rule_type": rule_type,
+                "supported": True,
+                "satisfied": satisfied,
+                "reason": None if satisfied else "missing_summary_evidence",
+            }
+        minimum_count = params.get("minimum_count", 1)
+        try:
+            minimum_count = int(minimum_count)
+        except (TypeError, ValueError):
+            minimum_count = 1
+        satisfied = len(evidence_refs) >= max(1, minimum_count)
+        return {
+            "rule_type": rule_type,
+            "supported": True,
+            "satisfied": satisfied,
+            "reason": None if satisfied else "insufficient_evidence_bundle",
+        }
 
     @staticmethod
     def _latest_job_state_event(
@@ -580,6 +939,7 @@ class GarageStorageAdapter:
         item: dict[str, Any],
     ) -> dict[str, Any]:
         status = str(item["status"])
+        proof_gate = GarageStorageAdapter._proof_gate_evaluation(item)
         dependencies_resolved = GarageStorageAdapter._dependencies_resolved(
             plan.get("items", []),
             item,
@@ -613,7 +973,10 @@ class GarageStorageAdapter:
             "dependencies_resolved": dependencies_resolved,
             "is_executable": status == "todo" and dependencies_resolved,
             "is_current_target": plan.get("current_active_item") == item.get("item_id"),
-            "proof_satisfied": GarageAlfredProcessor._proof_gate_satisfied(item),
+            "proof_satisfied": proof_gate["satisfied"],
+            "proof_gate_supported": proof_gate["supported"],
+            "proof_gate_reason": proof_gate["reason"],
+            "is_verification_pending": status == "done_unverified" and not proof_gate["satisfied"],
         }
 
     @staticmethod
