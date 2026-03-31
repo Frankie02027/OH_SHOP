@@ -225,6 +225,7 @@ class GarageStorageAdapter:
         resume_anchor = self.resolve_task_resume_anchor(task_id)
         task_policy = self.effective_task_policy_summary(task_id)
         immediate_follow_up = self.summarize_immediate_follow_up_behavior(task_id)
+        next_call_hint = self.summarize_next_call_hint(task_id)
         return {
             "task_record": task_record,
             "latest_event": latest_event,
@@ -353,6 +354,7 @@ class GarageStorageAdapter:
             ),
             "effective_task_policy": task_policy,
             "immediate_follow_up_behavior": immediate_follow_up,
+            "next_call_hint": next_call_hint,
             "dominant_target": (
                 task_policy.get("dominant_target") if isinstance(task_policy, dict) else None
             ),
@@ -462,6 +464,14 @@ class GarageStorageAdapter:
                 immediate_follow_up.get("productive_in_slice")
                 if isinstance(immediate_follow_up, dict)
                 else False
+            ),
+            "next_call_hint_kind": (
+                next_call_hint.get("hint_kind") if isinstance(next_call_hint, dict) else None
+            ),
+            "next_call_recommended_call_type": (
+                next_call_hint.get("recommended_call_type")
+                if isinstance(next_call_hint, dict)
+                else None
             ),
             "allowed_call_policy": (
                 task_policy.get("allowed_call_policy")
@@ -852,6 +862,21 @@ class GarageStorageAdapter:
             return None
         return policy.get("best_next_move")
 
+    def summarize_next_call_hint(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        task_policy = self.effective_task_policy_summary(task_id)
+        if not isinstance(task_policy, dict):
+            return None
+        immediate_follow_up = self.summarize_immediate_follow_up_behavior(task_id)
+        return self._classify_next_call_hint(
+            task_id=task_id,
+            task_record=task_record,
+            task_policy=task_policy,
+            immediate_follow_up=immediate_follow_up,
+        )
+
     def summarize_immediate_follow_up_behavior(
         self,
         task_id: str,
@@ -1108,6 +1133,96 @@ class GarageStorageAdapter:
             "review_context_capture_only": review_context_capture_only,
             "blocked_evidence_context_capture_only": blocked_evidence_context_capture_only,
             "no_productive_follow_up_in_slice": no_productive_follow_up_in_slice,
+        }
+
+    @staticmethod
+    def _classify_next_call_hint(
+        *,
+        task_id: str,
+        task_record: dict[str, Any],
+        task_policy: dict[str, Any],
+        immediate_follow_up: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        dominant_target_kind = task_policy.get("dominant_target_kind")
+        dominant_target = task_policy.get("dominant_target")
+        best_next_move = task_policy.get("best_next_move")
+        current_job_id = task_record.get("current_job_id")
+        current_job_state = task_record.get("task_state")
+        follow_up_kind = (
+            immediate_follow_up.get("follow_up_behavior_kind")
+            if isinstance(immediate_follow_up, dict)
+            else None
+        )
+        follow_up_reason = (
+            immediate_follow_up.get("follow_up_behavior_reason")
+            if isinstance(immediate_follow_up, dict)
+            else None
+        )
+        recommended_call_type = (
+            best_next_move.get("call_type") if isinstance(best_next_move, dict) else None
+        )
+        target_item_id = None
+        if isinstance(dominant_target, dict):
+            item = dominant_target.get("item")
+            if isinstance(item, dict):
+                target_item_id = item.get("item_id")
+
+        hint_kind = "unavailable-in-slice"
+        hint_reason = (
+            follow_up_reason
+            if isinstance(follow_up_reason, str) and follow_up_reason
+            else "no concrete next supported call is available in this slice"
+        )
+        execution_ready = False
+        requires_additional_user_or_agent_input = False
+        context_only = False
+        unavailable_in_slice = True
+
+        if follow_up_kind == "start-next-executable-next" and recommended_call_type == "job.start":
+            hint_kind = "executable-now"
+            execution_ready = True
+            unavailable_in_slice = False
+            hint_reason = best_next_move.get("reason") or hint_reason
+        elif follow_up_kind == "progress-child-leg-next":
+            if recommended_call_type == "job.start" and isinstance(current_job_id, str):
+                hint_kind = "executable-now"
+                execution_ready = True
+                unavailable_in_slice = False
+                hint_reason = best_next_move.get("reason") or hint_reason
+            else:
+                hint_kind = "unavailable-in-slice"
+                hint_reason = best_next_move.get("reason") or hint_reason
+        elif follow_up_kind == "gather-proof-next" and isinstance(recommended_call_type, str):
+            hint_kind = "caller-input-still-required"
+            requires_additional_user_or_agent_input = True
+            unavailable_in_slice = False
+            hint_reason = best_next_move.get("reason") or hint_reason
+        elif follow_up_kind in {
+            "capture-review-context-next",
+            "capture-blocked-evidence-next",
+        } and isinstance(recommended_call_type, str):
+            hint_kind = "context-only"
+            requires_additional_user_or_agent_input = True
+            context_only = True
+            unavailable_in_slice = False
+            hint_reason = best_next_move.get("reason") or hint_reason
+        elif follow_up_kind == "resume-active-leg-next":
+            hint_kind = "unavailable-in-slice"
+            hint_reason = best_next_move.get("reason") or hint_reason
+
+        return {
+            "hint_kind": hint_kind,
+            "recommended_call_type": recommended_call_type,
+            "hint_reason": hint_reason,
+            "task_id": task_id,
+            "job_id": current_job_id if isinstance(current_job_id, str) else None,
+            "target_item_id": target_item_id,
+            "dominant_target_kind": dominant_target_kind,
+            "execution_ready": execution_ready,
+            "requires_additional_user_or_agent_input": requires_additional_user_or_agent_input,
+            "context_only": context_only,
+            "unavailable_in_slice": unavailable_in_slice,
+            "current_task_state": current_job_state,
         }
 
     def evaluate_supported_call_policy(

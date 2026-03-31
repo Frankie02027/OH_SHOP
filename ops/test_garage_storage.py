@@ -2816,6 +2816,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         result = processor.process_call(make_checkpoint_create_call(plan_version=1))
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
+        next_call_hint = guidance["next_call_hint"]
         storage.close()
 
         self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
@@ -2836,6 +2837,15 @@ class GarageStorageAdapterTests(unittest.TestCase):
             "job.start",
             tuple(move["call_type"] for move in follow_up["blocked_moves"]),
         )
+        self.assertEqual("caller-input-still-required", next_call_hint["hint_kind"])
+        self.assertEqual("continuation.record", next_call_hint["recommended_call_type"])
+        self.assertEqual("T000001", next_call_hint["task_id"])
+        self.assertEqual("T000001.J001", next_call_hint["job_id"])
+        self.assertEqual("I002", next_call_hint["target_item_id"])
+        self.assertFalse(next_call_hint["execution_ready"])
+        self.assertTrue(next_call_hint["requires_additional_user_or_agent_input"])
+        self.assertFalse(next_call_hint["context_only"])
+        self.assertFalse(next_call_hint["unavailable_in_slice"])
         self.assertEqual("checkpoint.create", result.call_type)
 
     def test_accepted_continuation_call_returns_resolved_next_executable_guidance(self) -> None:
@@ -2883,6 +2893,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
+        next_call_hint = guidance["next_call_hint"]
         storage.close()
 
         self.assertEqual("resolved", guidance["posture_transition"]["transition_kind"])
@@ -2896,6 +2907,15 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(follow_up["actionable_execution"])
         self.assertFalse(follow_up["requires_non_mechanical_review"])
         self.assertEqual("job.start", follow_up["best_next_move"]["call_type"])
+        self.assertEqual("executable-now", next_call_hint["hint_kind"])
+        self.assertEqual("job.start", next_call_hint["recommended_call_type"])
+        self.assertEqual("T000001", next_call_hint["task_id"])
+        self.assertEqual("T000001.J001", next_call_hint["job_id"])
+        self.assertEqual("I003", next_call_hint["target_item_id"])
+        self.assertTrue(next_call_hint["execution_ready"])
+        self.assertFalse(next_call_hint["requires_additional_user_or_agent_input"])
+        self.assertFalse(next_call_hint["context_only"])
+        self.assertFalse(next_call_hint["unavailable_in_slice"])
 
     def test_accepted_continuation_call_returns_review_held_guidance(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -2940,6 +2960,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
+        next_call_hint = guidance["next_call_hint"]
         storage.close()
 
         self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
@@ -2960,6 +2981,13 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(follow_up["requires_non_mechanical_review"])
         self.assertTrue(follow_up["review_context_capture_only"])
         self.assertFalse(follow_up["actionable_execution"])
+        self.assertEqual("context-only", next_call_hint["hint_kind"])
+        self.assertEqual("continuation.record", next_call_hint["recommended_call_type"])
+        self.assertEqual("I002", next_call_hint["target_item_id"])
+        self.assertFalse(next_call_hint["execution_ready"])
+        self.assertTrue(next_call_hint["requires_additional_user_or_agent_input"])
+        self.assertTrue(next_call_hint["context_only"])
+        self.assertFalse(next_call_hint["unavailable_in_slice"])
 
     def test_accepted_continuation_call_returns_blocked_evidence_guidance(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3003,6 +3031,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         )
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
+        next_call_hint = guidance["next_call_hint"]
         storage.close()
 
         self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
@@ -3018,6 +3047,12 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(follow_up["productive_in_slice"])
         self.assertTrue(follow_up["holds_on_blocked_evidence"])
         self.assertTrue(follow_up["blocked_evidence_context_capture_only"])
+        self.assertEqual("context-only", next_call_hint["hint_kind"])
+        self.assertEqual("continuation.record", next_call_hint["recommended_call_type"])
+        self.assertEqual("I002", next_call_hint["target_item_id"])
+        self.assertFalse(next_call_hint["execution_ready"])
+        self.assertTrue(next_call_hint["context_only"])
+        self.assertFalse(next_call_hint["unavailable_in_slice"])
 
     def test_accepted_child_job_request_returns_waiting_on_child_follow_up_guidance(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3051,6 +3086,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         result = processor.process_call(make_child_job_request_call())
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
+        next_call_hint = guidance["next_call_hint"]
         storage.close()
 
         self.assertEqual("waiting-on-child", guidance["dominant_target_kind"])
@@ -3062,6 +3098,12 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(follow_up["waits_on_child_progress"])
         self.assertTrue(follow_up["child_held_progression"])
         self.assertEqual("job.start", follow_up["best_next_move"]["call_type"])
+        self.assertEqual("executable-now", next_call_hint["hint_kind"])
+        self.assertEqual("job.start", next_call_hint["recommended_call_type"])
+        self.assertEqual("T000001.J002", next_call_hint["job_id"])
+        self.assertEqual("I002", next_call_hint["target_item_id"])
+        self.assertTrue(next_call_hint["execution_ready"])
+        self.assertFalse(next_call_hint["unavailable_in_slice"])
 
     def test_accepted_job_start_returns_refreshed_current_job_focus_guidance(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3109,6 +3151,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
         result = processor.process_call(make_job_start_call())
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
+        next_call_hint = guidance["next_call_hint"]
         storage.close()
 
         self.assertEqual("resolved", guidance["posture_transition"]["transition_kind"])
@@ -3124,6 +3167,12 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(follow_up["productive_in_slice"])
         self.assertTrue(follow_up["actionable_execution"])
         self.assertFalse(follow_up["no_productive_follow_up_in_slice"])
+        self.assertEqual("unavailable-in-slice", next_call_hint["hint_kind"])
+        self.assertIsNone(next_call_hint["recommended_call_type"])
+        self.assertEqual("T000001.J001", next_call_hint["job_id"])
+        self.assertEqual("I003", next_call_hint["target_item_id"])
+        self.assertFalse(next_call_hint["execution_ready"])
+        self.assertTrue(next_call_hint["unavailable_in_slice"])
 
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(

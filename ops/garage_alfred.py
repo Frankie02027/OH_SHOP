@@ -252,6 +252,7 @@ class GarageAlfredProcessor:
             )
         effective_task_policy = refreshed_task_summary.get("effective_task_policy")
         immediate_follow_up = refreshed_task_summary.get("immediate_follow_up_behavior")
+        next_call_hint = refreshed_task_summary.get("next_call_hint")
         return {
             "task_id": task_id,
             "posture_transition": posture_transition,
@@ -260,6 +261,7 @@ class GarageAlfredProcessor:
             "dominant_blocker_kind": refreshed_task_summary.get("dominant_blocker_kind"),
             "best_next_move": refreshed_task_summary.get("best_next_move"),
             "immediate_follow_up": immediate_follow_up,
+            "next_call_hint": next_call_hint,
             "execution_allowed": refreshed_task_summary.get("execution_allowed"),
             "execution_held": refreshed_task_summary.get("execution_held"),
             "execution_hold_kind": refreshed_task_summary.get("execution_hold_kind"),
