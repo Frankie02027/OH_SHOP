@@ -66,6 +66,16 @@ class AlfredStateReader(Protocol):
         parent_job_id: str | None = None,
     ) -> dict[str, Any] | None: ...
 
+    def latest_task_state_summary(self, task_id: str) -> dict[str, Any] | None: ...
+
+    def summarize_applied_call_posture_transition(
+        self,
+        task_id: str,
+        call_type: str,
+        *,
+        before_task_summary: dict[str, Any] | None,
+    ) -> dict[str, Any] | None: ...
+
 
 @dataclass(frozen=True)
 class GarageOfficialBundle:
@@ -147,6 +157,7 @@ class GarageAlfredProcessor:
 
         validated_call = validate_inbound_garage_call(data)
         self._enforce_supported_call_policy(validated_call)
+        before_task_summary = self._read_pre_call_task_summary(validated_call)
         runtime_result = self._runtime.process_call(validated_call)
         if self._bundle_applier is None:
             return runtime_result
@@ -161,12 +172,116 @@ class GarageAlfredProcessor:
             ),
         )
         recorded_events, written_records = self._bundle_applier(bundle)
+        enriched_result = self._enrich_post_call_result(
+            validated_call=validated_call,
+            result=bundle.result,
+            before_task_summary=before_task_summary,
+        )
         return GarageProcessingResult(
             call_type=bundle.call_type,
-            result=bundle.result,
+            result=enriched_result,
             recorded_events=recorded_events,
             written_records=written_records,
         )
+
+    def _read_pre_call_task_summary(
+        self,
+        call: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if self._bundle_applier is None or self._state_reader is None:
+            return None
+        reader = getattr(self._state_reader, "latest_task_state_summary", None)
+        if not callable(reader):
+            return None
+        task_id = call.get("task_id")
+        if not isinstance(task_id, str):
+            return None
+        summary = reader(task_id)
+        return dict(summary) if isinstance(summary, dict) else None
+
+    def _enrich_post_call_result(
+        self,
+        *,
+        validated_call: dict[str, Any],
+        result: Any,
+        before_task_summary: dict[str, Any] | None,
+    ) -> Any:
+        guidance = self._build_post_call_guidance(
+            validated_call=validated_call,
+            before_task_summary=before_task_summary,
+            result=result,
+        )
+        if not isinstance(guidance, dict):
+            return result
+        if isinstance(result, dict):
+            enriched = dict(result)
+            enriched["post_call_guidance"] = guidance
+            return enriched
+        return {
+            "result": result,
+            "post_call_guidance": guidance,
+        }
+
+    def _build_post_call_guidance(
+        self,
+        *,
+        validated_call: dict[str, Any],
+        before_task_summary: dict[str, Any] | None,
+        result: Any,
+    ) -> dict[str, Any] | None:
+        if self._state_reader is None:
+            return None
+        task_summary_reader = getattr(self._state_reader, "latest_task_state_summary", None)
+        if not callable(task_summary_reader):
+            return None
+        task_id = self._resolve_result_task_id(validated_call, result)
+        if not isinstance(task_id, str):
+            return None
+        refreshed_task_summary = task_summary_reader(task_id)
+        if not isinstance(refreshed_task_summary, dict):
+            return None
+        transition_reader = getattr(
+            self._state_reader, "summarize_applied_call_posture_transition", None
+        )
+        posture_transition = None
+        if callable(transition_reader):
+            posture_transition = transition_reader(
+                task_id,
+                str(validated_call["call_type"]),
+                before_task_summary=before_task_summary,
+            )
+        effective_task_policy = refreshed_task_summary.get("effective_task_policy")
+        return {
+            "task_id": task_id,
+            "posture_transition": posture_transition,
+            "refreshed_task_policy": effective_task_policy,
+            "dominant_target_kind": refreshed_task_summary.get("dominant_target_kind"),
+            "dominant_blocker_kind": refreshed_task_summary.get("dominant_blocker_kind"),
+            "best_next_move": refreshed_task_summary.get("best_next_move"),
+            "execution_allowed": refreshed_task_summary.get("execution_allowed"),
+            "execution_held": refreshed_task_summary.get("execution_held"),
+            "execution_hold_kind": refreshed_task_summary.get("execution_hold_kind"),
+            "current_job_is_primary_focus": refreshed_task_summary.get(
+                "current_job_is_primary_focus"
+            ),
+            "relevant_plan_item_is_primary_focus": refreshed_task_summary.get(
+                "relevant_plan_item_is_primary_focus"
+            ),
+        }
+
+    @staticmethod
+    def _resolve_result_task_id(
+        validated_call: dict[str, Any],
+        result: Any,
+    ) -> str | None:
+        task_id = validated_call.get("task_id")
+        if isinstance(task_id, str):
+            return task_id
+        if isinstance(result, dict):
+            result_task_id = result.get("task_id")
+            if isinstance(result_task_id, str):
+                return result_task_id
+        return None
 
     def _enforce_supported_call_policy(self, call: dict[str, Any]) -> None:
         if self._state_reader is None:

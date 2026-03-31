@@ -2783,6 +2783,269 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(after["current_job_is_primary_focus"])
         self.assertEqual("continue-active-execution", after["best_next_move"]["move_kind"])
 
+    def test_accepted_checkpoint_call_returns_refreshed_preserved_posture_guidance(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need artifact proof",
+                        "description": "Still needs an official artifact ref.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+
+        result = processor.process_call(make_checkpoint_create_call(plan_version=1))
+        guidance = result.result["post_call_guidance"]
+        storage.close()
+
+        self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
+        self.assertEqual("proof-gathering", guidance["dominant_target_kind"])
+        self.assertEqual("proof-gathering", guidance["dominant_blocker_kind"])
+        self.assertFalse(guidance["execution_allowed"])
+        self.assertEqual("proof-gathering", guidance["execution_hold_kind"])
+        self.assertEqual("attach-artifact-ref", guidance["best_next_move"]["move_kind"])
+        self.assertEqual("checkpoint.create", result.call_type)
+
+    def test_accepted_continuation_call_returns_resolved_next_executable_guidance(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+
+        result = processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        guidance = result.result["post_call_guidance"]
+        storage.close()
+
+        self.assertEqual("resolved", guidance["posture_transition"]["transition_kind"])
+        self.assertEqual("next-executable", guidance["dominant_target_kind"])
+        self.assertIsNone(guidance["dominant_blocker_kind"])
+        self.assertTrue(guidance["execution_allowed"])
+        self.assertEqual("start-next-executable", guidance["best_next_move"]["move_kind"])
+        self.assertEqual("job.start", guidance["best_next_move"]["call_type"])
+
+    def test_accepted_continuation_call_returns_review_held_guidance(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+
+        result = processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+        guidance = result.result["post_call_guidance"]
+        storage.close()
+
+        self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
+        self.assertEqual("review-needed", guidance["dominant_target_kind"])
+        self.assertEqual("review-needed", guidance["dominant_blocker_kind"])
+        self.assertFalse(guidance["execution_allowed"])
+        self.assertEqual("review-needed", guidance["execution_hold_kind"])
+        self.assertEqual(
+            "capture-manual-review-context",
+            guidance["best_next_move"]["move_kind"],
+        )
+        self.assertEqual(
+            "review-required",
+            guidance["refreshed_task_policy"]["dominant_rule_finality_kind"],
+        )
+
+    def test_accepted_continuation_call_returns_blocked_evidence_guidance(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Collect blocked evidence",
+                        "description": "Capture failure evidence for the blocked step.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_failure_report_call(
+                reported_status="blocked",
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+
+        result = processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+        guidance = result.result["post_call_guidance"]
+        storage.close()
+
+        self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
+        self.assertEqual("blocked-evidence-review", guidance["dominant_target_kind"])
+        self.assertEqual("blocked-evidence-review", guidance["dominant_blocker_kind"])
+        self.assertFalse(guidance["execution_allowed"])
+        self.assertEqual("blocked-evidence-review", guidance["execution_hold_kind"])
+        self.assertEqual(
+            "capture-blocked-evidence",
+            guidance["best_next_move"]["move_kind"],
+        )
+
+    def test_accepted_job_start_returns_refreshed_current_job_focus_guidance(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+
+        result = processor.process_call(make_job_start_call())
+        guidance = result.result["post_call_guidance"]
+        storage.close()
+
+        self.assertEqual("resolved", guidance["posture_transition"]["transition_kind"])
+        self.assertEqual("active-item", guidance["dominant_target_kind"])
+        self.assertTrue(guidance["execution_allowed"])
+        self.assertTrue(guidance["current_job_is_primary_focus"])
+        self.assertFalse(guidance["relevant_plan_item_is_primary_focus"])
+        self.assertEqual(
+            "continue-active-execution",
+            guidance["best_next_move"]["move_kind"],
+        )
+
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
             self.root,
