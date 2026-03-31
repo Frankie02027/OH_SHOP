@@ -76,6 +76,12 @@ class AlfredStateReader(Protocol):
         before_task_summary: dict[str, Any] | None,
     ) -> dict[str, Any] | None: ...
 
+    def summarize_next_call_draft_readiness(
+        self,
+        task_id: str,
+        supplied_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None: ...
+
 
 @dataclass(frozen=True)
 class GarageOfficialBundle:
@@ -253,6 +259,8 @@ class GarageAlfredProcessor:
         effective_task_policy = refreshed_task_summary.get("effective_task_policy")
         immediate_follow_up = refreshed_task_summary.get("immediate_follow_up_behavior")
         next_call_hint = refreshed_task_summary.get("next_call_hint")
+        next_call_draft = refreshed_task_summary.get("next_call_draft")
+        next_call_draft_readiness = refreshed_task_summary.get("next_call_draft_readiness")
         return {
             "task_id": task_id,
             "posture_transition": posture_transition,
@@ -262,6 +270,8 @@ class GarageAlfredProcessor:
             "best_next_move": refreshed_task_summary.get("best_next_move"),
             "immediate_follow_up": immediate_follow_up,
             "next_call_hint": next_call_hint,
+            "next_call_draft": next_call_draft,
+            "next_call_draft_readiness": next_call_draft_readiness,
             "execution_allowed": refreshed_task_summary.get("execution_allowed"),
             "execution_held": refreshed_task_summary.get("execution_held"),
             "execution_hold_kind": refreshed_task_summary.get("execution_hold_kind"),
@@ -272,6 +282,19 @@ class GarageAlfredProcessor:
                 "relevant_plan_item_is_primary_focus"
             ),
         }
+
+    def summarize_next_call_draft_readiness(
+        self,
+        task_id: str,
+        supplied_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        if self._state_reader is None:
+            return None
+        reader = getattr(self._state_reader, "summarize_next_call_draft_readiness", None)
+        if not callable(reader):
+            return None
+        readiness = reader(task_id, supplied_fields=supplied_fields)
+        return dict(readiness) if isinstance(readiness, dict) else None
 
     @staticmethod
     def _resolve_result_task_id(

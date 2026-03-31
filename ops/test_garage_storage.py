@@ -2817,6 +2817,23 @@ class GarageStorageAdapterTests(unittest.TestCase):
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
         next_call_hint = guidance["next_call_hint"]
+        next_call_draft = guidance["next_call_draft"]
+        default_readiness = guidance["next_call_draft_readiness"]
+        supplied_readiness = processor.summarize_next_call_draft_readiness(
+            "T000001",
+            supplied_fields={
+                "from_role": "jarvis",
+                "to_role": "alfred",
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/continuation.md",
+                    "role": "jarvis",
+                },
+                "artifact_refs": [make_summary_artifact_ref()],
+                "schema_version": "v9.9",
+                "bogus": "ignored",
+            },
+        )
         storage.close()
 
         self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
@@ -2846,6 +2863,42 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(next_call_hint["requires_additional_user_or_agent_input"])
         self.assertFalse(next_call_hint["context_only"])
         self.assertFalse(next_call_hint["unavailable_in_slice"])
+        self.assertEqual("partially-ready", next_call_draft["draft_kind"])
+        self.assertEqual("continuation.record", next_call_draft["call_type"])
+        self.assertEqual("v0.1", next_call_draft["known_fields"]["schema_version"])
+        self.assertEqual("continuation.record", next_call_draft["known_fields"]["call_type"])
+        self.assertEqual("T000001", next_call_draft["known_fields"]["task_id"])
+        self.assertEqual("T000001.J001", next_call_draft["known_fields"]["job_id"])
+        self.assertEqual(1, next_call_draft["known_fields"]["plan_version"])
+        self.assertEqual(
+            ("from_role", "to_role", "payload_ref"),
+            next_call_draft["missing_required_fields"],
+        )
+        self.assertEqual(("artifact_refs",), next_call_draft["optional_fields_available"])
+        self.assertEqual(
+            ("payload_ref", "payload.content_ref", "artifact_refs"),
+            next_call_draft["cannot_be_prefilled_fields"],
+        )
+        self.assertFalse(next_call_draft["executable_now"])
+        self.assertTrue(next_call_draft["partially_ready"])
+        self.assertFalse(next_call_draft["context_only"])
+        self.assertFalse(next_call_draft["unavailable_in_slice"])
+        self.assertEqual("partially-ready", default_readiness["readiness_kind"])
+        self.assertEqual(
+            ("from_role", "to_role", "payload_ref"),
+            default_readiness["missing_required_fields"],
+        )
+        self.assertFalse(default_readiness["executable_now"])
+        self.assertTrue(default_readiness["partially_ready"])
+        self.assertEqual("executable-now", supplied_readiness["readiness_kind"])
+        self.assertEqual((), supplied_readiness["missing_required_fields"])
+        self.assertEqual(
+            ("from_role", "to_role", "payload_ref", "artifact_refs"),
+            supplied_readiness["accepted_supplied_fields"],
+        )
+        self.assertEqual(("bogus",), supplied_readiness["ignored_supplied_fields"])
+        self.assertEqual(("schema_version",), supplied_readiness["disallowed_supplied_fields"])
+        self.assertTrue(supplied_readiness["executable_now"])
         self.assertEqual("checkpoint.create", result.call_type)
 
     def test_accepted_continuation_call_returns_resolved_next_executable_guidance(self) -> None:
@@ -2894,6 +2947,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
         next_call_hint = guidance["next_call_hint"]
+        next_call_draft = guidance["next_call_draft"]
+        readiness = guidance["next_call_draft_readiness"]
         storage.close()
 
         self.assertEqual("resolved", guidance["posture_transition"]["transition_kind"])
@@ -2916,6 +2971,29 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(next_call_hint["requires_additional_user_or_agent_input"])
         self.assertFalse(next_call_hint["context_only"])
         self.assertFalse(next_call_hint["unavailable_in_slice"])
+        self.assertEqual("executable-now", next_call_draft["draft_kind"])
+        self.assertEqual("job.start", next_call_draft["call_type"])
+        self.assertEqual(
+            {
+                "schema_version": "v0.1",
+                "call_type": "job.start",
+                "task_id": "T000001",
+                "job_id": "T000001.J001",
+            },
+            next_call_draft["known_fields"],
+        )
+        self.assertEqual(
+            ("from_role", "to_role", "reported_at"),
+            next_call_draft["missing_required_fields"],
+        )
+        self.assertTrue(next_call_draft["executable_now"])
+        self.assertFalse(next_call_draft["partially_ready"])
+        self.assertFalse(next_call_draft["context_only"])
+        self.assertFalse(next_call_draft["unavailable_in_slice"])
+        self.assertEqual("executable-now", readiness["readiness_kind"])
+        self.assertEqual((), readiness["missing_required_fields"])
+        self.assertTrue(readiness["executable_now"])
+        self.assertFalse(readiness["partially_ready"])
 
     def test_accepted_continuation_call_returns_review_held_guidance(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -2961,6 +3039,20 @@ class GarageStorageAdapterTests(unittest.TestCase):
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
         next_call_hint = guidance["next_call_hint"]
+        next_call_draft = guidance["next_call_draft"]
+        default_readiness = guidance["next_call_draft_readiness"]
+        supplied_readiness = processor.summarize_next_call_draft_readiness(
+            "T000001",
+            supplied_fields={
+                "from_role": "jarvis",
+                "to_role": "alfred",
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review.md",
+                    "role": "jarvis",
+                },
+            },
+        )
         storage.close()
 
         self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
@@ -2988,6 +3080,23 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(next_call_hint["requires_additional_user_or_agent_input"])
         self.assertTrue(next_call_hint["context_only"])
         self.assertFalse(next_call_hint["unavailable_in_slice"])
+        self.assertEqual("context-only", next_call_draft["draft_kind"])
+        self.assertEqual("continuation.record", next_call_draft["call_type"])
+        self.assertEqual("T000001", next_call_draft["known_fields"]["task_id"])
+        self.assertEqual("T000001.J001", next_call_draft["known_fields"]["job_id"])
+        self.assertEqual(1, next_call_draft["known_fields"]["plan_version"])
+        self.assertEqual(
+            ("from_role", "to_role", "payload_ref"),
+            next_call_draft["missing_required_fields"],
+        )
+        self.assertFalse(next_call_draft["executable_now"])
+        self.assertFalse(next_call_draft["partially_ready"])
+        self.assertTrue(next_call_draft["context_only"])
+        self.assertFalse(next_call_draft["unavailable_in_slice"])
+        self.assertEqual("context-only", default_readiness["readiness_kind"])
+        self.assertEqual("context-only", supplied_readiness["readiness_kind"])
+        self.assertTrue(supplied_readiness["context_only"])
+        self.assertFalse(supplied_readiness["executable_now"])
 
     def test_accepted_continuation_call_returns_blocked_evidence_guidance(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3032,6 +3141,20 @@ class GarageStorageAdapterTests(unittest.TestCase):
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
         next_call_hint = guidance["next_call_hint"]
+        next_call_draft = guidance["next_call_draft"]
+        default_readiness = guidance["next_call_draft_readiness"]
+        supplied_readiness = processor.summarize_next_call_draft_readiness(
+            "T000001",
+            supplied_fields={
+                "from_role": "jarvis",
+                "to_role": "alfred",
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/blocked.md",
+                    "role": "jarvis",
+                },
+            },
+        )
         storage.close()
 
         self.assertEqual("preserved", guidance["posture_transition"]["transition_kind"])
@@ -3053,6 +3176,18 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(next_call_hint["execution_ready"])
         self.assertTrue(next_call_hint["context_only"])
         self.assertFalse(next_call_hint["unavailable_in_slice"])
+        self.assertEqual("context-only", next_call_draft["draft_kind"])
+        self.assertEqual("continuation.record", next_call_draft["call_type"])
+        self.assertEqual(
+            ("from_role", "to_role", "payload_ref"),
+            next_call_draft["missing_required_fields"],
+        )
+        self.assertTrue(next_call_draft["context_only"])
+        self.assertFalse(next_call_draft["unavailable_in_slice"])
+        self.assertEqual("context-only", default_readiness["readiness_kind"])
+        self.assertEqual("context-only", supplied_readiness["readiness_kind"])
+        self.assertTrue(supplied_readiness["context_only"])
+        self.assertFalse(supplied_readiness["executable_now"])
 
     def test_accepted_child_job_request_returns_waiting_on_child_follow_up_guidance(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3087,6 +3222,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
         next_call_hint = guidance["next_call_hint"]
+        next_call_draft = guidance["next_call_draft"]
+        readiness = guidance["next_call_draft_readiness"]
         storage.close()
 
         self.assertEqual("waiting-on-child", guidance["dominant_target_kind"])
@@ -3104,6 +3241,64 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("I002", next_call_hint["target_item_id"])
         self.assertTrue(next_call_hint["execution_ready"])
         self.assertFalse(next_call_hint["unavailable_in_slice"])
+        self.assertEqual("executable-now", next_call_draft["draft_kind"])
+        self.assertEqual("job.start", next_call_draft["call_type"])
+        self.assertEqual("T000001.J002", next_call_draft["known_fields"]["job_id"])
+        self.assertTrue(next_call_draft["executable_now"])
+        self.assertFalse(next_call_draft["unavailable_in_slice"])
+        self.assertEqual("executable-now", readiness["readiness_kind"])
+        self.assertEqual((), readiness["missing_required_fields"])
+        self.assertTrue(readiness["executable_now"])
+
+    def test_waiting_on_child_running_leg_does_not_fake_start_draft(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run child leg",
+                        "description": "Delegate the blocking child work.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+
+        child = processor.process_call(make_child_job_request_call())
+        child_job_id = child.result["job_id"]
+        result = processor.process_call(make_job_start_call(job_id=child_job_id))
+        guidance = result.result["post_call_guidance"]
+        next_call_hint = guidance["next_call_hint"]
+        next_call_draft = guidance["next_call_draft"]
+        readiness = guidance["next_call_draft_readiness"]
+        storage.close()
+
+        self.assertEqual("waiting-on-child", guidance["dominant_target_kind"])
+        self.assertEqual("unavailable-in-slice", next_call_hint["hint_kind"])
+        self.assertIsNone(next_call_hint["recommended_call_type"])
+        self.assertTrue(next_call_hint["unavailable_in_slice"])
+        self.assertEqual("unavailable-in-slice", next_call_draft["draft_kind"])
+        self.assertIsNone(next_call_draft["call_type"])
+        self.assertEqual({}, next_call_draft["known_fields"])
+        self.assertFalse(next_call_draft["executable_now"])
+        self.assertTrue(next_call_draft["unavailable_in_slice"])
+        self.assertEqual("unavailable-in-slice", readiness["readiness_kind"])
+        self.assertEqual((), readiness["accepted_supplied_fields"])
 
     def test_accepted_job_start_returns_refreshed_current_job_focus_guidance(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -3152,6 +3347,8 @@ class GarageStorageAdapterTests(unittest.TestCase):
         guidance = result.result["post_call_guidance"]
         follow_up = guidance["immediate_follow_up"]
         next_call_hint = guidance["next_call_hint"]
+        next_call_draft = guidance["next_call_draft"]
+        readiness = guidance["next_call_draft_readiness"]
         storage.close()
 
         self.assertEqual("resolved", guidance["posture_transition"]["transition_kind"])
@@ -3173,6 +3370,13 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("I003", next_call_hint["target_item_id"])
         self.assertFalse(next_call_hint["execution_ready"])
         self.assertTrue(next_call_hint["unavailable_in_slice"])
+        self.assertEqual("unavailable-in-slice", next_call_draft["draft_kind"])
+        self.assertIsNone(next_call_draft["call_type"])
+        self.assertEqual({}, next_call_draft["known_fields"])
+        self.assertEqual((), next_call_draft["missing_required_fields"])
+        self.assertTrue(next_call_draft["unavailable_in_slice"])
+        self.assertEqual("unavailable-in-slice", readiness["readiness_kind"])
+        self.assertTrue(readiness["unavailable_in_slice"])
 
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(

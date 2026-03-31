@@ -226,6 +226,8 @@ class GarageStorageAdapter:
         task_policy = self.effective_task_policy_summary(task_id)
         immediate_follow_up = self.summarize_immediate_follow_up_behavior(task_id)
         next_call_hint = self.summarize_next_call_hint(task_id)
+        next_call_draft = self.summarize_next_call_draft(task_id)
+        next_call_draft_readiness = self.summarize_next_call_draft_readiness(task_id)
         return {
             "task_record": task_record,
             "latest_event": latest_event,
@@ -355,6 +357,8 @@ class GarageStorageAdapter:
             "effective_task_policy": task_policy,
             "immediate_follow_up_behavior": immediate_follow_up,
             "next_call_hint": next_call_hint,
+            "next_call_draft": next_call_draft,
+            "next_call_draft_readiness": next_call_draft_readiness,
             "dominant_target": (
                 task_policy.get("dominant_target") if isinstance(task_policy, dict) else None
             ),
@@ -471,6 +475,14 @@ class GarageStorageAdapter:
             "next_call_recommended_call_type": (
                 next_call_hint.get("recommended_call_type")
                 if isinstance(next_call_hint, dict)
+                else None
+            ),
+            "next_call_draft_kind": (
+                next_call_draft.get("draft_kind") if isinstance(next_call_draft, dict) else None
+            ),
+            "next_call_readiness_kind": (
+                next_call_draft_readiness.get("readiness_kind")
+                if isinstance(next_call_draft_readiness, dict)
                 else None
             ),
             "allowed_call_policy": (
@@ -877,6 +889,36 @@ class GarageStorageAdapter:
             immediate_follow_up=immediate_follow_up,
         )
 
+    def summarize_next_call_draft(self, task_id: str) -> dict[str, Any] | None:
+        task_record = self.read_task_record(task_id)
+        if task_record is None:
+            return None
+        task_policy = self.effective_task_policy_summary(task_id)
+        if not isinstance(task_policy, dict):
+            return None
+        next_call_hint = self.summarize_next_call_hint(task_id)
+        if not isinstance(next_call_hint, dict):
+            return None
+        return self._classify_next_call_draft(
+            task_id=task_id,
+            task_record=task_record,
+            task_policy=task_policy,
+            next_call_hint=next_call_hint,
+        )
+
+    def summarize_next_call_draft_readiness(
+        self,
+        task_id: str,
+        supplied_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        next_call_draft = self.summarize_next_call_draft(task_id)
+        if not isinstance(next_call_draft, dict):
+            return None
+        return self._classify_next_call_draft_readiness(
+            next_call_draft=next_call_draft,
+            supplied_fields=supplied_fields,
+        )
+
     def summarize_immediate_follow_up_behavior(
         self,
         task_id: str,
@@ -1223,6 +1265,223 @@ class GarageStorageAdapter:
             "context_only": context_only,
             "unavailable_in_slice": unavailable_in_slice,
             "current_task_state": current_job_state,
+        }
+
+    @staticmethod
+    def _classify_next_call_draft(
+        *,
+        task_id: str,
+        task_record: dict[str, Any],
+        task_policy: dict[str, Any],
+        next_call_hint: dict[str, Any],
+    ) -> dict[str, Any]:
+        call_type = next_call_hint.get("recommended_call_type")
+        hint_kind = next_call_hint.get("hint_kind")
+        dominant_target_kind = task_policy.get("dominant_target_kind")
+        dominant_target = task_policy.get("dominant_target")
+        current_plan_version = task_record.get("current_plan_version")
+        current_job_id = task_record.get("current_job_id")
+        target_item_id = next_call_hint.get("target_item_id")
+
+        known_fields: dict[str, Any] = {}
+        missing_required_fields: tuple[str, ...] = ()
+        optional_fields_available: tuple[str, ...] = ()
+        cannot_be_prefilled_fields: tuple[str, ...] = ()
+        draft_kind = "unavailable-in-slice"
+        reason = next_call_hint.get("hint_reason") or "no concrete draft is available in this slice"
+        executable_now = False
+        partially_ready = False
+        context_only = bool(next_call_hint.get("context_only"))
+        unavailable_in_slice = bool(next_call_hint.get("unavailable_in_slice"))
+
+        if call_type == "job.start" and hint_kind == "executable-now":
+            known_fields = {
+                "schema_version": "v0.1",
+                "call_type": "job.start",
+                "task_id": task_id,
+            }
+            if isinstance(current_job_id, str):
+                known_fields["job_id"] = current_job_id
+            missing_required_fields = ("from_role", "to_role", "reported_at")
+            draft_kind = "executable-now"
+            executable_now = isinstance(current_job_id, str)
+            unavailable_in_slice = not executable_now
+            if not executable_now:
+                draft_kind = "partially-ready"
+                partially_ready = True
+            if executable_now:
+                reason = "next job.start call can be formed from current post-call state"
+        elif call_type == "continuation.record" and hint_kind == "caller-input-still-required":
+            known_fields = {
+                "schema_version": "v0.1",
+                "call_type": "continuation.record",
+                "task_id": task_id,
+            }
+            if isinstance(current_job_id, str):
+                known_fields["job_id"] = current_job_id
+            if isinstance(current_plan_version, int):
+                known_fields["plan_version"] = current_plan_version
+            missing_required_fields = ("from_role", "to_role", "payload_ref")
+            optional_fields_available = ("artifact_refs",)
+            cannot_be_prefilled_fields = ("payload_ref", "payload.content_ref", "artifact_refs")
+            draft_kind = "partially-ready"
+            partially_ready = True
+            unavailable_in_slice = False
+            reason = "continuation.record is the next supported call type, but caller-provided content is still required"
+        elif call_type == "continuation.record" and hint_kind == "context-only":
+            known_fields = {
+                "schema_version": "v0.1",
+                "call_type": "continuation.record",
+                "task_id": task_id,
+            }
+            if isinstance(current_job_id, str):
+                known_fields["job_id"] = current_job_id
+            if isinstance(current_plan_version, int):
+                known_fields["plan_version"] = current_plan_version
+            missing_required_fields = ("from_role", "to_role", "payload_ref")
+            optional_fields_available = ("artifact_refs",)
+            cannot_be_prefilled_fields = ("payload_ref", "payload.content_ref", "artifact_refs")
+            draft_kind = "context-only"
+            context_only = True
+            unavailable_in_slice = False
+            reason = "continuation.record can capture context, but required content must still be supplied"
+
+        if not isinstance(target_item_id, str) and isinstance(dominant_target, dict):
+            item = dominant_target.get("item")
+            if isinstance(item, dict) and isinstance(item.get("item_id"), str):
+                target_item_id = item["item_id"]
+
+        return {
+            "draft_kind": draft_kind,
+            "call_type": call_type,
+            "known_fields": known_fields,
+            "missing_required_fields": missing_required_fields,
+            "optional_fields_available": optional_fields_available,
+            "cannot_be_prefilled_fields": cannot_be_prefilled_fields,
+            "reason": reason,
+            "task_id": task_id,
+            "job_id": current_job_id if isinstance(current_job_id, str) else None,
+            "target_item_id": target_item_id,
+            "dominant_target_kind": dominant_target_kind,
+            "executable_now": executable_now,
+            "partially_ready": partially_ready,
+            "context_only": context_only,
+            "unavailable_in_slice": unavailable_in_slice,
+        }
+
+    @staticmethod
+    def _classify_next_call_draft_readiness(
+        *,
+        next_call_draft: dict[str, Any],
+        supplied_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        call_type = next_call_draft.get("call_type")
+        draft_kind = next_call_draft.get("draft_kind")
+        known_fields = dict(next_call_draft.get("known_fields") or {})
+        missing_required_fields = tuple(next_call_draft.get("missing_required_fields") or ())
+        optional_fields_available = tuple(next_call_draft.get("optional_fields_available") or ())
+        cannot_be_prefilled_fields = tuple(
+            next_call_draft.get("cannot_be_prefilled_fields") or ()
+        )
+        supplied_fields = dict(supplied_fields or {})
+
+        accepted_supplied_fields: list[str] = []
+        ignored_supplied_fields: list[str] = []
+        disallowed_supplied_fields: list[str] = []
+        merged_known_fields = dict(known_fields)
+
+        accepted_field_names_by_call_type: dict[str, tuple[str, ...]] = {
+            "job.start": ("from_role", "to_role", "reported_at", "attempt_no"),
+            "continuation.record": (
+                "from_role",
+                "to_role",
+                "payload_ref",
+                "payload",
+                "artifact_refs",
+            ),
+        }
+        disallowed_field_names_by_call_type: dict[str, tuple[str, ...]] = {
+            "job.start": ("payload_ref", "payload", "artifact_refs", "content_ref"),
+            "continuation.record": ("content_ref",),
+        }
+        accepted_field_names = accepted_field_names_by_call_type.get(str(call_type), ())
+        disallowed_field_names = disallowed_field_names_by_call_type.get(str(call_type), ())
+
+        for field_name, field_value in supplied_fields.items():
+            if field_name in known_fields:
+                disallowed_supplied_fields.append(field_name)
+                continue
+            if field_name in disallowed_field_names:
+                disallowed_supplied_fields.append(field_name)
+                continue
+            if field_name not in accepted_field_names:
+                ignored_supplied_fields.append(field_name)
+                continue
+            if field_name == "payload":
+                if not (
+                    isinstance(field_value, dict)
+                    and isinstance(field_value.get("content_ref"), dict)
+                ):
+                    disallowed_supplied_fields.append(field_name)
+                    continue
+            merged_known_fields[field_name] = field_value
+            accepted_supplied_fields.append(field_name)
+
+        remaining_missing_fields: list[str] = []
+        for field_name in missing_required_fields:
+            if field_name == "payload_ref":
+                if "payload_ref" in merged_known_fields:
+                    continue
+                payload = merged_known_fields.get("payload")
+                if isinstance(payload, dict) and isinstance(payload.get("content_ref"), dict):
+                    continue
+                remaining_missing_fields.append(field_name)
+                continue
+            if field_name not in merged_known_fields:
+                remaining_missing_fields.append(field_name)
+
+        if call_type == "job.start" and draft_kind == "executable-now":
+            remaining_missing_fields = []
+
+        reason = next_call_draft.get("reason") or "draft readiness is limited by current supported slice"
+        readiness_kind = "unavailable-in-slice"
+        executable_now = False
+        partially_ready = False
+        context_only = bool(next_call_draft.get("context_only"))
+        unavailable_in_slice = bool(next_call_draft.get("unavailable_in_slice"))
+
+        if unavailable_in_slice:
+            readiness_kind = "unavailable-in-slice"
+        elif context_only:
+            readiness_kind = "context-only"
+            reason = (
+                "draft can capture context in this slice but does not become execution-ready"
+            )
+        elif remaining_missing_fields:
+            readiness_kind = "partially-ready"
+            partially_ready = True
+            reason = "draft still needs caller-supplied required fields before it becomes runnable"
+        else:
+            readiness_kind = "executable-now"
+            executable_now = True
+            reason = "draft has the minimum required fields for honest submission in this slice"
+
+        return {
+            "readiness_kind": readiness_kind,
+            "call_type": call_type,
+            "merged_known_fields": merged_known_fields,
+            "accepted_supplied_fields": tuple(accepted_supplied_fields),
+            "ignored_supplied_fields": tuple(ignored_supplied_fields),
+            "disallowed_supplied_fields": tuple(disallowed_supplied_fields),
+            "missing_required_fields": tuple(remaining_missing_fields),
+            "reason": reason,
+            "task_id": next_call_draft.get("task_id"),
+            "job_id": next_call_draft.get("job_id"),
+            "target_item_id": next_call_draft.get("target_item_id"),
+            "executable_now": executable_now,
+            "partially_ready": partially_ready,
+            "context_only": context_only,
+            "unavailable_in_slice": unavailable_in_slice,
         }
 
     def evaluate_supported_call_policy(
