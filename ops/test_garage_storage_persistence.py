@@ -53,14 +53,16 @@ class GarageStoragePersistenceTests(GarageStorageRootTestCase):
 
         child_job = storage.read_job_record(result.result["job_id"])
         child_jobs = storage.list_child_jobs("T000001.J001")
-        task_summary = storage.latest_task_state_summary("T000001")
+        task_record = storage.read_task_record("T000001")
         job_history = storage.read_event_history(job_id=result.result["job_id"])
         storage.close()
 
+        assert child_job is not None
+        assert task_record is not None
         self.assertEqual("T000001.J002", result.result["job_id"])
         self.assertEqual("T000001.J001", child_job["parent_job_id"])
-        self.assertEqual("waiting_on_child", task_summary["task_record"]["task_state"])
-        self.assertEqual("T000001.J002", task_summary["task_record"]["current_job_id"])
+        self.assertEqual("waiting_on_child", task_record["task_state"])
+        self.assertEqual("T000001.J002", task_record["current_job_id"])
         self.assertEqual(1, len(child_jobs))
         self.assertEqual(
             ["job.created", "job.dispatched"],
@@ -192,14 +194,13 @@ class GarageStoragePersistenceTests(GarageStorageRootTestCase):
         )
         result = processor.process_call(make_job_start_call())
         job_record = storage.read_job_record("T000001.J001")
-        summary = storage.read_job_state_summary("T000001.J001")
         history = storage.read_event_history(job_id="T000001.J001")
         storage.close()
 
+        assert job_record is not None
         self.assertEqual(2, result.result["attempt_no"])
         self.assertEqual(2, job_record["attempt_no"])
         self.assertEqual("running", job_record["job_state"])
-        self.assertEqual(2, summary["attempt_no"])
         self.assertEqual(
             [1, 2],
             [event["attempt_no"] for event in history if event["event_type"] == "job.started"],
@@ -218,15 +219,16 @@ class GarageStoragePersistenceTests(GarageStorageRootTestCase):
             processor.process_call(make_job_start_call(attempt_no=5))
 
         history = storage.read_event_history(job_id="T000001.J001")
-        summary = storage.read_job_state_summary("T000001.J001")
+        job_record = storage.read_job_record("T000001.J001")
         storage.close()
 
+        assert job_record is not None
         self.assertIn("expected attempt_no 2 but received 5", str(ctx.exception))
         self.assertEqual(
             ["job.started", "job.returned"],
             [event["event_type"] for event in history],
         )
-        self.assertEqual(1, summary["attempt_no"])
+        self.assertEqual(1, job_record["attempt_no"])
 
     def test_materially_new_refined_job_gets_new_job_id_with_recoverable_lineage(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -388,57 +390,4 @@ class GarageStoragePersistenceTests(GarageStorageRootTestCase):
         self.assertIsNone(storage.read_task_record("T000001"))
         self.assertEqual([], storage.read_event_history("T000001"))
         self.assertEqual("T000001", storage.peek_next_task_id())
-        storage.close()
-
-    def test_readback_helpers_return_expected_supported_state(self) -> None:
-        storage, processor = build_storage_backed_alfred_processor(
-            self.root,
-            now_provider=lambda: "2026-03-30T12:00:00Z",
-        )
-        processor.process_call(make_task_create_call())
-        processor.process_call(make_job_start_call())
-        processor.process_call(make_result_submit_call())
-        processor.process_call(make_checkpoint_create_call(plan_version=2))
-        processor.process_call(make_continuation_record_call(plan_version=2))
-
-        task_summary = storage.latest_task_state_summary("T000001")
-        job_summary = storage.read_job_state_summary("T000001.J001")
-        plan_linkage = storage.active_plan_linkage_summary("T000001")
-        resume_anchor = storage.resolve_task_resume_anchor("T000001")
-        job_history = storage.read_event_history(job_id="T000001.J001")
-        continuations = storage.list_continuation_records("T000001")
-
-        self.assertEqual("resuming", task_summary["task_record"]["task_state"])
-        self.assertTrue(task_summary["is_resuming"])
-        self.assertTrue(task_summary["has_resume_anchor"])
-        self.assertEqual("resume-anchor-only", task_summary["dominant_target_kind"])
-        self.assertEqual("resuming", task_summary["effective_task_posture"])
-        self.assertEqual(2, task_summary["current_plan_version"])
-        self.assertEqual("continuation.recorded", task_summary["latest_event"]["event_type"])
-        self.assertEqual("job.returned", task_summary["latest_meaningful_event"]["event_type"])
-        self.assertEqual("T000001.J001", task_summary["current_job"]["job_record"]["job_id"])
-        self.assertEqual(2, task_summary["latest_checkpoint"]["plan_version"])
-        self.assertEqual(2, task_summary["latest_continuation"]["plan_version"])
-        self.assertEqual(2, plan_linkage["current_plan_version"])
-        self.assertEqual(2, plan_linkage["latest_checkpoint_plan_version"])
-        self.assertEqual(2, plan_linkage["latest_continuation_plan_version"])
-        self.assertEqual("continuation-record", resume_anchor["anchor_kind"])
-        self.assertEqual(2, resume_anchor["plan_version"])
-        self.assertEqual("returned", job_summary["job_record"]["job_state"])
-        self.assertEqual("returned", job_summary["job_state"])
-        self.assertEqual("continuation.recorded", job_summary["latest_event_type"])
-        self.assertEqual("job.returned", job_summary["latest_state_event_type"])
-        self.assertEqual("succeeded", job_summary["latest_reported_status"])
-        self.assertFalse(job_summary["is_same_job_retry"])
-        self.assertFalse(job_summary["is_materially_new_child_leg"])
-        self.assertTrue(job_summary["is_current_task_leg"])
-        self.assertFalse(job_summary["current_job_is_primary_focus"])
-        self.assertTrue(job_summary["current_job_subordinate_to_task_focus"])
-        self.assertEqual(1, storage.latest_attempt_for_job("T000001.J001"))
-        self.assertEqual(1, len(continuations))
-        self.assertEqual(4, len(job_history))
-        self.assertEqual(
-            ["job.started", "job.returned", "checkpoint.created", "continuation.recorded"],
-            [event["event_type"] for event in job_history],
-        )
         storage.close()

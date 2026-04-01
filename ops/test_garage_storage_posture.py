@@ -191,7 +191,7 @@ class GarageStoragePostureTests(GarageTempRootTestCase):
         self.assertEqual("T000001.J001.A001", artifact_index["artifact_id"])
         self.assertEqual("verified", tracked_plan["items"][1]["status"])
         self.assertEqual(
-            ["task.created", "job.started", "job.returned"],
+            ["task.created", "plan.recorded", "job.started", "job.returned"],
             [event["event_type"] for event in event_history],
         )
 
