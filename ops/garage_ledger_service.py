@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -89,28 +88,12 @@ def read_task(task_id: str) -> dict[str, object]:
     return record
 
 
-@app.get("/tasks/{task_id}/summary")
-def read_task_summary(task_id: str) -> dict[str, object]:
-    summary = _storage().latest_task_state_summary(task_id)
-    if summary is None:
-        raise HTTPException(status_code=404, detail="task summary not found")
-    return summary
-
-
 @app.get("/jobs/{job_id}")
 def read_job(job_id: str) -> dict[str, object]:
     record = _storage().read_job_record(job_id)
     if record is None:
         raise HTTPException(status_code=404, detail="job not found")
     return record
-
-
-@app.get("/jobs/{job_id}/summary")
-def read_job_summary(job_id: str) -> dict[str, object]:
-    summary = _storage().read_job_state_summary(job_id)
-    if summary is None:
-        raise HTTPException(status_code=404, detail="job summary not found")
-    return summary
 
 
 @app.get("/plans/{task_id}/{plan_version}")

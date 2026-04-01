@@ -152,11 +152,3 @@ def promote_artifact(request: ArtifactPromotionRequest) -> dict[str, object]:
         "recorded_at": recorded_at,
         "promoted_path": str(promoted.promoted_path),
     }
-
-
-@app.get("/tasks/{task_id}/summary")
-def read_task_summary(task_id: str) -> dict[str, object]:
-    summary = _state().storage.latest_task_state_summary(task_id)
-    if summary is None:
-        raise HTTPException(status_code=404, detail="task summary not found")
-    return summary
