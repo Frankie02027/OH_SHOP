@@ -10,6 +10,9 @@ nohup.out
 .DS_Store
 .venv/
 
+# Keep reviewable runtime evidence logs in the repo when intentionally captured
+!artifacts/runtime_evidence/**/*.log
+
 # Local runtime state
 .openhands/
 

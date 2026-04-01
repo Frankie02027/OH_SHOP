@@ -341,18 +341,18 @@ class GarageAlfredProcessor:
             return self._attach_submit_receipt(
                 task_id=None,
                 decision={
-                "decision_kind": "unavailable_in_slice",
-                "allowed_to_submit": False,
-                "submission_mode": None,
-                "reason": "task_id is required to re-check a prepared next call",
-                "prepared_call": None,
-                "submit_result": None,
-                "fresh_preflight": None,
-                "stale_or_blocked": False,
-                "missing_required_fields": (),
-                "context_only": False,
-                "unavailable_in_slice": True,
-                "productive_in_slice": False,
+                    "decision_kind": "unavailable_in_slice",
+                    "allowed_to_submit": False,
+                    "submission_mode": None,
+                    "reason": "task_id is required to re-check a prepared next call",
+                    "prepared_call": None,
+                    "submit_result": None,
+                    "fresh_preflight": None,
+                    "stale_or_blocked": False,
+                    "missing_required_fields": (),
+                    "context_only": False,
+                    "unavailable_in_slice": True,
+                    "productive_in_slice": False,
                 },
                 fresh_preflight=None,
                 submit_result=None,
@@ -371,18 +371,18 @@ class GarageAlfredProcessor:
             return self._attach_submit_receipt(
                 task_id=resolved_task_id,
                 decision={
-                "decision_kind": "unavailable_in_slice",
-                "allowed_to_submit": False,
-                "submission_mode": None,
-                "reason": "fresh next-call preflight is unavailable for the current task state",
-                "prepared_call": None,
-                "submit_result": None,
-                "fresh_preflight": None,
-                "stale_or_blocked": False,
-                "missing_required_fields": (),
-                "context_only": False,
-                "unavailable_in_slice": True,
-                "productive_in_slice": False,
+                    "decision_kind": "unavailable_in_slice",
+                    "allowed_to_submit": False,
+                    "submission_mode": None,
+                    "reason": "fresh next-call preflight is unavailable for the current task state",
+                    "prepared_call": None,
+                    "submit_result": None,
+                    "fresh_preflight": None,
+                    "stale_or_blocked": False,
+                    "missing_required_fields": (),
+                    "context_only": False,
+                    "unavailable_in_slice": True,
+                    "productive_in_slice": False,
                 },
                 fresh_preflight=None,
                 submit_result=None,
@@ -3280,7 +3280,7 @@ class GarageAlfredProcessor:
         event_id: str,
         recorded_at: str,
     ) -> dict[str, Any]:
-        event = {
+        event: dict[str, Any] = {
             "schema_version": call["schema_version"],
             "event_type": "plan.recorded",
             "event_id": event_id,
@@ -3302,7 +3302,7 @@ class GarageAlfredProcessor:
         event_id: str,
         recorded_at: str,
     ) -> dict[str, Any]:
-        event = {
+        event: dict[str, Any] = {
             "schema_version": call["schema_version"],
             "event_type": "task.created",
             "event_id": event_id,
@@ -3323,7 +3323,7 @@ class GarageAlfredProcessor:
         *,
         attempt_no: int | None = None,
     ) -> dict[str, Any]:
-        event = {
+        event: dict[str, Any] = {
             "schema_version": call["schema_version"],
             "event_type": "job.started",
             "event_id": event_id,
@@ -3744,9 +3744,10 @@ class GarageAlfredProcessor:
         if task_record is None:
             return None
         plan_version = task_record.get("current_plan_version")
-        if not isinstance(plan_version, int) or self._state_reader is None:
+        state_reader = self._state_reader
+        if not isinstance(plan_version, int) or state_reader is None:
             return None
-        plan = self._state_reader.read_tracked_plan(task_id, plan_version)
+        plan = state_reader.read_tracked_plan(task_id, plan_version)
         if not isinstance(plan, dict):
             raise GarageAlfredProcessingError(
                 f"task '{task_id}' points at missing tracked plan version '{plan_version}'"
@@ -4025,15 +4026,17 @@ class GarageAlfredProcessor:
         return candidate
 
     def _existing_task_record(self, task_id: str) -> dict[str, Any] | None:
-        if self._state_reader is None:
+        state_reader = self._state_reader
+        if state_reader is None:
             return None
-        record = self._state_reader.read_task_record(task_id)
+        record = state_reader.read_task_record(task_id)
         return dict(record) if isinstance(record, dict) else None
 
     def _existing_job_record(self, job_id: str) -> dict[str, Any] | None:
-        if self._state_reader is None:
+        state_reader = self._state_reader
+        if state_reader is None:
             return None
-        record = self._state_reader.read_job_record(job_id)
+        record = state_reader.read_job_record(job_id)
         return dict(record) if isinstance(record, dict) else None
 
     def _recorded_at(self, call: dict[str, Any]) -> str:
