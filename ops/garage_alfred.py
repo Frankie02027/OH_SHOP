@@ -742,6 +742,94 @@ class GarageAlfredProcessor:
             ),
         )
 
+    def continue_from_final_receipt_with_guarded_rebase(
+        self,
+        task_id: str,
+        *,
+        final_receipt: dict[str, Any] | None,
+        supplied_fields: dict[str, Any] | None = None,
+        allowed_rebased: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        continued = self.continue_from_final_receipt(
+            task_id,
+            final_receipt=final_receipt,
+            supplied_fields=supplied_fields,
+        )
+        if bool(continued.get("prior_receipt_compatible")):
+            result = dict(continued)
+            result["rebase_considered"] = False
+            result["rebase_allowed"] = None
+            result["rebase_failure_kind"] = None
+            result["rebase_failure_reason"] = None
+            result["continuation_kind"] = self._classify_continue_from_final_receipt_kind(
+                prior_receipt_compatible=True,
+                continued_result=result,
+            )
+            return self._attach_continuation_final_receipt(
+                task_id=task_id,
+                continuation=result,
+            )
+
+        rebase_result = self._evaluate_rebased_attempt_approval(
+            allowed_rebased=allowed_rebased,
+            guarded_attempt=continued,
+        )
+        if not bool(rebase_result.get("rebase_allowed")):
+            result = dict(continued)
+            result["rebase_considered"] = True
+            result["rebase_allowed"] = False
+            result["rebase_failure_kind"] = rebase_result.get("rebase_failure_kind")
+            result["rebase_failure_reason"] = rebase_result.get("rebase_failure_reason")
+            result["continuation_kind"] = self._classify_continue_from_final_receipt_kind(
+                prior_receipt_compatible=False,
+                continued_result=None,
+                rebase_considered=True,
+                rebase_allowed=False,
+                rebased_candidate_kind=result.get("rebased_candidate_kind"),
+            )
+            return self._attach_continuation_final_receipt(
+                task_id=task_id,
+                continuation=result,
+            )
+
+        rebased_attempt = self.attempt_best_next_call(
+            task_id,
+            supplied_fields=supplied_fields,
+        )
+        result = dict(continued)
+        result["attempt_allowed"] = bool(rebased_attempt.get("attempt_allowed"))
+        result["attempted_call_type"] = rebased_attempt.get("attempted_call_type")
+        result["attempted_submission_mode"] = rebased_attempt.get(
+            "attempted_submission_mode"
+        )
+        result["missing_required_fields"] = tuple(
+            rebased_attempt.get("missing_required_fields") or ()
+        )
+        result["requires_additional_user_or_agent_input"] = bool(
+            rebased_attempt.get("requires_additional_user_or_agent_input")
+        )
+        result["submit_receipt"] = (
+            rebased_attempt.get("submit_receipt")
+            if isinstance(rebased_attempt.get("submit_receipt"), dict)
+            else None
+        )
+        result["final_receipt"] = None
+        result["rebase_considered"] = True
+        result["rebase_allowed"] = True
+        result["rebase_failure_kind"] = None
+        result["rebase_failure_reason"] = None
+        result["continuation_kind"] = self._classify_continue_from_final_receipt_kind(
+            prior_receipt_compatible=False,
+            continued_result=rebased_attempt,
+            rebase_considered=True,
+            rebase_allowed=True,
+            rebased_candidate_kind=result.get("rebased_candidate_kind"),
+        )
+        return self._attach_continuation_final_receipt(
+            task_id=task_id,
+            continuation=result,
+        )
+
     @staticmethod
     def _evaluate_final_receipt_compatibility(
         *,
@@ -857,6 +945,10 @@ class GarageAlfredProcessor:
         compatibility: dict[str, Any],
         continued_result: dict[str, Any] | None,
         stale_rebased_candidate: dict[str, Any] | None,
+        rebase_considered: bool | None = None,
+        rebase_allowed: bool | None = None,
+        rebase_failure_kind: str | None = None,
+        rebase_failure_reason: str | None = None,
     ) -> dict[str, Any]:
         latest_summary = self._read_current_task_summary_for_receipt(task_id)
         latest_follow_up = (
@@ -898,10 +990,23 @@ class GarageAlfredProcessor:
         ):
             continuation_failure_kind = None
             continuation_failure_reason = None
+        resolved_rebase_considered = (
+            rebase_considered if rebase_considered is not None else None
+        )
+        resolved_rebase_allowed = rebase_allowed if rebase_considered else None
+        resolved_rebase_failure_kind = (
+            rebase_failure_kind if rebase_considered else None
+        )
+        resolved_rebase_failure_reason = (
+            rebase_failure_reason if rebase_considered else None
+        )
         return {
             "continuation_kind": self._classify_continue_from_final_receipt_kind(
                 prior_receipt_compatible=bool(compatibility.get("prior_receipt_compatible")),
                 continued_result=continued_result,
+                rebase_considered=bool(resolved_rebase_considered),
+                rebase_allowed=resolved_rebase_allowed,
+                rebased_candidate_kind=rebased_candidate.get("rebased_candidate_kind"),
             ),
             "prior_receipt_compatible": bool(compatibility.get("prior_receipt_compatible")),
             "continuation_failure_kind": continuation_failure_kind,
@@ -941,6 +1046,10 @@ class GarageAlfredProcessor:
                 if isinstance(continued_result, dict)
                 else None
             ),
+            "rebase_considered": resolved_rebase_considered,
+            "rebase_allowed": resolved_rebase_allowed,
+            "rebase_failure_kind": resolved_rebase_failure_kind,
+            "rebase_failure_reason": resolved_rebase_failure_reason,
             "missing_required_fields": current_missing_required_fields,
             "requires_additional_user_or_agent_input": bool(
                 continued_result.get("requires_additional_user_or_agent_input")
@@ -1123,6 +1232,10 @@ class GarageAlfredProcessor:
             "prior_receipt_compatible": bool(continuation.get("prior_receipt_compatible")),
             "continuation_failure_kind": continuation.get("continuation_failure_kind"),
             "continuation_failure_reason": continuation.get("continuation_failure_reason"),
+            "rebase_considered": continuation.get("rebase_considered"),
+            "rebase_allowed": continuation.get("rebase_allowed"),
+            "rebase_failure_kind": continuation.get("rebase_failure_kind"),
+            "rebase_failure_reason": continuation.get("rebase_failure_reason"),
             "attempt_allowed": bool(continuation.get("attempt_allowed")),
             "attempted_call_type": continuation.get("attempted_call_type"),
             "attempted_submission_mode": attempted_submission_mode,
@@ -1774,8 +1887,23 @@ class GarageAlfredProcessor:
         *,
         prior_receipt_compatible: bool,
         continued_result: dict[str, Any] | None,
+        rebase_considered: bool = False,
+        rebase_allowed: bool | None = None,
+        rebased_candidate_kind: str | None = None,
     ) -> str:
         if not prior_receipt_compatible:
+            if rebase_considered and rebase_allowed and isinstance(continued_result, dict):
+                if bool(continued_result.get("attempt_allowed")):
+                    if continued_result.get("attempted_submission_mode") == "context_capture":
+                        return "stale_rebased_continued_context_capture"
+                    return "stale_rebased_continued_productive_execution"
+                if tuple(continued_result.get("missing_required_fields") or ()):
+                    return "stale_rebased_missing_input_refused"
+                return "stale_rebased_unavailable_refused"
+            if rebase_considered:
+                if rebased_candidate_kind == "unavailable_replacement_candidate":
+                    return "stale_rebased_unavailable_refused"
+                return "stale_rebased_refused"
             return "stale_receipt_refused"
         if not isinstance(continued_result, dict):
             return "unavailable_receipt_continuation"
