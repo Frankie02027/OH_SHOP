@@ -6,12 +6,8 @@ without mixing that surface audit into the storage durability matrix.
 
 from __future__ import annotations
 
-import tempfile
-import unittest
-from pathlib import Path
-
-from ops.test_garage_storage import (
-    build_storage_backed_alfred_processor,
+from ops.test_garage_fixtures import (
+    GarageTempRootTestCase,
     make_checkpoint_create_call,
     make_child_job_request_call,
     make_continuation_record_call,
@@ -23,19 +19,7 @@ from ops.test_garage_storage import (
 )
 
 
-class GarageAlfredControlFlowTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.tmpdir = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmpdir.name)
-
-    def tearDown(self) -> None:
-        self.tmpdir.cleanup()
-
-    def _new_processor(self):
-        return build_storage_backed_alfred_processor(
-            self.root,
-            now_provider=lambda: "2026-03-30T12:00:00Z",
-        )
+class GarageAlfredControlFlowTests(GarageTempRootTestCase):
 
     def _seed_review_needed_path(self, processor) -> None:
         processor.process_call(make_task_create_call())

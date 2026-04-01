@@ -30,6 +30,14 @@ MECHANICAL_PROOF_RULE_TYPES = {
     "evidence_bundle_present",
     "no_extra_requirement",
 }
+STALE_OR_MISMATCH_CONTINUATION_KINDS = {
+    "stale_receipt_refused",
+    "stale_rebased_refused",
+    "stale_rebased_continued_productive_execution",
+    "stale_rebased_continued_context_capture",
+    "stale_rebased_missing_input_refused",
+    "stale_rebased_unavailable_refused",
+}
 
 
 class AlfredIdProvider(Protocol):
@@ -1422,7 +1430,6 @@ class GarageAlfredProcessor:
         task_id: str,
         continuation: dict[str, Any],
     ) -> dict[str, Any]:
-        current_summary = self._read_current_task_summary_for_receipt(task_id)
         nested_submit_receipt = (
             continuation.get("submit_receipt")
             if isinstance(continuation.get("submit_receipt"), dict)
@@ -1433,86 +1440,13 @@ class GarageAlfredProcessor:
             if isinstance(continuation.get("final_receipt"), dict)
             else None
         )
-        dominant_target_kind_now = self._pick_first_present(
-            nested_final_receipt,
-            nested_submit_receipt,
-            continuation,
-            current_summary,
-            key="dominant_target_kind_now",
-            fallback_key="fresh_dominant_target_kind",
+        common_fields = self._build_flat_receipt_common_fields(
+            task_id=task_id,
+            sources=(nested_final_receipt, nested_submit_receipt, continuation),
+            dominant_target_fallback_key="fresh_dominant_target_kind",
+            best_next_fallback_key="fresh_best_next_move",
         )
-        dominant_blocker_kind_now = self._pick_first_present(
-            nested_final_receipt,
-            nested_submit_receipt,
-            current_summary,
-            key="dominant_blocker_kind_now",
-        )
-        best_next_move_now = self._pick_first_present(
-            nested_final_receipt,
-            nested_submit_receipt,
-            continuation,
-            current_summary,
-            key="best_next_move_now",
-            fallback_key="fresh_best_next_move",
-        )
-        execution_allowed_now = self._pick_first_present(
-            nested_final_receipt,
-            nested_submit_receipt,
-            current_summary,
-            key="execution_allowed_now",
-        )
-        execution_hold_kind_now = self._pick_first_present(
-            nested_final_receipt,
-            nested_submit_receipt,
-            current_summary,
-            key="execution_hold_kind_now",
-        )
-        current_job_is_primary_focus_now = self._pick_first_present(
-            nested_final_receipt,
-            nested_submit_receipt,
-            current_summary,
-            key="current_job_is_primary_focus_now",
-        )
-        relevant_plan_item_is_primary_focus_now = self._pick_first_present(
-            nested_final_receipt,
-            nested_submit_receipt,
-            current_summary,
-            key="relevant_plan_item_is_primary_focus_now",
-        )
-        attempted_submission_mode = continuation.get("attempted_submission_mode")
-        context_capture_only = bool(
-            self._pick_first_present(
-                nested_final_receipt,
-                nested_submit_receipt,
-                key="context_capture_only",
-            )
-        ) or attempted_submission_mode == "context_capture"
-        productive_in_slice = bool(
-            self._pick_first_present(
-                nested_final_receipt,
-                nested_submit_receipt,
-                key="productive_in_slice",
-            )
-        ) or attempted_submission_mode == "productive_in_slice"
-        unavailable_in_slice = bool(
-            self._pick_first_present(
-                nested_final_receipt,
-                nested_submit_receipt,
-                key="unavailable_in_slice",
-            )
-        )
-        if not unavailable_in_slice and isinstance(best_next_move_now, dict):
-            unavailable_in_slice = best_next_move_now.get("call_type") is None and not bool(
-                continuation.get("attempt_allowed")
-            ) and not tuple(continuation.get("missing_required_fields") or ())
-        rebased_best_next_move = continuation.get("rebased_best_next_move")
-        rebased_candidate_kind = continuation.get("rebased_candidate_kind")
-        if rebased_candidate_kind is None and isinstance(rebased_best_next_move, dict):
-            rebased_candidate_kind = (
-                "unavailable_replacement_candidate"
-                if rebased_best_next_move.get("call_type") is None
-                else "productive_replacement_candidate"
-            )
+        rebased_fields = self._resolve_rebased_receipt_fields(continuation)
         return {
             "continuation_final_path_kind": continuation.get("continuation_kind"),
             "prior_receipt_compatible": bool(continuation.get("prior_receipt_compatible")),
@@ -1522,32 +1456,8 @@ class GarageAlfredProcessor:
             "rebase_allowed": continuation.get("rebase_allowed"),
             "rebase_failure_kind": continuation.get("rebase_failure_kind"),
             "rebase_failure_reason": continuation.get("rebase_failure_reason"),
-            "attempt_allowed": bool(continuation.get("attempt_allowed")),
-            "attempted_call_type": continuation.get("attempted_call_type"),
-            "attempted_submission_mode": attempted_submission_mode,
-            "productive_in_slice": productive_in_slice,
-            "context_capture_only": context_capture_only,
-            "missing_required_fields": tuple(continuation.get("missing_required_fields") or ()),
-            "requires_additional_user_or_agent_input": bool(
-                continuation.get("requires_additional_user_or_agent_input")
-            ),
-            "unavailable_in_slice": unavailable_in_slice,
-            "rebased_best_next_move": rebased_best_next_move,
-            "rebased_follow_up_behavior": continuation.get("rebased_follow_up_behavior"),
-            "rebased_next_call_hint": continuation.get("rebased_next_call_hint"),
-            "rebased_next_call_draft": continuation.get("rebased_next_call_draft"),
-            "rebased_next_call_preflight": continuation.get("rebased_next_call_preflight"),
-            "rebased_candidate_kind": rebased_candidate_kind,
-            "rebased_candidate_reason": continuation.get("rebased_candidate_reason"),
-            "dominant_target_kind_now": dominant_target_kind_now,
-            "dominant_blocker_kind_now": dominant_blocker_kind_now,
-            "best_next_move_now": best_next_move_now,
-            "execution_allowed_now": execution_allowed_now,
-            "execution_hold_kind_now": execution_hold_kind_now,
-            "current_job_is_primary_focus_now": current_job_is_primary_focus_now,
-            "relevant_plan_item_is_primary_focus_now": (
-                relevant_plan_item_is_primary_focus_now
-            ),
+            **common_fields,
+            **rebased_fields,
         }
 
     def _attach_top_level_continuation_receipt(
@@ -1579,131 +1489,22 @@ class GarageAlfredProcessor:
         task_id: str,
         route_result: dict[str, Any],
     ) -> dict[str, Any]:
-        current_summary = self._read_current_task_summary_for_receipt(task_id)
         nested_continuation_final_receipt = (
             route_result.get("continuation_final_receipt")
             if isinstance(route_result.get("continuation_final_receipt"), dict)
             else None
         )
-        attempted_submission_mode = self._pick_first_present(
-            nested_continuation_final_receipt,
-            route_result,
-            key="attempted_submission_mode",
+        common_fields = self._build_flat_receipt_common_fields(
+            task_id=task_id,
+            sources=(nested_continuation_final_receipt, route_result),
+            dominant_target_fallback_key="dominant_target_kind",
+            dominant_blocker_fallback_key="dominant_blocker_kind",
+            best_next_fallback_key="best_next_move",
+            execution_allowed_fallback_key="execution_allowed",
+            execution_hold_fallback_key="execution_hold_kind",
+            current_job_focus_fallback_key="current_job_is_primary_focus",
+            relevant_plan_item_focus_fallback_key="relevant_plan_item_is_primary_focus",
         )
-        dominant_target_kind_now = self._pick_first_present(
-            nested_continuation_final_receipt,
-            route_result,
-            current_summary,
-            key="dominant_target_kind_now",
-            fallback_key="fresh_dominant_target_kind",
-        )
-        if dominant_target_kind_now is None and isinstance(current_summary, dict):
-            dominant_target_kind_now = current_summary.get("dominant_target_kind")
-        dominant_blocker_kind_now = self._pick_first_present(
-            nested_continuation_final_receipt,
-            route_result,
-            current_summary,
-            key="dominant_blocker_kind_now",
-            fallback_key="dominant_blocker_kind",
-        )
-        best_next_move_now = self._pick_first_present(
-            nested_continuation_final_receipt,
-            route_result,
-            current_summary,
-            key="best_next_move_now",
-            fallback_key="fresh_best_next_move",
-        )
-        if best_next_move_now is None and isinstance(current_summary, dict):
-            best_next_move_now = current_summary.get("best_next_move")
-        execution_allowed_now = self._pick_first_present(
-            nested_continuation_final_receipt,
-            route_result,
-            current_summary,
-            key="execution_allowed_now",
-        )
-        if execution_allowed_now is None and isinstance(current_summary, dict):
-            execution_allowed_now = current_summary.get("execution_allowed")
-        execution_hold_kind_now = self._pick_first_present(
-            nested_continuation_final_receipt,
-            route_result,
-            current_summary,
-            key="execution_hold_kind_now",
-            fallback_key="execution_hold_kind",
-        )
-        current_job_is_primary_focus_now = self._pick_first_present(
-            nested_continuation_final_receipt,
-            route_result,
-            current_summary,
-            key="current_job_is_primary_focus_now",
-        )
-        if current_job_is_primary_focus_now is None and isinstance(current_summary, dict):
-            current_job_is_primary_focus_now = current_summary.get(
-                "current_job_is_primary_focus"
-            )
-        relevant_plan_item_is_primary_focus_now = self._pick_first_present(
-            nested_continuation_final_receipt,
-            route_result,
-            current_summary,
-            key="relevant_plan_item_is_primary_focus_now",
-        )
-        if (
-            relevant_plan_item_is_primary_focus_now is None
-            and isinstance(current_summary, dict)
-        ):
-            relevant_plan_item_is_primary_focus_now = current_summary.get(
-                "relevant_plan_item_is_primary_focus"
-            )
-        missing_required_fields = tuple(
-            self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="missing_required_fields",
-            )
-            or ()
-        )
-        requires_additional_input = bool(
-            self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="requires_additional_user_or_agent_input",
-            )
-        )
-        attempt_allowed = bool(
-            self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="attempt_allowed",
-            )
-        )
-        productive_in_slice = bool(
-            self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="productive_in_slice",
-            )
-        ) or attempted_submission_mode == "productive_in_slice"
-        context_capture_only = bool(
-            self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="context_capture_only",
-            )
-        ) or attempted_submission_mode == "context_capture"
-        unavailable_in_slice = bool(
-            self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="unavailable_in_slice",
-            )
-        )
-        if (
-            not unavailable_in_slice
-            and isinstance(best_next_move_now, dict)
-            and best_next_move_now.get("call_type") is None
-            and not attempt_allowed
-            and not missing_required_fields
-        ):
-            unavailable_in_slice = True
         top_level_continuation_path_kind = (
             self._classify_top_level_continuation_path_kind(
                 route_result=route_result,
@@ -1726,65 +1527,13 @@ class GarageAlfredProcessor:
             "rebase_allowed": route_result.get("rebase_allowed"),
             "rebase_failure_kind": route_result.get("rebase_failure_kind"),
             "rebase_failure_reason": route_result.get("rebase_failure_reason"),
-            "attempt_allowed": attempt_allowed,
-            "attempted_call_type": self._pick_first_present(
+            **common_fields,
+            "stale_or_mismatch_refused": self._is_stale_or_mismatch_continuation_kind(
+                route_result.get("continuation_kind")
+            ),
+            **self._resolve_rebased_receipt_fields(
                 nested_continuation_final_receipt,
                 route_result,
-                key="attempted_call_type",
-            ),
-            "attempted_submission_mode": attempted_submission_mode,
-            "productive_in_slice": productive_in_slice,
-            "context_capture_only": context_capture_only,
-            "missing_required_fields": missing_required_fields,
-            "requires_additional_user_or_agent_input": requires_additional_input,
-            "unavailable_in_slice": unavailable_in_slice,
-            "stale_or_mismatch_refused": (
-                "stale" in top_level_continuation_path_kind
-                or "mismatch" in top_level_continuation_path_kind
-            ),
-            "rebased_best_next_move": self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="rebased_best_next_move",
-            ),
-            "rebased_follow_up_behavior": self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="rebased_follow_up_behavior",
-            ),
-            "rebased_next_call_hint": self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="rebased_next_call_hint",
-            ),
-            "rebased_next_call_draft": self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="rebased_next_call_draft",
-            ),
-            "rebased_next_call_preflight": self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="rebased_next_call_preflight",
-            ),
-            "rebased_candidate_kind": self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="rebased_candidate_kind",
-            ),
-            "rebased_candidate_reason": self._pick_first_present(
-                nested_continuation_final_receipt,
-                route_result,
-                key="rebased_candidate_reason",
-            ),
-            "dominant_target_kind_now": dominant_target_kind_now,
-            "dominant_blocker_kind_now": dominant_blocker_kind_now,
-            "best_next_move_now": best_next_move_now,
-            "execution_allowed_now": execution_allowed_now,
-            "execution_hold_kind_now": execution_hold_kind_now,
-            "current_job_is_primary_focus_now": current_job_is_primary_focus_now,
-            "relevant_plan_item_is_primary_focus_now": (
-                relevant_plan_item_is_primary_focus_now
             ),
         }
 
@@ -1824,49 +1573,13 @@ class GarageAlfredProcessor:
         uses_rebase_policy: bool,
         route_result: dict[str, Any],
     ) -> dict[str, Any]:
-        route_receipt = self._resolve_follow_or_continue_current_honest_path_receipt_source(
-            route_result
-        )
-        attempted_submission_mode = self._pick_first_present(
-            route_receipt,
+        route_receipt = self._resolve_receipt_source(
             route_result,
-            key="attempted_submission_mode",
+            "top_level_continuation_receipt",
+            "top_level_final_receipt",
         )
-        missing_required_fields = tuple(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="missing_required_fields",
-            )
-            or ()
-        )
-        attempt_allowed = bool(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="attempt_allowed",
-            )
-        )
-        productive_in_slice = bool(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="productive_in_slice",
-            )
-        ) or attempted_submission_mode == "productive_in_slice"
-        context_capture_only = bool(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="context_capture_only",
-            )
-        ) or attempted_submission_mode == "context_capture"
-        unavailable_in_slice = bool(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="unavailable_in_slice",
-            )
+        common_fields = self._build_flat_receipt_common_fields(
+            sources=(route_receipt, route_result),
         )
         stale_or_mismatch_refused = bool(
             self._pick_first_present(
@@ -1885,60 +1598,8 @@ class GarageAlfredProcessor:
             "used_guards": uses_guards,
             "used_rebase_policy": uses_rebase_policy,
             "route_top_level_helper_name": route_top_level_helper_name,
-            "attempt_allowed": attempt_allowed,
-            "attempted_call_type": self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="attempted_call_type",
-            ),
-            "attempted_submission_mode": attempted_submission_mode,
-            "productive_in_slice": productive_in_slice,
-            "context_capture_only": context_capture_only,
-            "missing_required_fields": missing_required_fields,
-            "requires_additional_user_or_agent_input": bool(
-                self._pick_first_present(
-                    route_receipt,
-                    route_result,
-                    key="requires_additional_user_or_agent_input",
-                )
-            ),
-            "unavailable_in_slice": unavailable_in_slice,
+            **common_fields,
             "stale_or_mismatch_refused": stale_or_mismatch_refused,
-            "dominant_target_kind_now": self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="dominant_target_kind_now",
-            ),
-            "dominant_blocker_kind_now": self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="dominant_blocker_kind_now",
-            ),
-            "best_next_move_now": self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="best_next_move_now",
-            ),
-            "execution_allowed_now": self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="execution_allowed_now",
-            ),
-            "execution_hold_kind_now": self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="execution_hold_kind_now",
-            ),
-            "current_job_is_primary_focus_now": self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="current_job_is_primary_focus_now",
-            ),
-            "relevant_plan_item_is_primary_focus_now": self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="relevant_plan_item_is_primary_focus_now",
-            ),
         }
 
     def _attach_follow_current_honest_path_receipt(
@@ -1987,89 +1648,22 @@ class GarageAlfredProcessor:
         uses_rebase_policy: bool,
         route_result: dict[str, Any],
     ) -> dict[str, Any]:
-        current_summary = self._read_current_task_summary_for_receipt(task_id)
-        route_receipt = self._resolve_follow_current_honest_path_receipt_source(route_result)
-        dominant_target_kind_now = self._pick_first_present(
-            route_receipt,
-            current_summary,
-            key="dominant_target_kind_now",
-            fallback_key="dominant_target_kind",
+        route_receipt = self._resolve_receipt_source(
+            route_result,
+            "continuation_final_receipt",
+            "final_receipt",
+            "submit_receipt",
         )
-        dominant_blocker_kind_now = self._pick_first_present(
-            route_receipt,
-            current_summary,
-            key="dominant_blocker_kind_now",
-            fallback_key="dominant_blocker_kind",
-        )
-        best_next_move_now = self._pick_first_present(
-            route_receipt,
-            current_summary,
-            key="best_next_move_now",
-            fallback_key="best_next_move",
-        )
-        execution_allowed_now = self._pick_first_present(
-            route_receipt,
-            current_summary,
-            key="execution_allowed_now",
-            fallback_key="execution_allowed",
-        )
-        execution_hold_kind_now = self._pick_first_present(
-            route_receipt,
-            current_summary,
-            key="execution_hold_kind_now",
-            fallback_key="execution_hold_kind",
-        )
-        current_job_is_primary_focus_now = self._pick_first_present(
-            route_receipt,
-            current_summary,
-            key="current_job_is_primary_focus_now",
-            fallback_key="current_job_is_primary_focus",
-        )
-        relevant_plan_item_is_primary_focus_now = self._pick_first_present(
-            route_receipt,
-            current_summary,
-            key="relevant_plan_item_is_primary_focus_now",
-            fallback_key="relevant_plan_item_is_primary_focus",
-        )
-        attempt_allowed = self._resolve_follow_current_honest_path_attempt_allowed(
-            route_result=route_result,
-            route_receipt=route_receipt,
-        )
-        productive_in_slice = bool(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="productive_in_slice",
-            )
-        )
-        context_capture_only = bool(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="context_capture_only",
-            )
-        )
-        missing_required_fields = tuple(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="missing_required_fields",
-            )
-            or ()
-        )
-        requires_additional_input = bool(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="requires_additional_user_or_agent_input",
-            )
-        )
-        unavailable_in_slice = bool(
-            self._pick_first_present(
-                route_receipt,
-                route_result,
-                key="unavailable_in_slice",
-            )
+        common_fields = self._build_flat_receipt_common_fields(
+            task_id=task_id,
+            sources=(route_receipt, route_result),
+            dominant_target_fallback_key="dominant_target_kind",
+            dominant_blocker_fallback_key="dominant_blocker_kind",
+            best_next_fallback_key="best_next_move",
+            execution_allowed_fallback_key="execution_allowed",
+            execution_hold_fallback_key="execution_hold_kind",
+            current_job_focus_fallback_key="current_job_is_primary_focus",
+            relevant_plan_item_focus_fallback_key="relevant_plan_item_is_primary_focus",
         )
         return {
             "flow_path_kind": self._classify_follow_current_honest_path_kind(
@@ -2080,21 +1674,7 @@ class GarageAlfredProcessor:
             "used_guards": uses_guards,
             "used_rebase_policy": uses_rebase_policy,
             "route_helper_name": route_helper_name,
-            "attempt_allowed": attempt_allowed,
-            "productive_in_slice": productive_in_slice,
-            "context_capture_only": context_capture_only,
-            "missing_required_fields": missing_required_fields,
-            "requires_additional_user_or_agent_input": requires_additional_input,
-            "unavailable_in_slice": unavailable_in_slice,
-            "dominant_target_kind_now": dominant_target_kind_now,
-            "dominant_blocker_kind_now": dominant_blocker_kind_now,
-            "best_next_move_now": best_next_move_now,
-            "execution_allowed_now": execution_allowed_now,
-            "execution_hold_kind_now": execution_hold_kind_now,
-            "current_job_is_primary_focus_now": current_job_is_primary_focus_now,
-            "relevant_plan_item_is_primary_focus_now": (
-                relevant_plan_item_is_primary_focus_now
-            ),
+            **common_fields,
         }
 
     def _build_follow_current_honest_path_final_receipt(
@@ -2108,133 +1688,147 @@ class GarageAlfredProcessor:
         route_result: dict[str, Any],
         flow_receipt: dict[str, Any],
     ) -> dict[str, Any]:
-        current_summary = self._read_current_task_summary_for_receipt(task_id)
-        route_receipt = self._resolve_follow_current_honest_path_receipt_source(route_result)
-        attempted_call_type = self._pick_first_present(
-            route_receipt,
+        route_receipt = self._resolve_receipt_source(
             route_result,
-            key="attempted_call_type",
+            "continuation_final_receipt",
+            "final_receipt",
+            "submit_receipt",
         )
-        attempted_submission_mode = self._pick_first_present(
-            route_receipt,
-            route_result,
-            key="attempted_submission_mode",
-            fallback_key="submission_mode",
+        common_fields = self._build_flat_receipt_common_fields(
+            task_id=task_id,
+            sources=(route_receipt, flow_receipt, route_result),
+            dominant_target_fallback_key="dominant_target_kind",
+            dominant_blocker_fallback_key="dominant_blocker_kind",
+            best_next_fallback_key="best_next_move",
+            execution_allowed_fallback_key="execution_allowed",
+            execution_hold_fallback_key="execution_hold_kind",
+            current_job_focus_fallback_key="current_job_is_primary_focus",
+            relevant_plan_item_focus_fallback_key="relevant_plan_item_is_primary_focus",
         )
-        dominant_target_kind_now = self._pick_first_present(
-            route_receipt,
-            flow_receipt,
-            current_summary,
-            key="dominant_target_kind_now",
-            fallback_key="dominant_target_kind",
-        )
-        dominant_blocker_kind_now = self._pick_first_present(
-            route_receipt,
-            flow_receipt,
-            current_summary,
-            key="dominant_blocker_kind_now",
-            fallback_key="dominant_blocker_kind",
-        )
-        best_next_move_now = self._pick_first_present(
-            route_receipt,
-            flow_receipt,
-            current_summary,
-            key="best_next_move_now",
-            fallback_key="best_next_move",
-        )
-        execution_allowed_now = self._pick_first_present(
-            route_receipt,
-            flow_receipt,
-            current_summary,
-            key="execution_allowed_now",
-            fallback_key="execution_allowed",
-        )
-        execution_hold_kind_now = self._pick_first_present(
-            route_receipt,
-            flow_receipt,
-            current_summary,
-            key="execution_hold_kind_now",
-            fallback_key="execution_hold_kind",
-        )
-        current_job_is_primary_focus_now = self._pick_first_present(
-            route_receipt,
-            flow_receipt,
-            current_summary,
-            key="current_job_is_primary_focus_now",
-            fallback_key="current_job_is_primary_focus",
-        )
-        relevant_plan_item_is_primary_focus_now = self._pick_first_present(
-            route_receipt,
-            flow_receipt,
-            current_summary,
-            key="relevant_plan_item_is_primary_focus_now",
-            fallback_key="relevant_plan_item_is_primary_focus",
-        )
-        missing_required_fields = tuple(
-            self._pick_first_present(
-                route_receipt,
-                flow_receipt,
-                route_result,
-                key="missing_required_fields",
-            )
-            or ()
-        )
-        requires_additional_input = bool(
-            self._pick_first_present(
-                route_receipt,
-                flow_receipt,
-                route_result,
-                key="requires_additional_user_or_agent_input",
-            )
-        )
-        unavailable_in_slice = bool(
-            self._pick_first_present(
-                route_receipt,
-                flow_receipt,
-                route_result,
-                key="unavailable_in_slice",
-            )
-        )
-        productive_in_slice = bool(
-            self._pick_first_present(
-                route_receipt,
-                flow_receipt,
-                route_result,
-                key="productive_in_slice",
-            )
-        )
-        context_capture_only = bool(
-            self._pick_first_present(
-                route_receipt,
-                flow_receipt,
-                route_result,
-                key="context_capture_only",
-            )
-        ) or attempted_submission_mode == "context_capture"
-        stale_or_mismatch_refused = self._is_follow_current_honest_path_stale_or_mismatch_refused(
-            flow_path_kind=str(flow_receipt.get("flow_path_kind") or ""),
-            route_result=route_result,
-        )
+        top_level_final_path_kind = str(flow_receipt.get("flow_path_kind") or "unavailable_refused")
+        stale_or_mismatch_refused = self._is_stale_or_mismatch_route_result(route_result)
         return {
-            "top_level_final_path_kind": self._classify_top_level_final_path_kind(
-                flow_receipt=flow_receipt,
-            ),
+            "top_level_final_path_kind": top_level_final_path_kind,
             "route_helper_name": route_helper_name,
             "used_final_receipt": uses_final_receipt,
             "used_guards": uses_guards,
             "used_rebase_policy": uses_rebase_policy,
-            "attempt_allowed": self._resolve_follow_current_honest_path_attempt_allowed(
-                route_result=route_result,
-                route_receipt=route_receipt,
-            ),
-            "attempted_call_type": attempted_call_type,
-            "attempted_submission_mode": attempted_submission_mode,
-            "productive_in_slice": productive_in_slice,
-            "context_capture_only": context_capture_only,
-            "missing_required_fields": missing_required_fields,
-            "requires_additional_user_or_agent_input": requires_additional_input,
-            "unavailable_in_slice": unavailable_in_slice,
+            **common_fields,
             "stale_or_mismatch_refused": stale_or_mismatch_refused,
+        }
+
+    @staticmethod
+    def _resolve_receipt_source(
+        route_result: dict[str, Any],
+        *keys: str,
+    ) -> dict[str, Any] | None:
+        for key in keys:
+            candidate = route_result.get(key)
+            if isinstance(candidate, dict):
+                return candidate
+        return None
+
+    def _build_flat_receipt_common_fields(
+        self,
+        *,
+        sources: tuple[dict[str, Any] | None, ...],
+        task_id: str | None = None,
+        dominant_target_fallback_key: str | None = None,
+        dominant_blocker_fallback_key: str | None = None,
+        best_next_fallback_key: str | None = None,
+        execution_allowed_fallback_key: str | None = None,
+        execution_hold_fallback_key: str | None = None,
+        current_job_focus_fallback_key: str | None = None,
+        relevant_plan_item_focus_fallback_key: str | None = None,
+    ) -> dict[str, Any]:
+        current_summary = (
+            self._read_current_task_summary_for_receipt(task_id)
+            if isinstance(task_id, str)
+            else None
+        )
+        dominant_target_kind_now = self._pick_first_present(
+            *sources,
+            current_summary,
+            key="dominant_target_kind_now",
+            fallback_key=dominant_target_fallback_key,
+        )
+        dominant_blocker_kind_now = self._pick_first_present(
+            *sources,
+            current_summary,
+            key="dominant_blocker_kind_now",
+            fallback_key=dominant_blocker_fallback_key,
+        )
+        best_next_move_now = self._pick_first_present(
+            *sources,
+            current_summary,
+            key="best_next_move_now",
+            fallback_key=best_next_fallback_key,
+        )
+        execution_allowed_now = self._pick_first_present(
+            *sources,
+            current_summary,
+            key="execution_allowed_now",
+            fallback_key=execution_allowed_fallback_key,
+        )
+        execution_hold_kind_now = self._pick_first_present(
+            *sources,
+            current_summary,
+            key="execution_hold_kind_now",
+            fallback_key=execution_hold_fallback_key,
+        )
+        current_job_is_primary_focus_now = self._pick_first_present(
+            *sources,
+            current_summary,
+            key="current_job_is_primary_focus_now",
+            fallback_key=current_job_focus_fallback_key,
+        )
+        relevant_plan_item_is_primary_focus_now = self._pick_first_present(
+            *sources,
+            current_summary,
+            key="relevant_plan_item_is_primary_focus_now",
+            fallback_key=relevant_plan_item_focus_fallback_key,
+        )
+        attempted_submission_mode = self._pick_first_present(
+            *sources,
+            key="attempted_submission_mode",
+            fallback_key="submission_mode",
+        )
+        attempt_allowed = self._resolve_attempt_allowed_from_sources(*sources)
+        missing_required_fields = tuple(
+            self._pick_first_present(*sources, key="missing_required_fields") or ()
+        )
+        unavailable_in_slice = bool(
+            self._pick_first_present(*sources, key="unavailable_in_slice")
+        )
+        if (
+            not unavailable_in_slice
+            and isinstance(best_next_move_now, dict)
+            and best_next_move_now.get("call_type") is None
+            and not attempt_allowed
+            and not missing_required_fields
+        ):
+            unavailable_in_slice = True
+        return {
+            "attempt_allowed": attempt_allowed,
+            "attempted_call_type": self._pick_first_present(
+                *sources,
+                key="attempted_call_type",
+            ),
+            "attempted_submission_mode": attempted_submission_mode,
+            "productive_in_slice": bool(
+                self._pick_first_present(*sources, key="productive_in_slice")
+            ) or attempted_submission_mode == "productive_in_slice",
+            "context_capture_only": bool(
+                self._pick_first_present(*sources, key="context_capture_only")
+            ) or attempted_submission_mode == "context_capture",
+            "missing_required_fields": missing_required_fields,
+            "requires_additional_user_or_agent_input": bool(
+                self._pick_first_present(
+                    *sources,
+                    key="requires_additional_user_or_agent_input",
+                )
+            ),
+            "unavailable_in_slice": unavailable_in_slice,
             "dominant_target_kind_now": dominant_target_kind_now,
             "dominant_blocker_kind_now": dominant_blocker_kind_now,
             "best_next_move_now": best_next_move_now,
@@ -2247,71 +1841,71 @@ class GarageAlfredProcessor:
         }
 
     @staticmethod
-    def _resolve_follow_current_honest_path_receipt_source(
-        route_result: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        continuation_final_receipt = route_result.get("continuation_final_receipt")
-        if isinstance(continuation_final_receipt, dict):
-            return continuation_final_receipt
-        final_receipt = route_result.get("final_receipt")
-        if isinstance(final_receipt, dict):
-            return final_receipt
-        submit_receipt = route_result.get("submit_receipt")
-        if isinstance(submit_receipt, dict):
-            return submit_receipt
-        return None
-
-    @staticmethod
-    def _resolve_follow_current_honest_path_attempt_allowed(
-        *,
-        route_result: dict[str, Any],
-        route_receipt: dict[str, Any] | None,
+    def _resolve_attempt_allowed_from_sources(
+        *sources: dict[str, Any] | None,
     ) -> bool:
-        if "attempt_allowed" in route_result:
-            return bool(route_result.get("attempt_allowed"))
-        if isinstance(route_receipt, dict):
-            if "attempt_allowed" in route_receipt:
-                return bool(route_receipt.get("attempt_allowed"))
-            if "final_attempt_allowed" in route_receipt:
-                return bool(route_receipt.get("final_attempt_allowed"))
-            if "allowed_to_submit" in route_receipt:
-                return bool(route_receipt.get("allowed_to_submit"))
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            for key in ("attempt_allowed", "final_attempt_allowed", "allowed_to_submit"):
+                if key in source:
+                    return bool(source.get(key))
         return False
 
     @staticmethod
-    def _resolve_follow_or_continue_current_honest_path_receipt_source(
-        route_result: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        top_level_continuation_receipt = route_result.get("top_level_continuation_receipt")
-        if isinstance(top_level_continuation_receipt, dict):
-            return top_level_continuation_receipt
-        top_level_final_receipt = route_result.get("top_level_final_receipt")
-        if isinstance(top_level_final_receipt, dict):
-            return top_level_final_receipt
-        return None
+    def _resolve_rebased_receipt_fields(
+        *sources: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        rebased_best_next_move = GarageAlfredProcessor._pick_first_present(
+            *sources,
+            key="rebased_best_next_move",
+        )
+        rebased_candidate_kind = GarageAlfredProcessor._pick_first_present(
+            *sources,
+            key="rebased_candidate_kind",
+        )
+        if rebased_candidate_kind is None and isinstance(rebased_best_next_move, dict):
+            rebased_candidate_kind = (
+                "unavailable_replacement_candidate"
+                if rebased_best_next_move.get("call_type") is None
+                else "productive_replacement_candidate"
+            )
+        return {
+            "rebased_best_next_move": rebased_best_next_move,
+            "rebased_follow_up_behavior": GarageAlfredProcessor._pick_first_present(
+                *sources,
+                key="rebased_follow_up_behavior",
+            ),
+            "rebased_next_call_hint": GarageAlfredProcessor._pick_first_present(
+                *sources,
+                key="rebased_next_call_hint",
+            ),
+            "rebased_next_call_draft": GarageAlfredProcessor._pick_first_present(
+                *sources,
+                key="rebased_next_call_draft",
+            ),
+            "rebased_next_call_preflight": GarageAlfredProcessor._pick_first_present(
+                *sources,
+                key="rebased_next_call_preflight",
+            ),
+            "rebased_candidate_kind": rebased_candidate_kind,
+            "rebased_candidate_reason": GarageAlfredProcessor._pick_first_present(
+                *sources,
+                key="rebased_candidate_reason",
+            ),
+        }
 
     @staticmethod
-    def _classify_top_level_final_path_kind(
-        *,
-        flow_receipt: dict[str, Any],
-    ) -> str:
-        return str(flow_receipt.get("flow_path_kind") or "unavailable_refused")
+    def _is_stale_or_mismatch_continuation_kind(continuation_kind: Any) -> bool:
+        return continuation_kind in STALE_OR_MISMATCH_CONTINUATION_KINDS
 
     @staticmethod
-    def _is_follow_current_honest_path_stale_or_mismatch_refused(
-        *,
-        flow_path_kind: str,
-        route_result: dict[str, Any],
-    ) -> bool:
-        if "stale" in flow_path_kind or "mismatch" in flow_path_kind:
+    def _is_stale_or_mismatch_route_result(route_result: dict[str, Any]) -> bool:
+        if GarageAlfredProcessor._is_stale_or_mismatch_continuation_kind(
+            route_result.get("continuation_kind")
+        ):
             return True
-        continuation_kind = route_result.get("continuation_kind")
-        attempt_kind = route_result.get("attempt_kind")
-        return continuation_kind in {
-            "stale_receipt_refused",
-            "stale_rebased_refused",
-            "stale_rebased_unavailable_refused",
-        } or attempt_kind == "guard_mismatch_refused"
+        return route_result.get("attempt_kind") == "guard_mismatch_refused"
 
     @staticmethod
     def _pick_first_present(

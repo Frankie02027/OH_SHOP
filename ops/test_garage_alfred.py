@@ -9,187 +9,17 @@ from ops.garage_alfred import (
     GarageAlfredProcessingError,
     GarageAlfredProcessor,
 )
-
-
-def make_task_create_call() -> dict[str, object]:
-    return {
-        "schema_version": "v0.1",
-        "call_type": "task.create",
-        "from_role": "jarvis",
-        "to_role": "alfred",
-        "payload": {
-            "objective": "Create a new tracked task."
-        },
-    }
-
-
-def make_job_start_call() -> dict[str, object]:
-    return {
-        "schema_version": "v0.1",
-        "call_type": "job.start",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
-        "from_role": "jarvis",
-        "to_role": "alfred",
-        "reported_at": "2026-03-30T12:01:00Z",
-    }
-
-
-def make_plan_record_call(
-    *,
-    task_id: str = "T000001",
-    job_id: str | None = "T000001.J001",
-    plan_version: int = 1,
-    current_active_item: str | None = "I002",
-) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "task_id": task_id,
-        "plan_version": plan_version,
-        "created_by": "jarvis",
-        "plan_status": "active",
-        "items": [
-            {
-                "item_id": "I001",
-                "title": "Collect context",
-                "description": "Understand the current runtime slice.",
-                "status": "verified",
-            },
-            {
-                "item_id": "I002",
-                "title": "Delegate browser work",
-                "description": "Run the Robin child leg.",
-                "status": "needs_child_job",
-                "depends_on": ["I001"],
-            },
-            {
-                "item_id": "I003",
-                "title": "Resume and verify",
-                "description": "Resume after Robin returns and verify outputs.",
-                "status": "todo",
-                "depends_on": ["I002"],
-            },
-        ],
-    }
-    if current_active_item is not None:
-        payload["current_active_item"] = current_active_item
-    call: dict[str, object] = {
-        "schema_version": "v0.1",
-        "call_type": "plan.record",
-        "task_id": task_id,
-        "from_role": "jarvis",
-        "to_role": "alfred",
-        "plan_version": plan_version,
-        "payload": payload,
-    }
-    if job_id is not None:
-        call["job_id"] = job_id
-    return call
-
-
-def make_child_job_request_call(
-    *,
-    job_id: str = "T000001.J001",
-    parent_job_id: str | None = None,
-) -> dict[str, object]:
-    call: dict[str, object] = {
-        "schema_version": "v0.1",
-        "call_type": "child_job.request",
-        "task_id": "T000001",
-        "job_id": job_id,
-        "from_role": "jarvis",
-        "to_role": "alfred",
-        "reported_at": "2026-03-30T12:00:30Z",
-        "payload": {
-            "objective": "Use Robin for browser work.",
-            "reason_for_handoff": "Needs browser lane.",
-            "constraints": ["stay in browser lane"],
-            "expected_output": ["page title"],
-            "success_criteria": ["title captured"],
-        },
-    }
-    if parent_job_id is not None:
-        call["parent_job_id"] = parent_job_id
-    return call
-
-
-def make_result_submit_call() -> dict[str, object]:
-    return {
-        "schema_version": "v0.1",
-        "call_type": "result.submit",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
-        "from_role": "robin",
-        "to_role": "alfred",
-        "reported_at": "2026-03-30T12:02:00Z",
-        "reported_status": "partial",
-        "payload_ref": {
-            "kind": "result-json",
-            "path": "/workspace/robin/tasks/T000001/jobs/J001/result.json",
-            "role": "robin",
-        },
-    }
-
-
-def make_failure_report_call(status: str) -> dict[str, object]:
-    return {
-        "schema_version": "v0.1",
-        "call_type": "failure.report",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
-        "from_role": "robin",
-        "to_role": "alfred",
-        "reported_at": "2026-03-30T12:03:00Z",
-        "reported_status": status,
-        "payload_ref": {
-            "kind": "failure-json",
-            "path": "/workspace/robin/tasks/T000001/jobs/J001/failure.json",
-            "role": "robin",
-        },
-    }
-
-
-def make_checkpoint_create_call() -> dict[str, object]:
-    return {
-        "schema_version": "v0.1",
-        "call_type": "checkpoint.create",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
-        "from_role": "jarvis",
-        "to_role": "alfred",
-        "plan_version": 2,
-        "payload": {
-            "reason": "Pause before storage wiring.",
-            "resume_point": {"step": "wire-storage"},
-        },
-    }
-
-
-def make_continuation_record_call() -> dict[str, object]:
-    return {
-        "schema_version": "v0.1",
-        "call_type": "continuation.record",
-        "task_id": "T000001",
-        "job_id": "T000001.J001",
-        "from_role": "jarvis",
-        "to_role": "alfred",
-        "plan_version": 2,
-        "payload_ref": {
-            "kind": "continuation-note",
-            "path": "/workspace/jarvis/tasks/T000001/continuation.md",
-            "role": "jarvis",
-        },
-        "artifact_refs": [
-            {
-                "artifact_id": "T000001.J001.A001",
-                "kind": "summary",
-                "workspace_ref": {
-                    "role": "jarvis",
-                    "path": "/workspace/jarvis/tasks/T000001/continuation.md",
-                },
-                "reported_by": "jarvis",
-            }
-        ],
-    }
+from ops.test_garage_fixtures import (
+    make_checkpoint_create_call,
+    make_child_job_request_call,
+    make_continuation_record_call,
+    make_failure_report_call,
+    make_job_start_call,
+    make_plan_record_call,
+    make_result_submit_call,
+    make_summary_artifact_ref,
+    make_task_create_call,
+)
 
 
 class GarageAlfredProcessorTests(unittest.TestCase):
@@ -283,7 +113,12 @@ class GarageAlfredProcessorTests(unittest.TestCase):
         self.assertEqual("T000001.C001", result.result["checkpoint_id"])
 
     def test_continuation_record_produces_continuation_recorded_and_record(self) -> None:
-        result = self.processor.process_call(make_continuation_record_call())
+        result = self.processor.process_call(
+            make_continuation_record_call(
+                plan_version=2,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
 
         self.assertEqual(
             "continuation.recorded",
