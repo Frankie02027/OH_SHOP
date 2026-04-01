@@ -195,3 +195,4 @@ The default stance is:
 - delete wrong logic
 - keep the architecture honest
 - report conflicts plainly
+-  reindex the fucking repo
