@@ -7207,6 +7207,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         flow = processor.follow_current_honest_path("T000001")
         receipt = flow["flow_receipt"]
+        final_receipt = flow["top_level_final_receipt"]
         storage.close()
 
         self.assertEqual("attempt_best_next_call", flow["route_helper_name"])
@@ -7222,6 +7223,20 @@ class GarageStorageAdapterTests(unittest.TestCase):
             "continue-active-execution",
             receipt["best_next_move_now"]["move_kind"],
         )
+        self.assertEqual(
+            "fresh_attempt_productive_execution",
+            final_receipt["top_level_final_path_kind"],
+        )
+        self.assertTrue(final_receipt["attempt_allowed"])
+        self.assertEqual("job.start", final_receipt["attempted_call_type"])
+        self.assertEqual(
+            "productive_in_slice",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertTrue(final_receipt["productive_in_slice"])
+        self.assertFalse(final_receipt["context_capture_only"])
+        self.assertFalse(final_receipt["stale_or_mismatch_refused"])
+        self.assertEqual("active-item", final_receipt["dominant_target_kind_now"])
 
     def test_follow_current_honest_path_routes_guarded_rebase_without_receipt(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -7285,6 +7300,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             },
         )
         receipt = flow["flow_receipt"]
+        final_receipt = flow["top_level_final_receipt"]
         storage.close()
 
         self.assertEqual(
@@ -7299,6 +7315,17 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertFalse(receipt["productive_in_slice"])
         self.assertTrue(receipt["context_capture_only"])
         self.assertEqual("review-needed", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "guarded_rebased_context_capture",
+            final_receipt["top_level_final_path_kind"],
+        )
+        self.assertTrue(final_receipt["attempt_allowed"])
+        self.assertEqual("continuation.record", final_receipt["attempted_call_type"])
+        self.assertEqual("context_capture", final_receipt["attempted_submission_mode"])
+        self.assertFalse(final_receipt["productive_in_slice"])
+        self.assertTrue(final_receipt["context_capture_only"])
+        self.assertFalse(final_receipt["stale_or_mismatch_refused"])
+        self.assertEqual("review-needed", final_receipt["dominant_target_kind_now"])
 
     def test_follow_current_honest_path_routes_receipt_to_continuation(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -7373,6 +7400,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             },
         )
         receipt = flow["flow_receipt"]
+        final_receipt = flow["top_level_final_receipt"]
         storage.close()
 
         self.assertEqual("continue_from_final_receipt", flow["route_helper_name"])
@@ -7384,6 +7412,18 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(receipt["context_capture_only"])
         self.assertFalse(receipt["productive_in_slice"])
         self.assertEqual("review-needed", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "receipt_continued_context_capture",
+            final_receipt["top_level_final_path_kind"],
+        )
+        self.assertTrue(final_receipt["used_final_receipt"])
+        self.assertTrue(final_receipt["attempt_allowed"])
+        self.assertEqual("continuation.record", final_receipt["attempted_call_type"])
+        self.assertEqual("context_capture", final_receipt["attempted_submission_mode"])
+        self.assertTrue(final_receipt["context_capture_only"])
+        self.assertFalse(final_receipt["productive_in_slice"])
+        self.assertFalse(final_receipt["stale_or_mismatch_refused"])
+        self.assertEqual("review-needed", final_receipt["dominant_target_kind_now"])
 
     def test_follow_current_honest_path_routes_stale_receipt_with_approved_rebase(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -7430,6 +7470,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             },
         )
         receipt = flow["flow_receipt"]
+        final_receipt = flow["top_level_final_receipt"]
         storage.close()
 
         self.assertEqual(
@@ -7446,6 +7487,22 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertTrue(receipt["attempt_allowed"])
         self.assertTrue(receipt["productive_in_slice"])
         self.assertEqual("waiting-on-child", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "receipt_stale_rebased_productive_execution",
+            final_receipt["top_level_final_path_kind"],
+        )
+        self.assertTrue(final_receipt["used_final_receipt"])
+        self.assertTrue(final_receipt["used_rebase_policy"])
+        self.assertTrue(final_receipt["attempt_allowed"])
+        self.assertEqual("job.start", final_receipt["attempted_call_type"])
+        self.assertEqual(
+            "productive_in_slice",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertTrue(final_receipt["productive_in_slice"])
+        self.assertFalse(final_receipt["context_capture_only"])
+        self.assertTrue(final_receipt["stale_or_mismatch_refused"])
+        self.assertEqual("waiting-on-child", final_receipt["dominant_target_kind_now"])
 
     def test_follow_current_honest_path_distinguishes_missing_input_without_receipt(
         self,
@@ -7482,6 +7539,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
 
         flow = processor.follow_current_honest_path("T000001")
         receipt = flow["flow_receipt"]
+        final_receipt = flow["top_level_final_receipt"]
         storage.close()
 
         self.assertEqual("attempt_best_next_call", flow["route_helper_name"])
@@ -7490,6 +7548,20 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual(("payload_ref",), receipt["missing_required_fields"])
         self.assertTrue(receipt["requires_additional_user_or_agent_input"])
         self.assertEqual("proof-gathering", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "fresh_attempt_missing_input_refused",
+            final_receipt["top_level_final_path_kind"],
+        )
+        self.assertFalse(final_receipt["attempt_allowed"])
+        self.assertEqual("continuation.record", final_receipt["attempted_call_type"])
+        self.assertEqual(
+            "productive_in_slice",
+            final_receipt["attempted_submission_mode"],
+        )
+        self.assertEqual(("payload_ref",), final_receipt["missing_required_fields"])
+        self.assertTrue(final_receipt["requires_additional_user_or_agent_input"])
+        self.assertFalse(final_receipt["stale_or_mismatch_refused"])
+        self.assertEqual("proof-gathering", final_receipt["dominant_target_kind_now"])
 
     def test_follow_current_honest_path_distinguishes_stale_refusal_without_rebase_policy(
         self,
@@ -7532,6 +7604,7 @@ class GarageStorageAdapterTests(unittest.TestCase):
             final_receipt=prior_attempt["final_receipt"],
         )
         receipt = flow["flow_receipt"]
+        final_receipt = flow["top_level_final_receipt"]
         storage.close()
 
         self.assertEqual("continue_from_final_receipt", flow["route_helper_name"])
@@ -7540,6 +7613,18 @@ class GarageStorageAdapterTests(unittest.TestCase):
         self.assertEqual("receipt_stale_refused", receipt["flow_path_kind"])
         self.assertFalse(receipt["attempt_allowed"])
         self.assertEqual("waiting-on-child", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "receipt_stale_refused",
+            final_receipt["top_level_final_path_kind"],
+        )
+        self.assertTrue(final_receipt["used_final_receipt"])
+        self.assertFalse(final_receipt["attempt_allowed"])
+        self.assertTrue(final_receipt["stale_or_mismatch_refused"])
+        self.assertEqual("waiting-on-child", final_receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "progress-child-leg",
+            final_receipt["best_next_move_now"]["move_kind"],
+        )
 
     def test_follow_current_honest_path_keeps_active_leg_unavailable_explicit(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
@@ -7590,12 +7675,22 @@ class GarageStorageAdapterTests(unittest.TestCase):
             expected={"expected_dominant_target_kind": "active-item"},
         )
         receipt = flow["flow_receipt"]
+        final_receipt = flow["top_level_final_receipt"]
         storage.close()
 
         self.assertEqual("attempt_best_next_call_with_guards", flow["route_helper_name"])
         self.assertEqual("guarded_attempt_unavailable_refused", receipt["flow_path_kind"])
         self.assertFalse(receipt["attempt_allowed"])
         self.assertTrue(receipt["unavailable_in_slice"])
+        self.assertEqual(
+            "guarded_attempt_unavailable_refused",
+            final_receipt["top_level_final_path_kind"],
+        )
+        self.assertFalse(final_receipt["attempt_allowed"])
+        self.assertIsNone(final_receipt["attempted_call_type"])
+        self.assertTrue(final_receipt["unavailable_in_slice"])
+        self.assertFalse(final_receipt["stale_or_mismatch_refused"])
+        self.assertEqual("active-item", final_receipt["dominant_target_kind_now"])
         self.assertEqual("active-item", receipt["dominant_target_kind_now"])
         self.assertEqual(
             "continue-active-execution",
