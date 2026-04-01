@@ -886,6 +886,198 @@ class GarageAlfredProcessor:
             route_result=route_result,
         )
 
+    def continue_from_top_level_final_receipt(
+        self,
+        task_id: str,
+        *,
+        top_level_final_receipt: dict[str, Any] | None,
+        supplied_fields: dict[str, Any] | None = None,
+        allowed_rebased: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        receipt_evaluation = self._evaluate_top_level_final_receipt_for_continuation(
+            top_level_final_receipt=top_level_final_receipt,
+            allowed_rebased=allowed_rebased,
+        )
+        if not bool(receipt_evaluation.get("top_level_receipt_compatible")):
+            route_result = {
+                "top_level_receipt_compatible": False,
+                "continuation_route_helper_name": receipt_evaluation.get(
+                    "continuation_route_helper_name"
+                ),
+                "continuation_kind": "top_level_receipt_not_continuable_refused",
+                "continuation_failure_kind": receipt_evaluation.get(
+                    "continuation_failure_kind"
+                ),
+                "continuation_failure_reason": receipt_evaluation.get(
+                    "continuation_failure_reason"
+                ),
+                "attempt_allowed": False,
+                "attempted_call_type": top_level_final_receipt.get("attempted_call_type")
+                if isinstance(top_level_final_receipt, dict)
+                else None,
+                "attempted_submission_mode": (
+                    top_level_final_receipt.get("attempted_submission_mode")
+                    if isinstance(top_level_final_receipt, dict)
+                    else None
+                ),
+                "missing_required_fields": tuple(
+                    top_level_final_receipt.get("missing_required_fields") or ()
+                )
+                if isinstance(top_level_final_receipt, dict)
+                else (),
+                "requires_additional_user_or_agent_input": bool(
+                    top_level_final_receipt.get(
+                        "requires_additional_user_or_agent_input"
+                    )
+                    if isinstance(top_level_final_receipt, dict)
+                    else False
+                ),
+                "submit_receipt": None,
+                "continuation_final_receipt": None,
+            }
+            return self._attach_top_level_continuation_receipt(
+                task_id=task_id,
+                route_result=route_result,
+            )
+
+        lower_level_final_receipt = receipt_evaluation.get("lower_level_final_receipt")
+        route_helper_name = str(receipt_evaluation.get("continuation_route_helper_name"))
+        if route_helper_name == "continue_from_final_receipt_with_guarded_rebase":
+            route_result = self.continue_from_final_receipt_with_guarded_rebase(
+                task_id,
+                final_receipt=lower_level_final_receipt,
+                supplied_fields=supplied_fields,
+                allowed_rebased=allowed_rebased,
+            )
+        else:
+            route_result = self.continue_from_final_receipt(
+                task_id,
+                final_receipt=lower_level_final_receipt,
+                supplied_fields=supplied_fields,
+            )
+        return self._attach_top_level_continuation_receipt(
+            task_id=task_id,
+            route_result={
+                "top_level_receipt_compatible": bool(
+                    route_result.get("prior_receipt_compatible")
+                ),
+                "continuation_route_helper_name": route_helper_name,
+                **dict(route_result),
+            },
+        )
+
+    @staticmethod
+    def _evaluate_top_level_final_receipt_for_continuation(
+        *,
+        top_level_final_receipt: dict[str, Any] | None,
+        allowed_rebased: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if not isinstance(top_level_final_receipt, dict):
+            return {
+                "top_level_receipt_compatible": False,
+                "continuation_route_helper_name": None,
+                "continuation_failure_kind": "invalid_top_level_final_receipt_shape",
+                "continuation_failure_reason": (
+                    "top_level_final_receipt must be a dict when provided"
+                ),
+                "lower_level_final_receipt": None,
+            }
+        prior_path_kind = top_level_final_receipt.get("top_level_final_path_kind")
+        if not isinstance(prior_path_kind, str) or not prior_path_kind:
+            return {
+                "top_level_receipt_compatible": False,
+                "continuation_route_helper_name": None,
+                "continuation_failure_kind": "invalid_top_level_final_receipt_path",
+                "continuation_failure_reason": (
+                    "top_level_final_receipt must include a non-empty "
+                    "top_level_final_path_kind"
+                ),
+                "lower_level_final_receipt": None,
+            }
+        if not bool(top_level_final_receipt.get("used_final_receipt")):
+            return {
+                "top_level_receipt_compatible": False,
+                "continuation_route_helper_name": None,
+                "continuation_failure_kind": "top_level_receipt_not_continuable",
+                "continuation_failure_reason": (
+                    "top-level receipt did not come from a receipt-based continuation path"
+                ),
+                "lower_level_final_receipt": None,
+            }
+        prior_route_helper_name = top_level_final_receipt.get("route_helper_name")
+        if prior_route_helper_name not in {
+            "continue_from_final_receipt",
+            "continue_from_final_receipt_with_guarded_rebase",
+        }:
+            return {
+                "top_level_receipt_compatible": False,
+                "continuation_route_helper_name": (
+                    str(prior_route_helper_name)
+                    if isinstance(prior_route_helper_name, str)
+                    else None
+                ),
+                "continuation_failure_kind": "top_level_receipt_not_continuable",
+                "continuation_failure_reason": (
+                    "top-level receipt did not capture a continuable lower-level receipt path"
+                ),
+                "lower_level_final_receipt": None,
+            }
+        continuation_route_helper_name = (
+            "continue_from_final_receipt_with_guarded_rebase"
+            if allowed_rebased is not None
+            or bool(top_level_final_receipt.get("used_rebase_policy"))
+            else "continue_from_final_receipt"
+        )
+        return {
+            "top_level_receipt_compatible": True,
+            "continuation_route_helper_name": continuation_route_helper_name,
+            "continuation_failure_kind": None,
+            "continuation_failure_reason": None,
+            "lower_level_final_receipt": (
+                GarageAlfredProcessor._build_lower_level_final_receipt_from_top_level(
+                    top_level_final_receipt
+                )
+            ),
+        }
+
+    @staticmethod
+    def _build_lower_level_final_receipt_from_top_level(
+        top_level_final_receipt: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "final_attempt_path_kind": top_level_final_receipt.get(
+                "top_level_final_path_kind"
+            ),
+            "attempted_call_type": top_level_final_receipt.get("attempted_call_type"),
+            "attempted_submission_mode": top_level_final_receipt.get(
+                "attempted_submission_mode"
+            ),
+            "productive_in_slice": bool(top_level_final_receipt.get("productive_in_slice")),
+            "context_capture_only": bool(
+                top_level_final_receipt.get("context_capture_only")
+            ),
+            "missing_required_fields": tuple(
+                top_level_final_receipt.get("missing_required_fields") or ()
+            ),
+            "dominant_target_kind_now": top_level_final_receipt.get(
+                "dominant_target_kind_now"
+            ),
+            "dominant_blocker_kind_now": top_level_final_receipt.get(
+                "dominant_blocker_kind_now"
+            ),
+            "best_next_move_now": top_level_final_receipt.get("best_next_move_now"),
+            "execution_allowed_now": top_level_final_receipt.get("execution_allowed_now"),
+            "execution_hold_kind_now": top_level_final_receipt.get(
+                "execution_hold_kind_now"
+            ),
+            "current_job_is_primary_focus_now": top_level_final_receipt.get(
+                "current_job_is_primary_focus_now"
+            ),
+            "relevant_plan_item_is_primary_focus_now": top_level_final_receipt.get(
+                "relevant_plan_item_is_primary_focus_now"
+            ),
+        }
+
     @staticmethod
     def _evaluate_final_receipt_compatibility(
         *,
@@ -1309,6 +1501,244 @@ class GarageAlfredProcessor:
             "rebased_next_call_preflight": continuation.get("rebased_next_call_preflight"),
             "rebased_candidate_kind": rebased_candidate_kind,
             "rebased_candidate_reason": continuation.get("rebased_candidate_reason"),
+            "dominant_target_kind_now": dominant_target_kind_now,
+            "dominant_blocker_kind_now": dominant_blocker_kind_now,
+            "best_next_move_now": best_next_move_now,
+            "execution_allowed_now": execution_allowed_now,
+            "execution_hold_kind_now": execution_hold_kind_now,
+            "current_job_is_primary_focus_now": current_job_is_primary_focus_now,
+            "relevant_plan_item_is_primary_focus_now": (
+                relevant_plan_item_is_primary_focus_now
+            ),
+        }
+
+    def _attach_top_level_continuation_receipt(
+        self,
+        *,
+        task_id: str,
+        route_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        enriched = {
+            "top_level_receipt_compatible": bool(
+                route_result.get("top_level_receipt_compatible")
+            ),
+            "continuation_route_helper_name": route_result.get(
+                "continuation_route_helper_name"
+            ),
+            "route_result": dict(route_result),
+        }
+        enriched["top_level_continuation_receipt"] = (
+            self._build_top_level_continuation_receipt(
+                task_id=task_id,
+                route_result=route_result,
+            )
+        )
+        return enriched
+
+    def _build_top_level_continuation_receipt(
+        self,
+        *,
+        task_id: str,
+        route_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        current_summary = self._read_current_task_summary_for_receipt(task_id)
+        nested_continuation_final_receipt = (
+            route_result.get("continuation_final_receipt")
+            if isinstance(route_result.get("continuation_final_receipt"), dict)
+            else None
+        )
+        attempted_submission_mode = self._pick_first_present(
+            nested_continuation_final_receipt,
+            route_result,
+            key="attempted_submission_mode",
+        )
+        dominant_target_kind_now = self._pick_first_present(
+            nested_continuation_final_receipt,
+            route_result,
+            current_summary,
+            key="dominant_target_kind_now",
+            fallback_key="fresh_dominant_target_kind",
+        )
+        if dominant_target_kind_now is None and isinstance(current_summary, dict):
+            dominant_target_kind_now = current_summary.get("dominant_target_kind")
+        dominant_blocker_kind_now = self._pick_first_present(
+            nested_continuation_final_receipt,
+            route_result,
+            current_summary,
+            key="dominant_blocker_kind_now",
+            fallback_key="dominant_blocker_kind",
+        )
+        best_next_move_now = self._pick_first_present(
+            nested_continuation_final_receipt,
+            route_result,
+            current_summary,
+            key="best_next_move_now",
+            fallback_key="fresh_best_next_move",
+        )
+        if best_next_move_now is None and isinstance(current_summary, dict):
+            best_next_move_now = current_summary.get("best_next_move")
+        execution_allowed_now = self._pick_first_present(
+            nested_continuation_final_receipt,
+            route_result,
+            current_summary,
+            key="execution_allowed_now",
+        )
+        if execution_allowed_now is None and isinstance(current_summary, dict):
+            execution_allowed_now = current_summary.get("execution_allowed")
+        execution_hold_kind_now = self._pick_first_present(
+            nested_continuation_final_receipt,
+            route_result,
+            current_summary,
+            key="execution_hold_kind_now",
+            fallback_key="execution_hold_kind",
+        )
+        current_job_is_primary_focus_now = self._pick_first_present(
+            nested_continuation_final_receipt,
+            route_result,
+            current_summary,
+            key="current_job_is_primary_focus_now",
+        )
+        if current_job_is_primary_focus_now is None and isinstance(current_summary, dict):
+            current_job_is_primary_focus_now = current_summary.get(
+                "current_job_is_primary_focus"
+            )
+        relevant_plan_item_is_primary_focus_now = self._pick_first_present(
+            nested_continuation_final_receipt,
+            route_result,
+            current_summary,
+            key="relevant_plan_item_is_primary_focus_now",
+        )
+        if (
+            relevant_plan_item_is_primary_focus_now is None
+            and isinstance(current_summary, dict)
+        ):
+            relevant_plan_item_is_primary_focus_now = current_summary.get(
+                "relevant_plan_item_is_primary_focus"
+            )
+        missing_required_fields = tuple(
+            self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="missing_required_fields",
+            )
+            or ()
+        )
+        requires_additional_input = bool(
+            self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="requires_additional_user_or_agent_input",
+            )
+        )
+        attempt_allowed = bool(
+            self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="attempt_allowed",
+            )
+        )
+        productive_in_slice = bool(
+            self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="productive_in_slice",
+            )
+        ) or attempted_submission_mode == "productive_in_slice"
+        context_capture_only = bool(
+            self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="context_capture_only",
+            )
+        ) or attempted_submission_mode == "context_capture"
+        unavailable_in_slice = bool(
+            self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="unavailable_in_slice",
+            )
+        )
+        if (
+            not unavailable_in_slice
+            and isinstance(best_next_move_now, dict)
+            and best_next_move_now.get("call_type") is None
+            and not attempt_allowed
+            and not missing_required_fields
+        ):
+            unavailable_in_slice = True
+        top_level_continuation_path_kind = (
+            self._classify_top_level_continuation_path_kind(
+                route_result=route_result,
+            )
+        )
+        return {
+            "top_level_continuation_path_kind": top_level_continuation_path_kind,
+            "top_level_receipt_compatible": bool(
+                route_result.get("top_level_receipt_compatible")
+            ),
+            "continuation_route_helper_name": route_result.get(
+                "continuation_route_helper_name"
+            ),
+            "continuation_kind": route_result.get("continuation_kind"),
+            "continuation_failure_kind": route_result.get("continuation_failure_kind"),
+            "continuation_failure_reason": route_result.get(
+                "continuation_failure_reason"
+            ),
+            "rebase_considered": route_result.get("rebase_considered"),
+            "rebase_allowed": route_result.get("rebase_allowed"),
+            "rebase_failure_kind": route_result.get("rebase_failure_kind"),
+            "rebase_failure_reason": route_result.get("rebase_failure_reason"),
+            "attempt_allowed": attempt_allowed,
+            "attempted_call_type": self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="attempted_call_type",
+            ),
+            "attempted_submission_mode": attempted_submission_mode,
+            "productive_in_slice": productive_in_slice,
+            "context_capture_only": context_capture_only,
+            "missing_required_fields": missing_required_fields,
+            "requires_additional_user_or_agent_input": requires_additional_input,
+            "unavailable_in_slice": unavailable_in_slice,
+            "stale_or_mismatch_refused": (
+                "stale" in top_level_continuation_path_kind
+                or "mismatch" in top_level_continuation_path_kind
+            ),
+            "rebased_best_next_move": self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="rebased_best_next_move",
+            ),
+            "rebased_follow_up_behavior": self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="rebased_follow_up_behavior",
+            ),
+            "rebased_next_call_hint": self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="rebased_next_call_hint",
+            ),
+            "rebased_next_call_draft": self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="rebased_next_call_draft",
+            ),
+            "rebased_next_call_preflight": self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="rebased_next_call_preflight",
+            ),
+            "rebased_candidate_kind": self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="rebased_candidate_kind",
+            ),
+            "rebased_candidate_reason": self._pick_first_present(
+                nested_continuation_final_receipt,
+                route_result,
+                key="rebased_candidate_reason",
+            ),
             "dominant_target_kind_now": dominant_target_kind_now,
             "dominant_blocker_kind_now": dominant_blocker_kind_now,
             "best_next_move_now": best_next_move_now,
@@ -2403,6 +2833,42 @@ class GarageAlfredProcessor:
         return flow_kind_by_continuation_path.get(
             str(continuation_path_kind),
             "receipt_stale_refused",
+        )
+
+    @staticmethod
+    def _classify_top_level_continuation_path_kind(
+        *,
+        route_result: dict[str, Any],
+    ) -> str:
+        continuation_kind = str(route_result.get("continuation_kind") or "")
+        top_level_kind_by_continuation_path = {
+            "continued_productive_execution": (
+                "top_level_receipt_continued_productive_execution"
+            ),
+            "continued_context_capture": "top_level_receipt_continued_context_capture",
+            "continued_missing_input_refused": "top_level_receipt_missing_input_refused",
+            "continued_unavailable_refused": "top_level_receipt_unavailable_refused",
+            "stale_receipt_refused": "top_level_receipt_stale_refused",
+            "stale_rebased_continued_productive_execution": (
+                "top_level_receipt_stale_rebased_productive_execution"
+            ),
+            "stale_rebased_continued_context_capture": (
+                "top_level_receipt_stale_rebased_context_capture"
+            ),
+            "stale_rebased_missing_input_refused": (
+                "top_level_receipt_stale_rebased_missing_input_refused"
+            ),
+            "stale_rebased_unavailable_refused": (
+                "top_level_receipt_stale_rebased_unavailable_refused"
+            ),
+            "stale_rebased_refused": "top_level_receipt_stale_rebased_refused",
+            "top_level_receipt_not_continuable_refused": (
+                "top_level_receipt_not_continuable_refused"
+            ),
+        }
+        return top_level_kind_by_continuation_path.get(
+            continuation_kind,
+            "top_level_receipt_stale_refused",
         )
 
     @staticmethod
