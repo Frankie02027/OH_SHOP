@@ -830,6 +830,62 @@ class GarageAlfredProcessor:
             continuation=result,
         )
 
+    def follow_current_honest_path(
+        self,
+        task_id: str,
+        *,
+        final_receipt: dict[str, Any] | None = None,
+        supplied_fields: dict[str, Any] | None = None,
+        expected: dict[str, Any] | None = None,
+        allowed_rebased: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        uses_final_receipt = final_receipt is not None
+        if uses_final_receipt:
+            if allowed_rebased is not None:
+                route_helper_name = "continue_from_final_receipt_with_guarded_rebase"
+                route_result = self.continue_from_final_receipt_with_guarded_rebase(
+                    task_id,
+                    final_receipt=final_receipt,
+                    supplied_fields=supplied_fields,
+                    allowed_rebased=allowed_rebased,
+                )
+            else:
+                route_helper_name = "continue_from_final_receipt"
+                route_result = self.continue_from_final_receipt(
+                    task_id,
+                    final_receipt=final_receipt,
+                    supplied_fields=supplied_fields,
+                )
+        elif allowed_rebased is not None:
+            route_helper_name = "attempt_best_next_call_with_guarded_rebase"
+            route_result = self.attempt_best_next_call_with_guarded_rebase(
+                task_id,
+                supplied_fields=supplied_fields,
+                expected=expected,
+                allowed_rebased=allowed_rebased,
+            )
+        elif expected is not None:
+            route_helper_name = "attempt_best_next_call_with_guards"
+            route_result = self.attempt_best_next_call_with_guards(
+                task_id,
+                supplied_fields=supplied_fields,
+                expected=expected,
+            )
+        else:
+            route_helper_name = "attempt_best_next_call"
+            route_result = self.attempt_best_next_call(
+                task_id,
+                supplied_fields=supplied_fields,
+            )
+        return self._attach_follow_current_honest_path_receipt(
+            task_id=task_id,
+            route_helper_name=route_helper_name,
+            uses_final_receipt=uses_final_receipt,
+            uses_guards=(not uses_final_receipt and expected is not None),
+            uses_rebase_policy=(allowed_rebased is not None),
+            route_result=route_result,
+        )
+
     @staticmethod
     def _evaluate_final_receipt_compatibility(
         *,
@@ -1263,6 +1319,184 @@ class GarageAlfredProcessor:
                 relevant_plan_item_is_primary_focus_now
             ),
         }
+
+    def _attach_follow_current_honest_path_receipt(
+        self,
+        *,
+        task_id: str,
+        route_helper_name: str,
+        uses_final_receipt: bool,
+        uses_guards: bool,
+        uses_rebase_policy: bool,
+        route_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "route_helper_name": route_helper_name,
+            "used_final_receipt": uses_final_receipt,
+            "used_guards": uses_guards,
+            "used_rebase_policy": uses_rebase_policy,
+            "route_result": dict(route_result),
+            "flow_receipt": self._build_follow_current_honest_path_receipt(
+                task_id=task_id,
+                route_helper_name=route_helper_name,
+                uses_final_receipt=uses_final_receipt,
+                uses_guards=uses_guards,
+                uses_rebase_policy=uses_rebase_policy,
+                route_result=route_result,
+            ),
+        }
+
+    def _build_follow_current_honest_path_receipt(
+        self,
+        *,
+        task_id: str,
+        route_helper_name: str,
+        uses_final_receipt: bool,
+        uses_guards: bool,
+        uses_rebase_policy: bool,
+        route_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        current_summary = self._read_current_task_summary_for_receipt(task_id)
+        route_receipt = self._resolve_follow_current_honest_path_receipt_source(route_result)
+        dominant_target_kind_now = self._pick_first_present(
+            route_receipt,
+            current_summary,
+            key="dominant_target_kind_now",
+            fallback_key="dominant_target_kind",
+        )
+        dominant_blocker_kind_now = self._pick_first_present(
+            route_receipt,
+            current_summary,
+            key="dominant_blocker_kind_now",
+            fallback_key="dominant_blocker_kind",
+        )
+        best_next_move_now = self._pick_first_present(
+            route_receipt,
+            current_summary,
+            key="best_next_move_now",
+            fallback_key="best_next_move",
+        )
+        execution_allowed_now = self._pick_first_present(
+            route_receipt,
+            current_summary,
+            key="execution_allowed_now",
+            fallback_key="execution_allowed",
+        )
+        execution_hold_kind_now = self._pick_first_present(
+            route_receipt,
+            current_summary,
+            key="execution_hold_kind_now",
+            fallback_key="execution_hold_kind",
+        )
+        current_job_is_primary_focus_now = self._pick_first_present(
+            route_receipt,
+            current_summary,
+            key="current_job_is_primary_focus_now",
+            fallback_key="current_job_is_primary_focus",
+        )
+        relevant_plan_item_is_primary_focus_now = self._pick_first_present(
+            route_receipt,
+            current_summary,
+            key="relevant_plan_item_is_primary_focus_now",
+            fallback_key="relevant_plan_item_is_primary_focus",
+        )
+        attempt_allowed = self._resolve_follow_current_honest_path_attempt_allowed(
+            route_result=route_result,
+            route_receipt=route_receipt,
+        )
+        productive_in_slice = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="productive_in_slice",
+            )
+        )
+        context_capture_only = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="context_capture_only",
+            )
+        )
+        missing_required_fields = tuple(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="missing_required_fields",
+            )
+            or ()
+        )
+        requires_additional_input = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="requires_additional_user_or_agent_input",
+            )
+        )
+        unavailable_in_slice = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="unavailable_in_slice",
+            )
+        )
+        return {
+            "flow_path_kind": self._classify_follow_current_honest_path_kind(
+                route_helper_name=route_helper_name,
+                route_result=route_result,
+            ),
+            "used_final_receipt": uses_final_receipt,
+            "used_guards": uses_guards,
+            "used_rebase_policy": uses_rebase_policy,
+            "route_helper_name": route_helper_name,
+            "attempt_allowed": attempt_allowed,
+            "productive_in_slice": productive_in_slice,
+            "context_capture_only": context_capture_only,
+            "missing_required_fields": missing_required_fields,
+            "requires_additional_user_or_agent_input": requires_additional_input,
+            "unavailable_in_slice": unavailable_in_slice,
+            "dominant_target_kind_now": dominant_target_kind_now,
+            "dominant_blocker_kind_now": dominant_blocker_kind_now,
+            "best_next_move_now": best_next_move_now,
+            "execution_allowed_now": execution_allowed_now,
+            "execution_hold_kind_now": execution_hold_kind_now,
+            "current_job_is_primary_focus_now": current_job_is_primary_focus_now,
+            "relevant_plan_item_is_primary_focus_now": (
+                relevant_plan_item_is_primary_focus_now
+            ),
+        }
+
+    @staticmethod
+    def _resolve_follow_current_honest_path_receipt_source(
+        route_result: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        continuation_final_receipt = route_result.get("continuation_final_receipt")
+        if isinstance(continuation_final_receipt, dict):
+            return continuation_final_receipt
+        final_receipt = route_result.get("final_receipt")
+        if isinstance(final_receipt, dict):
+            return final_receipt
+        submit_receipt = route_result.get("submit_receipt")
+        if isinstance(submit_receipt, dict):
+            return submit_receipt
+        return None
+
+    @staticmethod
+    def _resolve_follow_current_honest_path_attempt_allowed(
+        *,
+        route_result: dict[str, Any],
+        route_receipt: dict[str, Any] | None,
+    ) -> bool:
+        if "attempt_allowed" in route_result:
+            return bool(route_result.get("attempt_allowed"))
+        if isinstance(route_receipt, dict):
+            if "attempt_allowed" in route_receipt:
+                return bool(route_receipt.get("attempt_allowed"))
+            if "final_attempt_allowed" in route_receipt:
+                return bool(route_receipt.get("final_attempt_allowed"))
+            if "allowed_to_submit" in route_receipt:
+                return bool(route_receipt.get("allowed_to_submit"))
+        return False
 
     @staticmethod
     def _pick_first_present(
@@ -1914,6 +2148,80 @@ class GarageAlfredProcessor:
         if tuple(continued_result.get("missing_required_fields") or ()):
             return "continued_missing_input_refused"
         return "continued_unavailable_refused"
+
+    @staticmethod
+    def _classify_follow_current_honest_path_kind(
+        *,
+        route_helper_name: str,
+        route_result: dict[str, Any],
+    ) -> str:
+        if route_helper_name == "attempt_best_next_call":
+            attempt_kind = route_result.get("attempt_kind")
+            if attempt_kind == "attempted_context_capture":
+                return "fresh_attempt_context_capture"
+            if attempt_kind == "attempt_refused_missing_fields":
+                return "fresh_attempt_missing_input_refused"
+            if attempt_kind == "attempt_refused_unavailable":
+                return "fresh_attempt_unavailable_refused"
+            return "fresh_attempt_productive_execution"
+
+        if route_helper_name == "attempt_best_next_call_with_guards":
+            attempt_kind = route_result.get("attempt_kind")
+            if attempt_kind == "attempted_context_capture":
+                return "guarded_attempt_context_capture"
+            if attempt_kind == "attempt_refused_missing_fields":
+                return "guarded_attempt_missing_input_refused"
+            if attempt_kind == "attempt_refused_unavailable":
+                return "guarded_attempt_unavailable_refused"
+            if attempt_kind == "guard_mismatch_refused":
+                return "guarded_attempt_mismatch_refused"
+            return "guarded_attempt_productive_execution"
+
+        if route_helper_name == "attempt_best_next_call_with_guarded_rebase":
+            final_receipt = route_result.get("final_receipt")
+            final_path_kind = (
+                final_receipt.get("final_attempt_path_kind")
+                if isinstance(final_receipt, dict)
+                else None
+            )
+            flow_kind_by_final_path = {
+                "original_guarded_attempt_productive_execution": "guarded_attempt_productive_execution",
+                "original_guarded_attempt_context_capture": "guarded_attempt_context_capture",
+                "guard_match_missing_input_refused": "guarded_attempt_missing_input_refused",
+                "guard_match_unavailable_refused": "guarded_attempt_unavailable_refused",
+                "guard_mismatch_rebased_productive_execution": "guarded_rebased_productive_execution",
+                "guard_mismatch_rebased_context_capture": "guarded_rebased_context_capture",
+                "guard_mismatch_rebased_missing_input_refused": "guarded_rebased_missing_input_refused",
+                "guard_mismatch_rebased_unavailable_refused": "guarded_rebased_unavailable_refused",
+                "guard_mismatch_rebase_refused": "guarded_rebased_refused",
+            }
+            return flow_kind_by_final_path.get(
+                str(final_path_kind),
+                "guarded_rebased_refused",
+            )
+
+        continuation_final_receipt = route_result.get("continuation_final_receipt")
+        continuation_path_kind = (
+            continuation_final_receipt.get("continuation_final_path_kind")
+            if isinstance(continuation_final_receipt, dict)
+            else route_result.get("continuation_kind")
+        )
+        flow_kind_by_continuation_path = {
+            "continued_productive_execution": "receipt_continued_productive_execution",
+            "continued_context_capture": "receipt_continued_context_capture",
+            "continued_missing_input_refused": "receipt_continued_missing_input_refused",
+            "continued_unavailable_refused": "receipt_continued_unavailable_refused",
+            "stale_receipt_refused": "receipt_stale_refused",
+            "stale_rebased_continued_productive_execution": "receipt_stale_rebased_productive_execution",
+            "stale_rebased_continued_context_capture": "receipt_stale_rebased_context_capture",
+            "stale_rebased_missing_input_refused": "receipt_stale_rebased_missing_input_refused",
+            "stale_rebased_unavailable_refused": "receipt_stale_rebased_unavailable_refused",
+            "stale_rebased_refused": "receipt_stale_rebased_refused",
+        }
+        return flow_kind_by_continuation_path.get(
+            str(continuation_path_kind),
+            "receipt_stale_refused",
+        )
 
     @staticmethod
     def _classify_guarded_rebase_final_attempt_path(result: dict[str, Any]) -> str:

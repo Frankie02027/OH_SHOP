@@ -7162,6 +7162,446 @@ class GarageStorageAdapterTests(unittest.TestCase):
             final_receipt["best_next_move_now"]["move_kind"],
         )
 
+    def test_follow_current_honest_path_routes_no_receipt_to_fresh_attempt(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+
+        flow = processor.follow_current_honest_path("T000001")
+        receipt = flow["flow_receipt"]
+        storage.close()
+
+        self.assertEqual("attempt_best_next_call", flow["route_helper_name"])
+        self.assertFalse(flow["used_final_receipt"])
+        self.assertFalse(flow["used_guards"])
+        self.assertFalse(flow["used_rebase_policy"])
+        self.assertEqual("fresh_attempt_productive_execution", receipt["flow_path_kind"])
+        self.assertTrue(receipt["attempt_allowed"])
+        self.assertTrue(receipt["productive_in_slice"])
+        self.assertFalse(receipt["context_capture_only"])
+        self.assertEqual("active-item", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "continue-active-execution",
+            receipt["best_next_move_now"]["move_kind"],
+        )
+
+    def test_follow_current_honest_path_routes_guarded_rebase_without_receipt(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        flow = processor.follow_current_honest_path(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review-top-level.md",
+                    "role": "jarvis",
+                }
+            },
+            expected={
+                "expected_submission_mode": "productive_in_slice",
+                "expected_productive_in_slice": True,
+            },
+            allowed_rebased={
+                "allow_rebased_context_capture_candidate": True,
+                "expected_rebased_call_type": "continuation.record",
+                "expected_rebased_submission_mode": "context_capture",
+                "expected_rebased_follow_up_behavior_kind": "capture-review-context-next",
+            },
+        )
+        receipt = flow["flow_receipt"]
+        storage.close()
+
+        self.assertEqual(
+            "attempt_best_next_call_with_guarded_rebase",
+            flow["route_helper_name"],
+        )
+        self.assertFalse(flow["used_final_receipt"])
+        self.assertTrue(flow["used_guards"])
+        self.assertTrue(flow["used_rebase_policy"])
+        self.assertEqual("guarded_rebased_context_capture", receipt["flow_path_kind"])
+        self.assertTrue(receipt["attempt_allowed"])
+        self.assertFalse(receipt["productive_in_slice"])
+        self.assertTrue(receipt["context_capture_only"])
+        self.assertEqual("review-needed", receipt["dominant_target_kind_now"])
+
+    def test_follow_current_honest_path_routes_receipt_to_continuation(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce proof needing review",
+                        "description": "Return evidence that still needs review.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "manual_review_required"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(
+            make_result_submit_call(
+                artifact_refs=[make_summary_artifact_ref()],
+                reported_status="succeeded",
+            )
+        )
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref(artifact_id="T000001.J001.A002")],
+            )
+        )
+
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review-seed.md",
+                    "role": "jarvis",
+                }
+            },
+            expected={
+                "expected_dominant_target_kind": "review-needed",
+                "expected_best_next_call_type": "continuation.record",
+                "expected_follow_up_behavior_kind": "capture-review-context-next",
+                "expected_submission_mode": "context_capture",
+                "expected_context_only": True,
+                "expected_productive_in_slice": False,
+            },
+            allowed_rebased={"allow_rebased_context_capture_candidate": True},
+        )
+
+        flow = processor.follow_current_honest_path(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+            supplied_fields={
+                "payload_ref": {
+                    "kind": "continuation-note",
+                    "path": "/workspace/jarvis/tasks/T000001/review-continue-top-level.md",
+                    "role": "jarvis",
+                }
+            },
+        )
+        receipt = flow["flow_receipt"]
+        storage.close()
+
+        self.assertEqual("continue_from_final_receipt", flow["route_helper_name"])
+        self.assertTrue(flow["used_final_receipt"])
+        self.assertFalse(flow["used_guards"])
+        self.assertFalse(flow["used_rebase_policy"])
+        self.assertEqual("receipt_continued_context_capture", receipt["flow_path_kind"])
+        self.assertTrue(receipt["attempt_allowed"])
+        self.assertTrue(receipt["context_capture_only"])
+        self.assertFalse(receipt["productive_in_slice"])
+        self.assertEqual("review-needed", receipt["dominant_target_kind_now"])
+
+    def test_follow_current_honest_path_routes_stale_receipt_with_approved_rebase(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={"expected_best_next_call_type": "continuation.record"},
+        )
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run child leg",
+                        "description": "Delegate the blocking child work.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_child_job_request_call())
+
+        flow = processor.follow_current_honest_path(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+            allowed_rebased={
+                "allow_rebased_productive_candidate": True,
+                "expected_rebased_call_type": "job.start",
+                "expected_rebased_submission_mode": "productive_in_slice",
+                "expected_rebased_follow_up_behavior_kind": "progress-child-leg-next",
+            },
+        )
+        receipt = flow["flow_receipt"]
+        storage.close()
+
+        self.assertEqual(
+            "continue_from_final_receipt_with_guarded_rebase",
+            flow["route_helper_name"],
+        )
+        self.assertTrue(flow["used_final_receipt"])
+        self.assertFalse(flow["used_guards"])
+        self.assertTrue(flow["used_rebase_policy"])
+        self.assertEqual(
+            "receipt_stale_rebased_productive_execution",
+            receipt["flow_path_kind"],
+        )
+        self.assertTrue(receipt["attempt_allowed"])
+        self.assertTrue(receipt["productive_in_slice"])
+        self.assertEqual("waiting-on-child", receipt["dominant_target_kind_now"])
+
+    def test_follow_current_honest_path_distinguishes_missing_input_without_receipt(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Need artifact proof",
+                        "description": "Still needs an official artifact ref.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(make_checkpoint_create_call(plan_version=1))
+
+        flow = processor.follow_current_honest_path("T000001")
+        receipt = flow["flow_receipt"]
+        storage.close()
+
+        self.assertEqual("attempt_best_next_call", flow["route_helper_name"])
+        self.assertEqual("fresh_attempt_missing_input_refused", receipt["flow_path_kind"])
+        self.assertFalse(receipt["attempt_allowed"])
+        self.assertEqual(("payload_ref",), receipt["missing_required_fields"])
+        self.assertTrue(receipt["requires_additional_user_or_agent_input"])
+        self.assertEqual("proof-gathering", receipt["dominant_target_kind_now"])
+
+    def test_follow_current_honest_path_distinguishes_stale_refusal_without_rebase_policy(
+        self,
+    ) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        prior_attempt = processor.attempt_best_next_call_with_guarded_rebase(
+            "T000001",
+            expected={"expected_best_next_call_type": "continuation.record"},
+        )
+        processor.process_call(make_job_start_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Run child leg",
+                        "description": "Delegate the blocking child work.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_child_job_request_call())
+
+        flow = processor.follow_current_honest_path(
+            "T000001",
+            final_receipt=prior_attempt["final_receipt"],
+        )
+        receipt = flow["flow_receipt"]
+        storage.close()
+
+        self.assertEqual("continue_from_final_receipt", flow["route_helper_name"])
+        self.assertTrue(flow["used_final_receipt"])
+        self.assertFalse(flow["used_rebase_policy"])
+        self.assertEqual("receipt_stale_refused", receipt["flow_path_kind"])
+        self.assertFalse(receipt["attempt_allowed"])
+        self.assertEqual("waiting-on-child", receipt["dominant_target_kind_now"])
+
+    def test_follow_current_honest_path_keeps_active_leg_unavailable_explicit(self) -> None:
+        storage, processor = build_storage_backed_alfred_processor(
+            self.root,
+            now_provider=lambda: "2026-03-30T12:00:00Z",
+        )
+        processor.process_call(make_task_create_call())
+        processor.process_call(
+            make_plan_record_call(
+                plan_version=1,
+                current_active_item="I002",
+                items=[
+                    {
+                        "item_id": "I001",
+                        "title": "Prepare runtime",
+                        "description": "Set up the execution slice.",
+                        "status": "verified",
+                    },
+                    {
+                        "item_id": "I002",
+                        "title": "Produce required proof",
+                        "description": "Return the artifact the next step depends on.",
+                        "status": "needs_child_job",
+                        "depends_on": ["I001"],
+                        "verification_rule": {"type": "artifact_exists"},
+                    },
+                    {
+                        "item_id": "I003",
+                        "title": "Resume dependent follow-up",
+                        "description": "Continue once the predecessor is verified.",
+                        "status": "todo",
+                        "depends_on": ["I002"],
+                    },
+                ],
+            )
+        )
+        processor.process_call(make_result_submit_call(reported_status="succeeded"))
+        processor.process_call(
+            make_continuation_record_call(
+                plan_version=1,
+                artifact_refs=[make_summary_artifact_ref()],
+            )
+        )
+        processor.process_call(make_job_start_call())
+
+        flow = processor.follow_current_honest_path(
+            "T000001",
+            expected={"expected_dominant_target_kind": "active-item"},
+        )
+        receipt = flow["flow_receipt"]
+        storage.close()
+
+        self.assertEqual("attempt_best_next_call_with_guards", flow["route_helper_name"])
+        self.assertEqual("guarded_attempt_unavailable_refused", receipt["flow_path_kind"])
+        self.assertFalse(receipt["attempt_allowed"])
+        self.assertTrue(receipt["unavailable_in_slice"])
+        self.assertEqual("active-item", receipt["dominant_target_kind_now"])
+        self.assertEqual(
+            "continue-active-execution",
+            receipt["best_next_move_now"]["move_kind"],
+        )
+
     def test_failure_report_attaches_evidence_and_keeps_item_blocked(self) -> None:
         storage, processor = build_storage_backed_alfred_processor(
             self.root,
