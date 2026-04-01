@@ -1,6 +1,6 @@
 services:
   # ----------------------------
-  # OpenHands (the house)
+  # OpenHands (Jarvis workbench lane)
   # ----------------------------
   openhands:
     build:
@@ -21,12 +21,13 @@ services:
       - AGENT_SERVER_IMAGE_REPOSITORY=oh-shop/agent-server
       - AGENT_SERVER_IMAGE_TAG=1.11.4-runtime-patched
     volumes:
-      # OpenHands uses Docker to spin up sandbox runtimes, so it needs the Docker socket.
       - /var/run/docker.sock:/var/run/docker.sock
-      # Persist OpenHands state under OH_SHOP
       - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/data/openhands:/.openhands
-      # Only allow the dedicated workspace subtree under OH_SHOP as workspace base
-      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace:/opt/workspace_base
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/services/openhands:/workspace/services/openhands
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/roles/jarvis:/workspace/roles/jarvis
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/projects:/opt/workspace_base/projects
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/jobs:/opt/workspace_base/jobs
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/shared:/opt/workspace_base/shared
     stdin_open: true
     tty: true
     healthcheck:
@@ -42,12 +43,11 @@ services:
       retries: 5
       start_period: 20s
     restart: unless-stopped
+    networks:
+      - garage-internal
 
   # ----------------------------
-  # chat-guard (optional / provisional repair tooling)
-  # - Not part of the canonical baseline architecture
-  # - Retained for targeted reconciliation of transient chat-state rows
-  # - Do not treat this service as proof that the core stack is healthy
+  # chat-guard (kept provisional)
   # ----------------------------
   chat-guard:
     image: python:3.11-alpine
@@ -66,9 +66,11 @@ services:
       openhands:
         condition: service_started
     restart: unless-stopped
+    networks:
+      - garage-internal
 
   # ----------------------------
-  # OpenWebUI (the cockpit)
+  # OpenWebUI (front door)
   # ----------------------------
   open-webui:
     image: ghcr.io/open-webui/open-webui:main@sha256:bb3f0281554bf05a9d505ffb5a5f067ab53e13ac772eb4ea3077a92ddc64600e
@@ -84,12 +86,13 @@ services:
       - OLLAMA_BASE_URLS=
     volumes:
       - openwebui_data:/app/backend/data
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/services/openwebui:/workspace/services/openwebui
     restart: unless-stopped
+    networks:
+      - garage-internal
 
   # ----------------------------
-  # stagehand-mcp (Stagehand browser tools over MCP SHTTP)
-  # - Uses Stagehand LOCAL mode + LM Studio
-  # - Exposes MCP SHTTP to OpenHands at /mcp
+  # stagehand-mcp (Robin browser lane)
   # ----------------------------
   stagehand-mcp:
     build:
@@ -101,27 +104,25 @@ services:
       - "127.0.0.1:3020:3020"
       - "${DOCKER_BRIDGE_GATEWAY:-172.17.0.1}:3020:3020"
     environment:
-      # Model - resolved at garagectl bring-up time from the currently loaded
-      # LM Studio text model. Leave empty here so garagectl can inject the
-      # boot-time model authority explicitly.
       - STAGEHAND_MODEL=${STAGEHAND_MODEL:-}
       - STAGEHAND_LLM_BASE_URL=http://host.docker.internal:1234/v1
       - STAGEHAND_LLM_API_KEY=lm-studio
-      # Browser settings
       - CHROME_PATH=/usr/bin/chromium
       - HEADLESS=true
       - BROWSER_WIDTH=1920
       - BROWSER_HEIGHT=1080
       - DEVTOOLS=false
-      # Server settings
       - MCP_HOST=0.0.0.0
       - MCP_PORT=3020
-      # Features
       - EXPERIMENTAL=true
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/downloads:/data/downloads
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/services/stagehand:/workspace/services/stagehand
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/roles/robin:/workspace/roles/robin
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/shared/download_staging:/data/downloads
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/shared/evidence_staging:/workspace/shared/evidence_staging
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/shared/handoff_staging:/workspace/shared/handoff_staging
     healthcheck:
       test:
         [
@@ -135,6 +136,112 @@ services:
       retries: 5
       start_period: 15s
     restart: unless-stopped
+    networks:
+      - garage-internal
+
+  # ----------------------------
+  # Alfred (deterministic controller / official clerk)
+  # ----------------------------
+  alfred:
+    build:
+      context: ..
+      dockerfile: compose/alfred/Dockerfile
+    image: oh-shop/alfred:0.1.0
+    container_name: garage-alfred
+    environment:
+      - GARAGE_WORKSPACE_ROOT=/workspace
+    volumes:
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/services/alfred:/workspace/services/alfred
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/roles/alfred:/workspace/roles/alfred
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/ledger:/workspace/ledger
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/projects:/workspace/projects:ro
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/jobs:/workspace/jobs:ro
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/shared:/workspace/shared
+    depends_on:
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3031/healthz', timeout=3); raise SystemExit(0 if r.status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - garage-internal
+
+  # ----------------------------
+  # Ledger (durable record / query plane)
+  # ----------------------------
+  ledger:
+    build:
+      context: ..
+      dockerfile: compose/ledger/Dockerfile
+    image: oh-shop/ledger:0.1.0
+    container_name: garage-ledger
+    environment:
+      - GARAGE_WORKSPACE_ROOT=/workspace
+    volumes:
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/ledger:/workspace/ledger
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3032/healthz', timeout=3); raise SystemExit(0 if r.status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - garage-internal
+
+  # ----------------------------
+  # Transfer (PO-box broker)
+  # ----------------------------
+  transfer:
+    build:
+      context: ..
+      dockerfile: compose/transfer/Dockerfile
+    image: oh-shop/transfer:0.1.0
+    container_name: garage-transfer
+    environment:
+      - GARAGE_WORKSPACE_ROOT=/workspace
+    volumes:
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/pobox:/workspace/pobox
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/ledger/imports:/workspace/ledger/imports
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/ledger/exports:/workspace/ledger/exports
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/projects:/workspace/projects:ro
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/jobs:/workspace/jobs:ro
+      - ${OH_SHOP_ROOT:-/home/dev/OH_SHOP}/workspace/shared:/workspace/shared
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3033/healthz', timeout=3); raise SystemExit(0 if r.status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - garage-internal
 
 volumes:
   openwebui_data:
+
+networks:
+  garage-internal:
+    driver: bridge
