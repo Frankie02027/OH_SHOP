@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from ops.garage_alfred import GarageAlfredProcessingError, GarageAlfredProcessor
-from ops.garage_boundaries import GarageBoundaryError, write_garage_persisted_record
-from ops.garage_storage import GarageStorageAdapter, build_storage_backed_alfred_processor
+from ops.garage_storage import build_storage_backed_alfred_processor
 from ops.test_garage_fixtures import (
-    GarageStorageRootTestCase,
     GarageTempRootTestCase,
     make_checkpoint_create_call,
     make_child_job_request_call,
@@ -2643,6 +2640,7 @@ class GarageStorageFlowTests(GarageTempRootTestCase):
         self.assertFalse(continuation["attempt_allowed"])
         self.assertEqual(("payload_ref",), continuation["missing_required_fields"])
         self.assertIsNotNone(continuation["submit_receipt"])
+        final_receipt = continuation["continuation_final_receipt"]
         self.assertEqual(
             "continued_missing_input_refused",
             final_receipt["continuation_final_path_kind"],
@@ -3141,7 +3139,6 @@ class GarageStorageFlowTests(GarageTempRootTestCase):
             "T000001",
             final_receipt=prior_attempt["final_receipt"],
         )
-        final_receipt = continuation["continuation_final_receipt"]
         storage.close()
 
         self.assertEqual(

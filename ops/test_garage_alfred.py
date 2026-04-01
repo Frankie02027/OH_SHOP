@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 from ops.garage_boundaries import GarageBoundaryError
 from ops.garage_alfred import (
@@ -24,23 +25,23 @@ from ops.test_garage_fixtures import (
 
 class GarageAlfredProcessorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.recorded_events: list[dict[str, object]] = []
-        self.written_records: list[tuple[str, dict[str, object]]] = []
+        self.recorded_events: list[dict[str, Any]] = []
+        self.written_records: list[tuple[str, dict[str, Any]]] = []
         self.processor = GarageAlfredProcessor(
             event_recorder=self._record_event,
             record_writer=self._write_record,
             now_provider=lambda: "2026-03-30T12:00:00Z",
         )
 
-    def _record_event(self, event: dict[str, object]) -> dict[str, object]:
+    def _record_event(self, event: dict[str, Any]) -> dict[str, Any]:
         self.recorded_events.append(event)
         return event
 
     def _write_record(
         self,
         schema_name: str,
-        data: dict[str, object],
-    ) -> tuple[str, dict[str, object]]:
+        data: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
         self.written_records.append((schema_name, data))
         return (schema_name, data)
 
@@ -157,11 +158,11 @@ class GarageAlfredProcessorTests(unittest.TestCase):
         class BrokenTaskCreateProcessor(GarageAlfredProcessor):
             def _build_task_created_event(
                 self,
-                call: dict[str, object],
+                call: dict[str, Any],
                 task_id: str,
                 event_id: str,
                 recorded_at: str,
-            ) -> dict[str, object]:
+            ) -> dict[str, Any]:
                 event = super()._build_task_created_event(
                     call, task_id, event_id, recorded_at
                 )
@@ -199,13 +200,13 @@ class GarageAlfredProcessorTests(unittest.TestCase):
         class BrokenChildJobProcessor(GarageAlfredProcessor):
             def _build_job_created_event(
                 self,
-                call: dict[str, object],
+                call: dict[str, Any],
                 *,
                 child_job_id: str,
                 parent_job_id: str,
                 event_id: str,
                 recorded_at: str,
-            ) -> dict[str, object]:
+            ) -> dict[str, Any]:
                 event = super()._build_job_created_event(
                     call,
                     child_job_id=child_job_id,

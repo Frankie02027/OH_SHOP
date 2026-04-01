@@ -6,6 +6,8 @@ without mixing that surface audit into the storage durability matrix.
 
 from __future__ import annotations
 
+import unittest
+
 from ops.test_garage_fixtures import (
     GarageTempRootTestCase,
     make_checkpoint_create_call,

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from ops.garage_alfred import GarageAlfredProcessingError, GarageAlfredProcessor
-from ops.garage_boundaries import GarageBoundaryError, write_garage_persisted_record
-from ops.garage_storage import GarageStorageAdapter, build_storage_backed_alfred_processor
+from ops.garage_alfred import GarageAlfredProcessingError
+from ops.garage_storage import build_storage_backed_alfred_processor
 from ops.test_garage_fixtures import (
-    GarageStorageRootTestCase,
     GarageTempRootTestCase,
     make_checkpoint_create_call,
     make_child_job_request_call,

@@ -5,11 +5,27 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 from ops.garage_storage import GarageStorageAdapter, build_storage_backed_alfred_processor
 
+__all__ = [
+    "GarageStorageRootTestCase",
+    "GarageTempRootTestCase",
+    "build_storage_backed_alfred_processor",
+    "make_checkpoint_create_call",
+    "make_child_job_request_call",
+    "make_continuation_record_call",
+    "make_failure_report_call",
+    "make_job_start_call",
+    "make_plan_record_call",
+    "make_result_submit_call",
+    "make_summary_artifact_ref",
+    "make_task_create_call",
+]
 
-def make_task_create_call() -> dict[str, object]:
+
+def make_task_create_call() -> dict[str, Any]:
     return {
         "schema_version": "v0.1",
         "call_type": "task.create",
@@ -24,8 +40,8 @@ def make_job_start_call(
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
     attempt_no: int | None = None,
-) -> dict[str, object]:
-    call: dict[str, object] = {
+) -> dict[str, Any]:
+    call: dict[str, Any] = {
         "schema_version": "v0.1",
         "call_type": "job.start",
         "task_id": task_id,
@@ -45,9 +61,9 @@ def make_plan_record_call(
     job_id: str | None = "T000001.J001",
     plan_version: int = 1,
     current_active_item: str | None = "I002",
-    items: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
-    payload: dict[str, object] = {
+    items: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "task_id": task_id,
         "plan_version": plan_version,
         "created_by": "jarvis",
@@ -78,7 +94,7 @@ def make_plan_record_call(
     }
     if current_active_item is not None:
         payload["current_active_item"] = current_active_item
-    call: dict[str, object] = {
+    call: dict[str, Any] = {
         "schema_version": "v0.1",
         "call_type": "plan.record",
         "task_id": task_id,
@@ -97,8 +113,8 @@ def make_child_job_request_call(
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
     parent_job_id: str | None = None,
-) -> dict[str, object]:
-    call: dict[str, object] = {
+) -> dict[str, Any]:
+    call: dict[str, Any] = {
         "schema_version": "v0.1",
         "call_type": "child_job.request",
         "task_id": task_id,
@@ -124,8 +140,8 @@ def make_result_submit_call(
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
     reported_status: str = "succeeded",
-    artifact_refs: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
+    artifact_refs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     call = {
         "schema_version": "v0.1",
         "call_type": "result.submit",
@@ -151,8 +167,8 @@ def make_failure_report_call(
     *,
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
-    artifact_refs: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
+    artifact_refs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     call = {
         "schema_version": "v0.1",
         "call_type": "failure.report",
@@ -179,9 +195,9 @@ def make_checkpoint_create_call(
     job_id: str = "T000001.J001",
     plan_version: int | None = None,
     current_active_item: str | None = None,
-    artifact_refs: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
-    call: dict[str, object] = {
+    artifact_refs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    call: dict[str, Any] = {
         "schema_version": "v0.1",
         "call_type": "checkpoint.create",
         "task_id": task_id,
@@ -204,9 +220,9 @@ def make_continuation_record_call(
     task_id: str = "T000001",
     job_id: str = "T000001.J001",
     plan_version: int | None = None,
-    artifact_refs: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
-    call: dict[str, object] = {
+    artifact_refs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    call: dict[str, Any] = {
         "schema_version": "v0.1",
         "call_type": "continuation.record",
         "task_id": task_id,
@@ -232,7 +248,7 @@ def make_summary_artifact_ref(
     job_id: str = "T000001.J001",
     artifact_id: str = "T000001.J001.A001",
     kind: str = "summary",
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "artifact_id": artifact_id,
         "kind": kind,

@@ -1405,10 +1405,6 @@ class GarageStorageAdapter:
         draft_kind = next_call_draft.get("draft_kind")
         known_fields = dict(next_call_draft.get("known_fields") or {})
         missing_required_fields = tuple(next_call_draft.get("missing_required_fields") or ())
-        optional_fields_available = tuple(next_call_draft.get("optional_fields_available") or ())
-        cannot_be_prefilled_fields = tuple(
-            next_call_draft.get("cannot_be_prefilled_fields") or ()
-        )
         supplied_fields = dict(supplied_fields or {})
 
         accepted_supplied_fields: list[str] = []
@@ -2504,7 +2500,7 @@ class GarageStorageAdapter:
                     "move_kind": "complete-evidence-bundle",
                     "call_type": "continuation.record",
                     "reason": (
-                        f"current item needs a larger evidence bundle"
+                        "current item needs a larger evidence bundle"
                         + (
                             f" ({current_count}/{required_count} refs present)"
                             if required_count is not None and current_count is not None
@@ -3627,6 +3623,7 @@ class GarageStorageAdapter:
             """,
             (key_value, json.dumps(data, sort_keys=True)),
         )
+
     def _insert_continuation_record(self, data: dict[str, Any]) -> None:
         self._conn.execute(
             """

@@ -1,0 +1,25 @@
+{
+  "include": [
+    "ops"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".git",
+    ".openhands",
+    ".venv",
+    "archive",
+    "artifacts",
+    "compat",
+    "compose",
+    "data",
+    "docs",
+    "downloads",
+    "schemas",
+    "vendor",
+    "workspace"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "basic"
+}

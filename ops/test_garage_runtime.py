@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 from ops.garage_boundaries import GarageBoundaryError
 from ops.garage_runtime import (
@@ -12,7 +13,7 @@ from ops.garage_runtime import (
 )
 
 
-def make_valid_child_job_request() -> dict[str, object]:
+def make_valid_child_job_request() -> dict[str, Any]:
     return {
         "schema_version": "v0.1",
         "call_type": "child_job.request",
@@ -32,29 +33,29 @@ def make_valid_child_job_request() -> dict[str, object]:
 
 class GarageRuntimeProcessorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.recorded_events: list[dict[str, object]] = []
-        self.written_records: list[tuple[str, dict[str, object]]] = []
+        self.recorded_events: list[dict[str, Any]] = []
+        self.written_records: list[tuple[str, dict[str, Any]]] = []
         self.processor = GarageRuntimeProcessor(
             event_recorder=self._record_event,
             record_writer=self._write_record,
         )
 
-    def _record_event(self, event: dict[str, object]) -> dict[str, object]:
+    def _record_event(self, event: dict[str, Any]) -> dict[str, Any]:
         self.recorded_events.append(event)
         return event
 
     def _write_record(
         self,
         schema_name: str,
-        data: dict[str, object],
-    ) -> tuple[str, dict[str, object]]:
+        data: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
         self.written_records.append((schema_name, data))
         return (schema_name, data)
 
     def test_valid_inbound_call_reaches_registered_handler(self) -> None:
-        seen_calls: list[dict[str, object]] = []
+        seen_calls: list[dict[str, Any]] = []
 
-        def handler(data: dict[str, object]) -> dict[str, object]:
+        def handler(data: dict[str, Any]) -> dict[str, Any]:
             seen_calls.append(data)
             return {"result": {"accepted": True}}
 
@@ -67,7 +68,7 @@ class GarageRuntimeProcessorTests(unittest.TestCase):
     def test_invalid_inbound_call_fails_before_handler_dispatch(self) -> None:
         called = False
 
-        def handler(data: dict[str, object]) -> dict[str, object]:
+        def handler(data: dict[str, Any]) -> dict[str, Any]:
             nonlocal called
             called = True
             return {"result": data}
@@ -95,7 +96,7 @@ class GarageRuntimeProcessorTests(unittest.TestCase):
         self.assertIn("reported_at", str(ctx.exception))
 
     def test_valid_handler_event_is_recorded_after_validation(self) -> None:
-        def handler(_: dict[str, object]) -> dict[str, object]:
+        def handler(_: dict[str, Any]) -> dict[str, Any]:
             return {
                 "result": {"ok": True},
                 "events": [
@@ -119,7 +120,7 @@ class GarageRuntimeProcessorTests(unittest.TestCase):
         self.assertEqual("job.returned", result.recorded_events[0]["event_type"])
 
     def test_invalid_handler_event_is_rejected_before_recorder_side_effect(self) -> None:
-        def handler(_: dict[str, object]) -> dict[str, object]:
+        def handler(_: dict[str, Any]) -> dict[str, Any]:
             return {
                 "events": [
                     {
@@ -143,7 +144,7 @@ class GarageRuntimeProcessorTests(unittest.TestCase):
         self.assertIn("related_call_type", str(ctx.exception))
 
     def test_valid_handler_record_is_written_after_validation(self) -> None:
-        def handler(_: dict[str, object]) -> dict[str, object]:
+        def handler(_: dict[str, Any]) -> dict[str, Any]:
             return {
                 "records": [
                     GarageRecordWrite(
@@ -165,7 +166,7 @@ class GarageRuntimeProcessorTests(unittest.TestCase):
         self.assertEqual("task-record", result.written_records[0][0])
 
     def test_invalid_handler_record_is_rejected_before_writer_side_effect(self) -> None:
-        def handler(_: dict[str, object]) -> dict[str, object]:
+        def handler(_: dict[str, Any]) -> dict[str, Any]:
             return {
                 "records": [
                     (
@@ -191,11 +192,11 @@ class GarageRuntimeProcessorTests(unittest.TestCase):
     def test_dispatch_by_call_type_uses_registered_handler(self) -> None:
         seen: list[str] = []
 
-        def child_handler(_: dict[str, object]) -> dict[str, object]:
+        def child_handler(_: dict[str, Any]) -> dict[str, Any]:
             seen.append("child")
             return {"result": "child"}
 
-        def task_handler(_: dict[str, object]) -> dict[str, object]:
+        def task_handler(_: dict[str, Any]) -> dict[str, Any]:
             seen.append("task")
             return {"result": "task"}
 

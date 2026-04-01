@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 from ops.garage_boundaries import (
     GarageBoundaryError,
@@ -22,9 +23,9 @@ class GarageBoundaryIntegrationTests(unittest.TestCase):
         self.assertIs(first, second)
 
     def test_valid_inbound_call_reaches_handler(self) -> None:
-        seen: list[dict[str, object]] = []
+        seen: list[dict[str, Any]] = []
 
-        def handler(data: dict[str, object]) -> str:
+        def handler(data: dict[str, Any]) -> str:
             seen.append(data)
             return "handled"
 
@@ -53,7 +54,7 @@ class GarageBoundaryIntegrationTests(unittest.TestCase):
     def test_invalid_inbound_call_is_rejected_before_handler(self) -> None:
         called = False
 
-        def handler(_: dict[str, object]) -> str:
+        def handler(_: dict[str, Any]) -> str:
             nonlocal called
             called = True
             return "should-not-run"
@@ -81,9 +82,9 @@ class GarageBoundaryIntegrationTests(unittest.TestCase):
         self.assertIn("reported_at", str(ctx.exception))
 
     def test_valid_event_reaches_recorder(self) -> None:
-        seen: list[dict[str, object]] = []
+        seen: list[dict[str, Any]] = []
 
-        def recorder(data: dict[str, object]) -> str:
+        def recorder(data: dict[str, Any]) -> str:
             seen.append(data)
             return "recorded"
 
@@ -107,7 +108,7 @@ class GarageBoundaryIntegrationTests(unittest.TestCase):
     def test_invalid_event_is_rejected_before_record(self) -> None:
         called = False
 
-        def recorder(_: dict[str, object]) -> str:
+        def recorder(_: dict[str, Any]) -> str:
             nonlocal called
             called = True
             return "should-not-run"
@@ -131,9 +132,9 @@ class GarageBoundaryIntegrationTests(unittest.TestCase):
         self.assertIn("related_call_type", str(ctx.exception))
 
     def test_valid_persisted_record_reaches_writer(self) -> None:
-        writes: list[tuple[str, dict[str, object]]] = []
+        writes: list[tuple[str, dict[str, Any]]] = []
 
-        def writer(schema_name: str, data: dict[str, object]) -> str:
+        def writer(schema_name: str, data: dict[str, Any]) -> str:
             writes.append((schema_name, data))
             return "written"
 
@@ -155,7 +156,7 @@ class GarageBoundaryIntegrationTests(unittest.TestCase):
     def test_invalid_persisted_record_is_rejected_before_write(self) -> None:
         called = False
 
-        def writer(schema_name: str, data: dict[str, object]) -> str:
+        def writer(schema_name: str, data: dict[str, Any]) -> str:
             nonlocal called
             called = True
             return "should-not-run"
