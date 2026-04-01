@@ -329,6 +329,8 @@ class GarageAlfredProcessor:
         )
         return dict(preflight) if isinstance(preflight, dict) else None
 
+    # Caller-facing control surface. Keep this set intentionally small and
+    # route-oriented rather than layering new alias wrappers above it.
     def submit_prepared_next_call(
         self,
         *,
@@ -1000,6 +1002,8 @@ class GarageAlfredProcessor:
             route_result=route_result,
         )
 
+    # Internal continuation / receipt helpers. These support the caller-facing
+    # control surface above and should not become a second public API.
     @staticmethod
     def _evaluate_top_level_final_receipt_for_continuation(
         *,
