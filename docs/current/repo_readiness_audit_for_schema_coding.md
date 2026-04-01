@@ -1,5 +1,10 @@
 # Repo Readiness Audit for Schema Coding
 
+> Historical / superseded audit:
+> This report captured the branch before the Alfred authority gap, shared-language mismatch, and later `ops` cleanup were resolved.
+> It is preserved as a historical stage snapshot, not as current readiness authority.
+> For current truth, use [repo_readiness_audit_for_schema_coding_followup.md](/home/dev/OH_SHOP/docs/current/repo_readiness_audit_for_schema_coding_followup.md) together with the live `ops` lane and [ops/test_garage_negative_surface.py](/home/dev/OH_SHOP/ops/test_garage_negative_surface.py).
+>
 > Follow-up note:
 > This report captured the branch state before the Alfred authority gap and shared-language mismatch were reconciled.
 > For the current post-reconciliation status, see [repo_readiness_audit_for_schema_coding_followup.md](/home/dev/OH_SHOP/docs/current/repo_readiness_audit_for_schema_coding_followup.md) and [shared_language_reconciliation_report.md](/home/dev/OH_SHOP/docs/current/shared_language_reconciliation_report.md).

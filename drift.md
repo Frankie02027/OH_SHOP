@@ -1,3 +1,13 @@
+> Historical / superseded audit:
+> This file captured the repo before the `ops` cleanup slices 1–5 landed.
+> It is preserved as a record of the old broken state only.
+> Do not treat it as current live-state authority for the `ops` lane.
+> For current truth, use:
+> - [docs/current/project_state_human_readable_2026-04-01.md](/home/dev/OH_SHOP/docs/current/project_state_human_readable_2026-04-01.md)
+> - [docs/current/repo_readiness_audit_for_schema_coding_followup.md](/home/dev/OH_SHOP/docs/current/repo_readiness_audit_for_schema_coding_followup.md)
+> - [docs/current/out_of_sync_authority_note_2026-03-30.md](/home/dev/OH_SHOP/docs/current/out_of_sync_authority_note_2026-03-30.md)
+> - [ops/test_garage_negative_surface.py](/home/dev/OH_SHOP/ops/test_garage_negative_surface.py)
+
 ## 1. Contracts used
 
 * `docs/architecture/ai_garage_library_and_policy_contract_v_0_1.md` — shared language constrains **interaction shape**, not worker thinking strategy; Alfred validates/routes/records official state; Jarvis decides the next proposed work chunk; policy/rulebook sits above runtime grammar 

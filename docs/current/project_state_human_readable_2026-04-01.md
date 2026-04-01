@@ -53,9 +53,9 @@ That includes things such as:
 - runtime dispatch
 - deterministic call handling
 - storage-backed state/ID continuity
-- tracked-plan linkage
-- evidence/proof posture
-- receipt/continuation/follow routing
+- tracked-plan registration and progression bookkeeping
+- raw/read-oriented service exposure around the cleaned `ops` lane
+- anti-regression checks that lock out the deleted advisory/control-flow APIs
 
 Important:
 that does **not** mean Alfred is becoming a hidden AI brain.
