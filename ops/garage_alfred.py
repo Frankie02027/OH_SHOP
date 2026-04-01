@@ -697,6 +697,10 @@ class GarageAlfredProcessor:
             current_summary=current_summary,
             actual=actual,
         )
+        stale_rebased_candidate = self._build_stale_receipt_rebased_candidate(
+            actual=actual,
+            fresh_preflight=fresh_preflight,
+        )
         if not bool(compatibility.get("prior_receipt_compatible")):
             return self._attach_continuation_final_receipt(
                 task_id=task_id,
@@ -705,6 +709,7 @@ class GarageAlfredProcessor:
                     prior_final_receipt=final_receipt,
                     compatibility=compatibility,
                     continued_result=None,
+                    stale_rebased_candidate=stale_rebased_candidate,
                 ),
             )
 
@@ -733,6 +738,7 @@ class GarageAlfredProcessor:
                 prior_final_receipt=final_receipt,
                 compatibility=compatibility,
                 continued_result=continued_result,
+                stale_rebased_candidate=stale_rebased_candidate,
             ),
         )
 
@@ -850,6 +856,7 @@ class GarageAlfredProcessor:
         prior_final_receipt: dict[str, Any] | None,
         compatibility: dict[str, Any],
         continued_result: dict[str, Any] | None,
+        stale_rebased_candidate: dict[str, Any] | None,
     ) -> dict[str, Any]:
         latest_summary = self._read_current_task_summary_for_receipt(task_id)
         latest_follow_up = (
@@ -880,6 +887,10 @@ class GarageAlfredProcessor:
             if isinstance(continued_result, dict)
             else False
         )
+        rebased_candidate = self._resolve_continuation_rebased_candidate(
+            continued_result=continued_result,
+            stale_rebased_candidate=stale_rebased_candidate,
+        )
         continuation_failure_kind = compatibility.get("continuation_failure_kind")
         continuation_failure_reason = compatibility.get("continuation_failure_reason")
         if bool(compatibility.get("prior_receipt_compatible")) and isinstance(
@@ -900,6 +911,8 @@ class GarageAlfredProcessor:
                 if isinstance(prior_final_receipt, dict)
                 else None
             ),
+            "expected": dict(compatibility.get("expected") or {}),
+            "actual": dict(compatibility.get("actual") or {}),
             "supplied_fields_resolved_missing_input": bool(prior_missing_required_fields)
             and not bool(current_missing_required_fields),
             "fresh_best_next_move": (
@@ -934,9 +947,66 @@ class GarageAlfredProcessor:
                 if isinstance(continued_result, dict)
                 else False
             ),
+            "rebased_best_next_move": rebased_candidate.get("rebased_best_next_move"),
+            "rebased_follow_up_behavior": rebased_candidate.get(
+                "rebased_follow_up_behavior"
+            ),
+            "rebased_next_call_hint": rebased_candidate.get("rebased_next_call_hint"),
+            "rebased_next_call_draft": rebased_candidate.get("rebased_next_call_draft"),
+            "rebased_next_call_preflight": rebased_candidate.get(
+                "rebased_next_call_preflight"
+            ),
+            "rebased_candidate_kind": rebased_candidate.get("rebased_candidate_kind"),
+            "rebased_candidate_reason": rebased_candidate.get("rebased_candidate_reason"),
             "submit_receipt": submit_receipt,
             "final_receipt": final_receipt,
         }
+
+    def _build_stale_receipt_rebased_candidate(
+        self,
+        *,
+        actual: dict[str, Any],
+        fresh_preflight: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        return self._build_rebased_candidate_package(
+            actual=actual,
+            fresh_preflight=fresh_preflight,
+        )
+
+    @staticmethod
+    def _resolve_continuation_rebased_candidate(
+        *,
+        continued_result: dict[str, Any] | None,
+        stale_rebased_candidate: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if isinstance(continued_result, dict) and any(
+            key in continued_result
+            for key in (
+                "rebased_best_next_move",
+                "rebased_follow_up_behavior",
+                "rebased_next_call_hint",
+                "rebased_next_call_draft",
+                "rebased_next_call_preflight",
+                "rebased_candidate_kind",
+                "rebased_candidate_reason",
+            )
+        ):
+            return {
+                "rebased_best_next_move": continued_result.get("rebased_best_next_move"),
+                "rebased_follow_up_behavior": continued_result.get(
+                    "rebased_follow_up_behavior"
+                ),
+                "rebased_next_call_hint": continued_result.get("rebased_next_call_hint"),
+                "rebased_next_call_draft": continued_result.get("rebased_next_call_draft"),
+                "rebased_next_call_preflight": continued_result.get(
+                    "rebased_next_call_preflight"
+                ),
+                "rebased_candidate_kind": continued_result.get("rebased_candidate_kind"),
+                "rebased_candidate_reason": continued_result.get(
+                    "rebased_candidate_reason"
+                ),
+            }
+        return dict(stale_rebased_candidate or {})
 
     def _attach_continuation_final_receipt(
         self,
@@ -1040,6 +1110,14 @@ class GarageAlfredProcessor:
             unavailable_in_slice = best_next_move_now.get("call_type") is None and not bool(
                 continuation.get("attempt_allowed")
             ) and not tuple(continuation.get("missing_required_fields") or ())
+        rebased_best_next_move = continuation.get("rebased_best_next_move")
+        rebased_candidate_kind = continuation.get("rebased_candidate_kind")
+        if rebased_candidate_kind is None and isinstance(rebased_best_next_move, dict):
+            rebased_candidate_kind = (
+                "unavailable_replacement_candidate"
+                if rebased_best_next_move.get("call_type") is None
+                else "productive_replacement_candidate"
+            )
         return {
             "continuation_final_path_kind": continuation.get("continuation_kind"),
             "prior_receipt_compatible": bool(continuation.get("prior_receipt_compatible")),
@@ -1055,6 +1133,13 @@ class GarageAlfredProcessor:
                 continuation.get("requires_additional_user_or_agent_input")
             ),
             "unavailable_in_slice": unavailable_in_slice,
+            "rebased_best_next_move": rebased_best_next_move,
+            "rebased_follow_up_behavior": continuation.get("rebased_follow_up_behavior"),
+            "rebased_next_call_hint": continuation.get("rebased_next_call_hint"),
+            "rebased_next_call_draft": continuation.get("rebased_next_call_draft"),
+            "rebased_next_call_preflight": continuation.get("rebased_next_call_preflight"),
+            "rebased_candidate_kind": rebased_candidate_kind,
+            "rebased_candidate_reason": continuation.get("rebased_candidate_reason"),
             "dominant_target_kind_now": dominant_target_kind_now,
             "dominant_blocker_kind_now": dominant_blocker_kind_now,
             "best_next_move_now": best_next_move_now,
