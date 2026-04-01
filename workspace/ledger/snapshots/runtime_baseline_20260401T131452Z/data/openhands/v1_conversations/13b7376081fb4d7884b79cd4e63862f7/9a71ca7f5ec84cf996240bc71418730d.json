@@ -1,0 +1,26 @@
+{
+  "id": "9a71ca7f-5ec8-4cf9-9624-0bc71418730d",
+  "timestamp": "2026-03-28T00:08:38.250689",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "266253704",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_navigate' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Tab 0: Navigated to: https://www.google.com/search?q=current+temperature+in+Burbank%2C+IL"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_navigate",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "c3663c46-f03f-4ecd-907f-d0c16aa63231",
+  "kind": "ObservationEvent"
+}

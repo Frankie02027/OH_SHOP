@@ -1,0 +1,32 @@
+{
+  "id": "76101d4a-34b0-4847-ade5-6b60ef574840",
+  "timestamp": "2026-03-28T00:09:08.442661",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": "Let me try to get the full HTML of the page and then extract information from it.\n\n"
+    }
+  ],
+  "reasoning_content": "",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {},
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_get_html",
+  "tool_call_id": "480072541",
+  "tool_call": {
+    "id": "480072541",
+    "name": "browserbase_get_html",
+    "arguments": "{\"security_risk\":\"LOW\",\"summary\":\"Get complete HTML of search results page\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-jrnw3kfypr7r69ohww5df",
+  "security_risk": "LOW",
+  "critic_result": null,
+  "summary": "Get complete HTML of search results page",
+  "kind": "ActionEvent"
+}

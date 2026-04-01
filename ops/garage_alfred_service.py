@@ -137,7 +137,10 @@ def promote_artifact(request: ArtifactPromotionRequest) -> dict[str, object]:
             call_type="artifact.registered",
             result=promoted.artifact_ref,
             events=(event,),
-            records=(GarageRecordWrite("artifact-index-record", record),),
+            records=(
+                GarageRecordWrite("event-record", event),
+                GarageRecordWrite("artifact-index-record", record),
+            ),
         )
         current.storage.apply_official_bundle(bundle)
     except Exception as exc:

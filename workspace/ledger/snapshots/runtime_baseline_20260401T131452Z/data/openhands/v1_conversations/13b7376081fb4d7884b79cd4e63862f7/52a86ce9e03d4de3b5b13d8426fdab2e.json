@@ -1,0 +1,26 @@
+{
+  "id": "52a86ce9-e03d-4de3-b5b1-3d8426fdab2e",
+  "timestamp": "2026-03-28T00:10:28.514946",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_agent",
+  "tool_call_id": "690941737",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_agent' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"success\": false,\n  \"message\": \"Failed to execute task: Invalid type for 'input'.\",\n  \"completed\": false,\n  \"actionsCount\": 1,\n  \"actions\": [\n    {\n      \"type\": \"ariaTree\",\n      \"reasoning\": \"I'll search for the current temperature in Burbank, IL using Weather.com as that's the starting URL I have.\\n\\nFirst, let me examine the page structure to understand what's available.\\n\",\n      \"taskCompleted\": false,\n      \"pageUrl\": \"https://weather.com/weather/today/l/USIL0123:1:US\",\n      \"timestamp\": 1774656628500\n    }\n  ]\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_agent",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "6f92c6a7-45d6-4a0d-9db9-6902bc6a0d37",
+  "kind": "ObservationEvent"
+}

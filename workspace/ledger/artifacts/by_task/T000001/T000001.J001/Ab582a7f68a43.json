@@ -1,0 +1,32 @@
+{
+  "artifact_ref": {
+    "artifact_id": "Ab582a7f68a43",
+    "created_at": "2026-04-01T13:21:57Z",
+    "description": "Runtime plane wiring proof artifact",
+    "hash": "d016389d00ec8ec1d475f808cc34e23dcbeabfedbf28331c994af5e9197efd2b",
+    "kind": "text",
+    "reported_by": "jarvis",
+    "size_bytes": 34,
+    "workspace_ref": {
+      "path": "/workspace/shared/inbox/test_artifact.txt",
+      "role": "shared"
+    }
+  },
+  "promoted_path": "/workspace/ledger/artifacts/by_task/T000001/T000001.J001/text/Ab582a7f68a43__test_artifact.txt",
+  "record": {
+    "artifact_id": "Ab582a7f68a43",
+    "created_at": "2026-04-01T13:21:57Z",
+    "description": "Runtime plane wiring proof artifact",
+    "hash": "d016389d00ec8ec1d475f808cc34e23dcbeabfedbf28331c994af5e9197efd2b",
+    "job_id": "T000001.J001",
+    "kind": "text",
+    "promoted_path": "/workspace/ledger/artifacts/by_task/T000001/T000001.J001/text/Ab582a7f68a43__test_artifact.txt",
+    "reported_by": "jarvis",
+    "size_bytes": 34,
+    "task_id": "T000001",
+    "workspace_ref": {
+      "path": "/workspace/shared/inbox/test_artifact.txt",
+      "role": "shared"
+    }
+  }
+}

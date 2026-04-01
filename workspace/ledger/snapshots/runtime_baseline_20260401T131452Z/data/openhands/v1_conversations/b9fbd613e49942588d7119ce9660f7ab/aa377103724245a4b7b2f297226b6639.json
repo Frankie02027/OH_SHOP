@@ -1,0 +1,148 @@
+{
+  "id": "aa377103-7242-45a4-b7b2-f297226b6639",
+  "timestamp": "2026-03-30T06:09:09.650949",
+  "source": "environment",
+  "key": "full_state",
+  "value": {
+    "id": "b9fbd613-e499-4258-8d71-19ce9660f7ab",
+    "agent": {
+      "llm": {
+        "model": "openai/qwen3-coder-30b-a3b-instruct",
+        "api_key": "**********",
+        "base_url": "http://host.docker.internal:1234/v1",
+        "openrouter_site_url": "https://docs.all-hands.dev/",
+        "openrouter_app_name": "OpenHands",
+        "num_retries": 5,
+        "retry_multiplier": 8.0,
+        "retry_min_wait": 8,
+        "retry_max_wait": 64,
+        "timeout": 300,
+        "max_message_chars": 30000,
+        "temperature": 0.0,
+        "stream": false,
+        "drop_params": true,
+        "modify_params": true,
+        "disable_stop_word": false,
+        "caching_prompt": true,
+        "log_completions": false,
+        "log_completions_folder": "logs/completions",
+        "native_tool_calling": true,
+        "reasoning_effort": "high",
+        "enable_encrypted_reasoning": true,
+        "prompt_cache_retention": "24h",
+        "extended_thinking_budget": 200000,
+        "usage_id": "agent",
+        "litellm_extra_body": {}
+      },
+      "tools": [
+        {
+          "name": "terminal",
+          "params": {}
+        },
+        {
+          "name": "file_editor",
+          "params": {}
+        },
+        {
+          "name": "task_tracker",
+          "params": {}
+        },
+        {
+          "name": "browser_tool_set",
+          "params": {}
+        }
+      ],
+      "mcp_config": {
+        "mcpServers": {
+          "shttp_2a2230e8": {
+            "url": "http://host.docker.internal:3020/mcp",
+            "transport": "streamable-http",
+            "timeout": 60
+          }
+        }
+      },
+      "include_default_tools": [
+        "FinishTool",
+        "ThinkTool"
+      ],
+      "agent_context": {
+        "skills": [
+          {
+            "name": "work_hosts",
+            "content": "The user has access to the following hosts for accessing a web application, each of which has a corresponding port:\n* http://localhost:52813 (port 8011)\n* http://localhost:39717 (port 8012)",
+            "inputs": [],
+            "is_agentskills_format": false
+          }
+        ],
+        "system_message_suffix": "No repository is connected in this conversation. References to named public projects, repositories, packages, files, archives, release assets, documentation, or websites should be treated as external internet resources, not local workspace files. Preserve exact filenames, extensions, artifact names, version strings, and path clues from the user's request when choosing tools and writing tool arguments. If the user did not provide a URL, do not invent one; search first using the user's exact clue set, then browse the discovered result. For those requests, prefer MCP and browser tools before searching /workspace or the local filesystem.",
+        "load_user_skills": false,
+        "load_public_skills": false,
+        "secrets": {}
+      },
+      "system_prompt_filename": "system_prompt.j2",
+      "security_policy_filename": "security_policy.j2",
+      "system_prompt_kwargs": {
+        "cli_mode": false,
+        "llm_security_analyzer": true
+      },
+      "condenser": {
+        "llm": {
+          "model": "openai/qwen3-coder-30b-a3b-instruct",
+          "api_key": "**********",
+          "base_url": "http://host.docker.internal:1234/v1",
+          "openrouter_site_url": "https://docs.all-hands.dev/",
+          "openrouter_app_name": "OpenHands",
+          "num_retries": 5,
+          "retry_multiplier": 8.0,
+          "retry_min_wait": 8,
+          "retry_max_wait": 64,
+          "timeout": 300,
+          "max_message_chars": 30000,
+          "temperature": 0.0,
+          "stream": false,
+          "drop_params": true,
+          "modify_params": true,
+          "disable_stop_word": false,
+          "caching_prompt": true,
+          "log_completions": false,
+          "log_completions_folder": "logs/completions",
+          "native_tool_calling": true,
+          "reasoning_effort": "high",
+          "enable_encrypted_reasoning": true,
+          "prompt_cache_retention": "24h",
+          "extended_thinking_budget": 200000,
+          "usage_id": "condenser",
+          "litellm_extra_body": {}
+        },
+        "max_size": 240,
+        "keep_first": 2,
+        "hard_context_reset_max_retries": 5,
+        "hard_context_reset_context_scaling": 0.8,
+        "kind": "LLMSummarizingCondenser"
+      },
+      "kind": "Agent"
+    },
+    "workspace": {
+      "working_dir": "/workspace/project",
+      "kind": "LocalWorkspace"
+    },
+    "persistence_dir": "/workspace/conversations/b9fbd613e49942588d7119ce9660f7ab",
+    "max_iterations": 500,
+    "stuck_detection": true,
+    "execution_status": "idle",
+    "confirmation_policy": {
+      "kind": "NeverConfirm"
+    },
+    "activated_knowledge_skills": [],
+    "blocked_actions": {},
+    "blocked_messages": {},
+    "stats": {
+      "usage_to_metrics": {}
+    },
+    "secret_registry": {
+      "secret_sources": {}
+    },
+    "agent_state": {}
+  },
+  "kind": "ConversationStateUpdateEvent"
+}

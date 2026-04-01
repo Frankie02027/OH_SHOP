@@ -1,0 +1,26 @@
+{
+  "id": "0f38a5a7-be42-454c-8e74-8efb06d65596",
+  "timestamp": "2026-03-30T13:24:32.353135",
+  "source": "environment",
+  "tool_name": "browserbase_evaluate",
+  "tool_call_id": "toolu_10",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_evaluate' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "\"Example Domain\""
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_evaluate",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "810e546f-aa2c-4298-9fbf-00a83e3ea41d",
+  "kind": "ObservationEvent"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "9016c699-218e-4d3c-9037-cd7581e009c8",
+  "timestamp": "2026-03-30T12:44:31.794475",
+  "source": "environment",
+  "key": "execution_status",
+  "value": "stuck",
+  "kind": "ConversationStateUpdateEvent"
+}

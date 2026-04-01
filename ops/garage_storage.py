@@ -39,7 +39,7 @@ class GarageStorageAdapter:
         self.root.mkdir(parents=True, exist_ok=True)
         self.db_path = self.root / "garage_state.db"
         self.event_log_path = self.root / "event_history.jsonl"
-        self._conn = sqlite3.connect(self.db_path)
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._pending_counters: dict[str, int] = {}
         self._initialize_storage()

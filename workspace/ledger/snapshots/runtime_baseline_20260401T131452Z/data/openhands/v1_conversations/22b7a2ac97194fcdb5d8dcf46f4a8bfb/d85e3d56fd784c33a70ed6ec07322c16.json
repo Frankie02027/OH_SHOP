@@ -1,0 +1,34 @@
+{
+  "id": "d85e3d56-fd78-4c33-a70e-d6ec07322c16",
+  "timestamp": "2026-03-28T00:13:02.815389",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": "I'll use the Stagehand browser tools to visit example.com and retrieve the page title. Let me do this step by step.\n\n"
+    }
+  ],
+  "reasoning_content": "",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {
+      "url": "https://example.com"
+    },
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "892284005",
+  "tool_call": {
+    "id": "892284005",
+    "name": "browserbase_stagehand_navigate",
+    "arguments": "{\"url\":\"https://example.com\",\"security_risk\":\"LOW\",\"summary\":\"Navigate to example.com\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-p7ka3x8rjkbhfcpc8eo2nd",
+  "security_risk": "LOW",
+  "critic_result": null,
+  "summary": "Navigate to example.com",
+  "kind": "ActionEvent"
+}

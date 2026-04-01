@@ -1,0 +1,26 @@
+{
+  "id": "e32ea308-f9f9-47bb-ac7e-289fbc55204b",
+  "timestamp": "2026-03-29T17:44:51.155966",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "672810807",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_navigate' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Tab 0: Navigated to: https://example.com"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_stagehand_navigate",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "bf84989b-d07f-457e-8143-a1123afdb02c",
+  "kind": "ObservationEvent"
+}

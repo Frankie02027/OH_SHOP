@@ -1,0 +1,80 @@
+{
+  "captured_at": "20260401T131452Z",
+  "compose_config": {
+    "command": [
+      "docker",
+      "compose",
+      "-f",
+      "/home/dev/OH_SHOP/compose/docker-compose.yml",
+      "config"
+    ],
+    "ok": true,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "name: compose\nservices:\n  alfred:\n    build:\n      context: /home/dev/OH_SHOP\n      dockerfile: compose/alfred/Dockerfile\n    container_name: garage-alfred\n    depends_on:\n      ledger:\n        condition: service_healthy\n        required: true\n    environment:\n      GARAGE_WORKSPACE_ROOT: /workspace\n    healthcheck:\n      test:\n        - CMD\n        - python\n        - -c\n        - import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3031/healthz', timeout=3); raise SystemExit(0 if r.status == 200 else 1)\n      timeout: 5s\n      interval: 10s\n      retries: 5\n      start_period: 10s\n    image: oh-shop/alfred:0.1.0\n    networks:\n      garage-internal: null\n    ports:\n      - mode: ingress\n        host_ip: 127.0.0.1\n        target: 3031\n        published: \"3031\"\n        protocol: tcp\n    restart: unless-stopped\n    volumes:\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/services/alfred\n        target: /workspace/services/alfred\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/roles/alfred\n        target: /workspace/roles/alfred\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/ledger\n        target: /workspace/ledger\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/projects\n        target: /workspace/projects\n        read_only: true\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/jobs\n        target: /workspace/jobs\n        read_only: true\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/shared\n        target: /workspace/shared\n        bind: {}\n  chat-guard:\n    command:\n      - sh\n      - -lc\n      - python3 -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir docker >/dev/null && python3 -u /opt/oh_shop/ops/manual/chat_guard.py --db /.openhands/openhands.db --watch --interval 60 --openhands-url http://openhands:3000\n    container_name: openhands-chat-guard\n    depends_on:\n      openhands:\n        condition: service_started\n        required: true\n    image: python:3.11-alpine\n    networks:\n      garage-internal: null\n    restart: unless-stopped\n    volumes:\n      - type: bind\n        source: /home/dev/OH_SHOP/data/openhands\n        target: /.openhands\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/ops\n        target: /opt/oh_shop/ops\n        read_only: true\n        bind: {}\n      - type: bind\n        source: /var/run/docker.sock\n        target: /var/run/docker.sock\n        bind: {}\n  ledger:\n    build:\n      context: /home/dev/OH_SHOP\n      dockerfile: compose/ledger/Dockerfile\n    container_name: garage-ledger\n    environment:\n      GARAGE_WORKSPACE_ROOT: /workspace\n    healthcheck:\n      test:\n        - CMD\n        - python\n        - -c\n        - import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3032/healthz', timeout=3); raise SystemExit(0 if r.status == 200 else 1)\n      timeout: 5s\n      interval: 10s\n      retries: 5\n      start_period: 10s\n    image: oh-shop/ledger:0.1.0\n    networks:\n      garage-internal: null\n    ports:\n      - mode: ingress\n        host_ip: 127.0.0.1\n        target: 3032\n        published: \"3032\"\n        protocol: tcp\n    restart: unless-stopped\n    volumes:\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/ledger\n        target: /workspace/ledger\n        bind: {}\n  open-webui:\n    container_name: open-webui\n    environment:\n      ENABLE_OPENAI_API: \"true\"\n      OLLAMA_BASE_URLS: \"\"\n      OPENAI_API_BASE_URLS: http://host.docker.internal:1234/v1\n      OPENAI_API_KEYS: lm-studio\n    extra_hosts:\n      - host.docker.internal=host-gateway\n    image: ghcr.io/open-webui/open-webui:main@sha256:bb3f0281554bf05a9d505ffb5a5f067ab53e13ac772eb4ea3077a92ddc64600e\n    networks:\n      garage-internal: null\n    ports:\n      - mode: ingress\n        host_ip: 127.0.0.1\n        target: 8080\n        published: \"3001\"\n        protocol: tcp\n    restart: unless-stopped\n    volumes:\n      - type: volume\n        source: openwebui_data\n        target: /app/backend/data\n        volume: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/services/openwebui\n        target: /workspace/services/openwebui\n        bind: {}\n  openhands:\n    build:\n      context: /home/dev/OH_SHOP\n      dockerfile: compose/openhands_override/Dockerfile\n    command:\n      - uvicorn\n      - openhands.server.listen:app\n      - --host\n      - 0.0.0.0\n      - --port\n      - \"3000\"\n    container_name: openhands-app\n    environment:\n      AGENT_SERVER_IMAGE_REPOSITORY: oh-shop/agent-server\n      AGENT_SERVER_IMAGE_TAG: 1.11.4-runtime-patched\n      LOG_ALL_EVENTS: \"true\"\n      OH_PERSISTENCE_DIR: /.openhands\n      WORKSPACE_MOUNT_PATH: /opt/workspace_base\n    extra_hosts:\n      - host.docker.internal=host-gateway\n    healthcheck:\n      test:\n        - CMD\n        - python\n        - -c\n        - import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3000/', timeout=3); raise SystemExit(0 if r.status == 200 else 1)\n      timeout: 5s\n      interval: 10s\n      retries: 5\n      start_period: 20s\n    image: oh-shop/openhands:1.5.0-runtime-patched\n    networks:\n      garage-internal: null\n    ports:\n      - mode: ingress\n        host_ip: 127.0.0.1\n        target: 3000\n        published: \"3000\"\n        protocol: tcp\n      - mode: ingress\n        host_ip: 172.17.0.1\n        target: 3000\n        published: \"3000\"\n        protocol: tcp\n    restart: unless-stopped\n    stdin_open: true\n    tty: true\n    volumes:\n      - type: bind\n        source: /var/run/docker.sock\n        target: /var/run/docker.sock\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/data/openhands\n        target: /.openhands\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/services/openhands\n        target: /workspace/services/openhands\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/roles/jarvis\n        target: /workspace/roles/jarvis\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/projects\n        target: /opt/workspace_base/projects\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/jobs\n        target: /opt/workspace_base/jobs\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/shared\n        target: /opt/workspace_base/shared\n        bind: {}\n  stagehand-mcp:\n    build:\n      context: /home/dev/OH_SHOP/vendor/stagehand_mcp\n      dockerfile: Dockerfile\n    container_name: stagehand-mcp\n    environment:\n      BROWSER_HEIGHT: \"1080\"\n      BROWSER_WIDTH: \"1920\"\n      CHROME_PATH: /usr/bin/chromium\n      DEVTOOLS: \"false\"\n      EXPERIMENTAL: \"true\"\n      HEADLESS: \"true\"\n      MCP_HOST: 0.0.0.0\n      MCP_PORT: \"3020\"\n      STAGEHAND_LLM_API_KEY: lm-studio\n      STAGEHAND_LLM_BASE_URL: http://host.docker.internal:1234/v1\n      STAGEHAND_MODEL: \"\"\n    extra_hosts:\n      - host.docker.internal=host-gateway\n    healthcheck:\n      test:\n        - CMD\n        - node\n        - -e\n        - fetch('http://127.0.0.1:3020/healthz').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))\n      timeout: 5s\n      interval: 10s\n      retries: 5\n      start_period: 15s\n    image: oh-stagehand-mcp:0.3.0-runtime-patched\n    networks:\n      garage-internal: null\n    ports:\n      - mode: ingress\n        host_ip: 127.0.0.1\n        target: 3020\n        published: \"3020\"\n        protocol: tcp\n      - mode: ingress\n        host_ip: 172.17.0.1\n        target: 3020\n        published: \"3020\"\n        protocol: tcp\n    restart: unless-stopped\n    volumes:\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/services/stagehand\n        target: /workspace/services/stagehand\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/roles/robin\n        target: /workspace/roles/robin\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/shared/download_staging\n        target: /data/downloads\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/shared/evidence_staging\n        target: /workspace/shared/evidence_staging\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/shared/handoff_staging\n        target: /workspace/shared/handoff_staging\n        bind: {}\n  transfer:\n    build:\n      context: /home/dev/OH_SHOP\n      dockerfile: compose/transfer/Dockerfile\n    container_name: garage-transfer\n    environment:\n      GARAGE_WORKSPACE_ROOT: /workspace\n    healthcheck:\n      test:\n        - CMD\n        - python\n        - -c\n        - import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:3033/healthz', timeout=3); raise SystemExit(0 if r.status == 200 else 1)\n      timeout: 5s\n      interval: 10s\n      retries: 5\n      start_period: 10s\n    image: oh-shop/transfer:0.1.0\n    networks:\n      garage-internal: null\n    ports:\n      - mode: ingress\n        host_ip: 127.0.0.1\n        target: 3033\n        published: \"3033\"\n        protocol: tcp\n    restart: unless-stopped\n    volumes:\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/pobox\n        target: /workspace/pobox\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/ledger/imports\n        target: /workspace/ledger/imports\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/ledger/exports\n        target: /workspace/ledger/exports\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/projects\n        target: /workspace/projects\n        read_only: true\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/jobs\n        target: /workspace/jobs\n        read_only: true\n        bind: {}\n      - type: bind\n        source: /home/dev/OH_SHOP/workspace/shared\n        target: /workspace/shared\n        bind: {}\nnetworks:\n  garage-internal:\n    name: compose_garage-internal\n    driver: bridge\nvolumes:\n  openwebui_data:\n    name: compose_openwebui_data\n"
+  },
+  "docker_images": {
+    "command": [
+      "docker",
+      "images",
+      "--format",
+      "table {{.Repository}}\t{{.Tag}}\t{{.ID}}"
+    ],
+    "ok": true,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "REPOSITORY                       TAG                      IMAGE ID\noh-shop/openhands                1.5.0-runtime-patched    a586e063cfca\noh-stagehand-mcp                 0.3.0-runtime-patched    706c701fa38a\noh-stagehand-mcp                 latest                   5c93b303cc79\noh-shop/openhands                61470a1-python-patched   9f94728860b1\noh-shop/agent-server             1.11.4-runtime-patched   fadba54c88a2\noh-shop/agent-server             61470a1-python-patched   2d534aa94971\npython                           3.11-alpine              f07e2ace46f5\nghcr.io/open-webui/open-webui    main                     bb3f0281554b\nghcr.io/openhands/agent-server   61470a1-python           79535d97fd38\nalpine                           3.20                     a4f4213abb84\ncurlimages/curl                  8.8.0                    73e4d532ea62\n"
+  },
+  "docker_ps": {
+    "command": [
+      "docker",
+      "ps",
+      "--format",
+      "table {{.Names}}\t{{.Status}}\t{{.Image}}"
+    ],
+    "ok": true,
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "NAMES           STATUS                 IMAGE\nopenhands-app   Up 9 hours (healthy)   oh-shop/openhands:1.5.0-runtime-patched\nstagehand-mcp   Up 9 hours (healthy)   oh-stagehand-mcp:0.3.0-runtime-patched\nopen-webui      Up 9 hours (healthy)   ghcr.io/open-webui/open-webui:main\n"
+  },
+  "repo_root": "/home/dev/OH_SHOP",
+  "snapshot_root": "/home/dev/OH_SHOP/workspace/ledger/snapshots/runtime_baseline_20260401T131452Z",
+  "sources": [
+    {
+      "exists": true,
+      "kind": "file",
+      "path": "compose/docker-compose.yml",
+      "size_bytes": 8626
+    },
+    {
+      "exists": true,
+      "file_count": 3,
+      "kind": "directory",
+      "path": "compose/openhands_override"
+    },
+    {
+      "exists": true,
+      "file_count": 1,
+      "kind": "directory",
+      "path": "compose/agent_server_override"
+    },
+    {
+      "exists": true,
+      "file_count": 219,
+      "kind": "directory",
+      "path": "data/openhands"
+    },
+    {
+      "exists": true,
+      "kind": "file",
+      "path": "ops/garagectl.py",
+      "size_bytes": 67855
+    },
+    {
+      "exists": true,
+      "kind": "file",
+      "path": "workspace/README.md",
+      "size_bytes": 1686
+    }
+  ]
+}

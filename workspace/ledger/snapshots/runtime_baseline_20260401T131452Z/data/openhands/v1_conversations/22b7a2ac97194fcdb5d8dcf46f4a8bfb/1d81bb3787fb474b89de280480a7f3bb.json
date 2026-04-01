@@ -1,0 +1,27 @@
+{
+  "id": "1d81bb37-87fb-474b-89de-280480a7f3bb",
+  "timestamp": "2026-03-28T00:12:31.897709",
+  "source": "user",
+  "llm_message": {
+    "role": "user",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Use the Stagehand browser tools to open https://example.com and tell me the exact page title. Say explicitly that you used a browser tool."
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": null,
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": null,
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

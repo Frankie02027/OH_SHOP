@@ -1,0 +1,34 @@
+{
+  "id": "f3be63f5-eb76-493a-adcc-2f61806bbdad",
+  "timestamp": "2026-03-29T16:55:26.639897",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": "I've navigated to example.com using the browser tool. Now I'll get the page title.\n\n"
+    }
+  ],
+  "reasoning_content": "",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {
+      "instruction": "Find the page title element"
+    },
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_stagehand_observe",
+  "tool_call_id": "630396090",
+  "tool_call": {
+    "id": "630396090",
+    "name": "browserbase_stagehand_observe",
+    "arguments": "{\"instruction\":\"Find the page title element\",\"security_risk\":\"LOW\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-n3jws78jhpdtj5jq6uawar",
+  "security_risk": "LOW",
+  "critic_result": null,
+  "summary": "browserbase_stagehand_observe: {\"instruction\": \"Find the page title element\"}",
+  "kind": "ActionEvent"
+}

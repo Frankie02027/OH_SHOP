@@ -1,0 +1,34 @@
+{
+  "id": "848bad2e-dfc9-4140-8c1c-8ac33cd21da8",
+  "timestamp": "2026-03-30T13:24:13.235184",
+  "source": "agent",
+  "thought": [
+    {
+      "cache_prompt": false,
+      "type": "text",
+      "text": "I'll use the Stagehand browser tools to open https://example.com and get the page title."
+    }
+  ],
+  "reasoning_content": "The user wants me to use Stagehand browser tools to open https://example.com and get the page title, so I'll navigate to that URL first using the Stagehand navigation tool.\n",
+  "thinking_blocks": [],
+  "responses_reasoning_item": null,
+  "action": {
+    "data": {
+      "url": "https://example.com"
+    },
+    "kind": "MCPToolAction"
+  },
+  "tool_name": "browserbase_stagehand_navigate",
+  "tool_call_id": "toolu_01",
+  "tool_call": {
+    "id": "toolu_01",
+    "name": "browserbase_stagehand_navigate",
+    "arguments": "{\"url\": \"https://example.com\"}",
+    "origin": "completion"
+  },
+  "llm_response_id": "chatcmpl-m3uui33igad776ooe6f39",
+  "security_risk": "UNKNOWN",
+  "critic_result": null,
+  "summary": "browserbase_stagehand_navigate: {\"url\": \"https://example.com\"}",
+  "kind": "ActionEvent"
+}

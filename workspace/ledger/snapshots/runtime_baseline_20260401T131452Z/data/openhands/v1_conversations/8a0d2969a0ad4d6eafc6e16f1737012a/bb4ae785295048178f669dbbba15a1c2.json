@@ -1,0 +1,27 @@
+{
+  "id": "bb4ae785-2950-4817-8f66-9dbbba15a1c2",
+  "timestamp": "2026-03-30T12:57:54.718375",
+  "source": "agent",
+  "llm_message": {
+    "role": "assistant",
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": ""
+      }
+    ],
+    "tool_calls": null,
+    "tool_call_id": null,
+    "name": null,
+    "reasoning_content": "I see there are two browser tool sets available. The user asked me to use \"Stagehand browser tools\", so I should use `browserbase_stagehand_navigate`.\n\n<tool_call>\n<function=browserbase_stagehand_navigate>\n<parameter=security_risk>\nLOW\n</parameter>\n<parameter=summary>\nNavigate to example.com using Stagehand browser tool\n</parameter>\n<parameter=url>\nhttps://example.com\n</parameter>\n</function>\n</tool_call>",
+    "thinking_blocks": [],
+    "responses_reasoning_item": null
+  },
+  "llm_response_id": "chatcmpl-vr68pfb4htjm7mdx0tek9l",
+  "activated_skills": [],
+  "extended_content": [],
+  "sender": null,
+  "critic_result": null,
+  "kind": "MessageEvent"
+}

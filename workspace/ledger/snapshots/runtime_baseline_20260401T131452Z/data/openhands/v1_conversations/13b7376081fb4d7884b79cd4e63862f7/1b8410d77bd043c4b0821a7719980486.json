@@ -1,0 +1,26 @@
+{
+  "id": "1b8410d7-7bd0-43c4-b082-1a7719980486",
+  "timestamp": "2026-03-28T00:08:07.713659",
+  "source": "environment",
+  "tool_name": "browserbase_session_create",
+  "tool_call_id": "256049285",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_session_create' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "{\n  \"success\": true,\n  \"message\": \"New browser session created\",\n  \"config\": {\n    \"viewport\": \"1920x1080\",\n    \"headless\": true,\n    \"experimental\": true\n  },\n  \"tabs\": 1\n}"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_session_create",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "71c8b98d-0251-475a-9a29-d75cdf73a395",
+  "kind": "ObservationEvent"
+}

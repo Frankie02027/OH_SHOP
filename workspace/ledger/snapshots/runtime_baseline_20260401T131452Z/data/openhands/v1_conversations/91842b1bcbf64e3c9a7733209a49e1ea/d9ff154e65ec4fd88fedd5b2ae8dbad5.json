@@ -1,0 +1,26 @@
+{
+  "id": "d9ff154e-65ec-4fd8-8fed-d5b2ae8dbad5",
+  "timestamp": "2026-03-29T18:13:55.953197",
+  "source": "environment",
+  "tool_name": "browserbase_get_html",
+  "tool_call_id": "866142951",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_get_html' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "<html lang=\"en\"><head><title>Example Domain</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}</style></head><body><div><h1>Example Domain</h1><p>This domain is for use in documentation examples without needing permission. Avoid use in operations.</p><p><a href=\"https://iana.org/domains/example\">Learn more</a></p></div>\n</body></html>"
+      }
+    ],
+    "is_error": false,
+    "tool_name": "browserbase_get_html",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "b2f003d6-cebb-4966-843e-437b36c360cd",
+  "kind": "ObservationEvent"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "9d4de7d5-924a-4626-a8dc-fd449fcc07ec",
+  "timestamp": "2026-03-30T13:24:27.041103",
+  "source": "environment",
+  "tool_name": "browserbase_stagehand_observe",
+  "tool_call_id": "toolu_06",
+  "observation": {
+    "content": [
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "[Tool 'browserbase_stagehand_observe' executed.]"
+      },
+      {
+        "cache_prompt": false,
+        "type": "text",
+        "text": "Failed to observe: No object generated: the model did not return a response."
+      }
+    ],
+    "is_error": true,
+    "tool_name": "browserbase_stagehand_observe",
+    "kind": "MCPToolObservation"
+  },
+  "action_id": "0cf53a49-eef4-4705-a9b4-ddf782c8bff6",
+  "kind": "ObservationEvent"
+}
