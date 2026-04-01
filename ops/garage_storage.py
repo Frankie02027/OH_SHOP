@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ops.garage_boundaries import GarageBoundaryError, validate_inbound_garage_call
 from ops.garage_alfred import (
@@ -1214,6 +1214,7 @@ class GarageStorageAdapter:
         dominant_target_kind = task_policy.get("dominant_target_kind")
         dominant_target = task_policy.get("dominant_target")
         best_next_move = task_policy.get("best_next_move")
+        best_next_move_dict = best_next_move if isinstance(best_next_move, dict) else {}
         current_job_id = task_record.get("current_job_id")
         current_job_state = task_record.get("task_state")
         follow_up_kind = (
@@ -1227,7 +1228,7 @@ class GarageStorageAdapter:
             else None
         )
         recommended_call_type = (
-            best_next_move.get("call_type") if isinstance(best_next_move, dict) else None
+            best_next_move_dict.get("call_type") if best_next_move_dict else None
         )
         target_item_id = None
         if isinstance(dominant_target, dict):
@@ -1250,21 +1251,21 @@ class GarageStorageAdapter:
             hint_kind = "executable-now"
             execution_ready = True
             unavailable_in_slice = False
-            hint_reason = best_next_move.get("reason") or hint_reason
+            hint_reason = best_next_move_dict.get("reason") or hint_reason
         elif follow_up_kind == "progress-child-leg-next":
             if recommended_call_type == "job.start" and isinstance(current_job_id, str):
                 hint_kind = "executable-now"
                 execution_ready = True
                 unavailable_in_slice = False
-                hint_reason = best_next_move.get("reason") or hint_reason
+                hint_reason = best_next_move_dict.get("reason") or hint_reason
             else:
                 hint_kind = "unavailable-in-slice"
-                hint_reason = best_next_move.get("reason") or hint_reason
+                hint_reason = best_next_move_dict.get("reason") or hint_reason
         elif follow_up_kind == "gather-proof-next" and isinstance(recommended_call_type, str):
             hint_kind = "caller-input-still-required"
             requires_additional_user_or_agent_input = True
             unavailable_in_slice = False
-            hint_reason = best_next_move.get("reason") or hint_reason
+            hint_reason = best_next_move_dict.get("reason") or hint_reason
         elif follow_up_kind in {
             "capture-review-context-next",
             "capture-blocked-evidence-next",
@@ -1273,10 +1274,10 @@ class GarageStorageAdapter:
             requires_additional_user_or_agent_input = True
             context_only = True
             unavailable_in_slice = False
-            hint_reason = best_next_move.get("reason") or hint_reason
+            hint_reason = best_next_move_dict.get("reason") or hint_reason
         elif follow_up_kind == "resume-active-leg-next":
             hint_kind = "unavailable-in-slice"
-            hint_reason = best_next_move.get("reason") or hint_reason
+            hint_reason = best_next_move_dict.get("reason") or hint_reason
 
         return {
             "hint_kind": hint_kind,
@@ -2170,6 +2171,13 @@ class GarageStorageAdapter:
             return None
 
         current_job_id = task_record.get("current_job_id")
+        dominant_item = (
+            current_active_plan_item
+            if isinstance(current_active_plan_item, dict)
+            else relevant_plan_item
+            if isinstance(relevant_plan_item, dict)
+            else None
+        )
         next_executable_item = (
             active_plan_summary.get("next_executable_item_summary")
             if isinstance(active_plan_summary, dict)
@@ -2237,11 +2245,7 @@ class GarageStorageAdapter:
                 "kind": "waiting-on-child",
                 "reason": "child_job_in_flight",
                 "job_id": current_job_id,
-                "item_id": (
-                    (current_active_plan_item or relevant_plan_item).get("item_id")
-                    if isinstance(current_active_plan_item or relevant_plan_item, dict)
-                    else None
-                ),
+                "item_id": dominant_item.get("item_id") if dominant_item else None,
             }
         elif isinstance(current_active_plan_item, dict) and current_active_plan_item.get("is_active"):
             dominant_target_kind = "active-item"
@@ -2449,6 +2453,7 @@ class GarageStorageAdapter:
             if isinstance(relevant_plan_item.get("unmet_requirement_detail"), dict)
             else {}
         )
+        unmet_detail_dict = unmet_detail if isinstance(unmet_detail, dict) else {}
         finality_kind = relevant_plan_item.get("rule_finality_kind")
 
         if dominant_target_kind == "proof-gathering":
@@ -2461,8 +2466,8 @@ class GarageStorageAdapter:
                     "blocked_reason": "missing_artifact_ref",
                 }
             if unmet_kind == "missing_required_artifact_kind":
-                required_kind = unmet_detail.get("required_kind")
-                observed_kinds = tuple(unmet_detail.get("observed_artifact_kinds", ()))
+                required_kind = unmet_detail_dict.get("required_kind")
+                observed_kinds = tuple(unmet_detail_dict.get("observed_artifact_kinds", ()))
                 return {
                     "move_kind": "attach-required-artifact-kind",
                     "call_type": "continuation.record",
@@ -2494,8 +2499,8 @@ class GarageStorageAdapter:
                     "blocked_reason": "missing_summary_evidence",
                 }
             if unmet_kind == "insufficient_evidence_bundle":
-                required_count = unmet_detail.get("required_minimum_count")
-                current_count = unmet_detail.get("current_evidence_count")
+                required_count = unmet_detail_dict.get("required_minimum_count")
+                current_count = unmet_detail_dict.get("current_evidence_count")
                 return {
                     "move_kind": "complete-evidence-bundle",
                     "call_type": "continuation.record",
@@ -3053,7 +3058,11 @@ class GarageStorageAdapter:
             for ref in artifact_refs
             if isinstance(ref.get("kind"), str)
         )
-        params = verification_rule.get("params") if isinstance(verification_rule.get("params"), dict) else {}
+        params: dict[str, Any] = (
+            verification_rule.get("params")
+            if isinstance(verification_rule.get("params"), dict)
+            else {}
+        )
 
         if rule_type not in MECHANICAL_PROOF_RULE_TYPES:
             reason = "unsupported_verification_rule"
@@ -3542,7 +3551,7 @@ class GarageStorageAdapter:
         )
         self._conn.commit()
 
-    def _reserve_pending_counter(self, scope: str, seed_func: callable) -> int:
+    def _reserve_pending_counter(self, scope: str, seed_func: Callable[[], int]) -> int:
         if scope in self._pending_counters:
             current_value = self._pending_counters[scope]
         else:
@@ -3550,7 +3559,7 @@ class GarageStorageAdapter:
         self._pending_counters[scope] = current_value + 1
         return current_value
 
-    def _current_counter_value(self, scope: str, seed_func: callable) -> int:
+    def _current_counter_value(self, scope: str, seed_func: Callable[[], int]) -> int:
         current_row = self._conn.execute(
             "SELECT next_value FROM id_counters WHERE scope = ?",
             (scope,),
