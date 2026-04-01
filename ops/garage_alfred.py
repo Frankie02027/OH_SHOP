@@ -966,6 +966,40 @@ class GarageAlfredProcessor:
             },
         )
 
+    def follow_or_continue_current_honest_path(
+        self,
+        task_id: str,
+        *,
+        top_level_final_receipt: dict[str, Any] | None = None,
+        supplied_fields: dict[str, Any] | None = None,
+        expected: dict[str, Any] | None = None,
+        allowed_rebased: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        uses_top_level_final_receipt = top_level_final_receipt is not None
+        if uses_top_level_final_receipt:
+            route_top_level_helper_name = "continue_from_top_level_final_receipt"
+            route_result = self.continue_from_top_level_final_receipt(
+                task_id,
+                top_level_final_receipt=top_level_final_receipt,
+                supplied_fields=supplied_fields,
+                allowed_rebased=allowed_rebased,
+            )
+        else:
+            route_top_level_helper_name = "follow_current_honest_path"
+            route_result = self.follow_current_honest_path(
+                task_id,
+                supplied_fields=supplied_fields,
+                expected=expected,
+                allowed_rebased=allowed_rebased,
+            )
+        return self._attach_follow_or_continue_current_honest_path_receipt(
+            route_top_level_helper_name=route_top_level_helper_name,
+            uses_top_level_final_receipt=uses_top_level_final_receipt,
+            uses_guards=(not uses_top_level_final_receipt and expected is not None),
+            uses_rebase_policy=(allowed_rebased is not None),
+            route_result=route_result,
+        )
+
     @staticmethod
     def _evaluate_top_level_final_receipt_for_continuation(
         *,
@@ -1750,6 +1784,159 @@ class GarageAlfredProcessor:
             ),
         }
 
+    def _attach_follow_or_continue_current_honest_path_receipt(
+        self,
+        *,
+        route_top_level_helper_name: str,
+        uses_top_level_final_receipt: bool,
+        uses_guards: bool,
+        uses_rebase_policy: bool,
+        route_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        result = {
+            "route_top_level_helper_name": route_top_level_helper_name,
+            "used_top_level_final_receipt": uses_top_level_final_receipt,
+            "used_guards": uses_guards,
+            "used_rebase_policy": uses_rebase_policy,
+            "route_result": dict(route_result),
+        }
+        result["universal_final_receipt"] = (
+            self._build_follow_or_continue_current_honest_path_receipt(
+                route_top_level_helper_name=route_top_level_helper_name,
+                uses_top_level_final_receipt=uses_top_level_final_receipt,
+                uses_guards=uses_guards,
+                uses_rebase_policy=uses_rebase_policy,
+                route_result=route_result,
+            )
+        )
+        return result
+
+    def _build_follow_or_continue_current_honest_path_receipt(
+        self,
+        *,
+        route_top_level_helper_name: str,
+        uses_top_level_final_receipt: bool,
+        uses_guards: bool,
+        uses_rebase_policy: bool,
+        route_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        route_receipt = self._resolve_follow_or_continue_current_honest_path_receipt_source(
+            route_result
+        )
+        attempted_submission_mode = self._pick_first_present(
+            route_receipt,
+            route_result,
+            key="attempted_submission_mode",
+        )
+        missing_required_fields = tuple(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="missing_required_fields",
+            )
+            or ()
+        )
+        attempt_allowed = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="attempt_allowed",
+            )
+        )
+        productive_in_slice = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="productive_in_slice",
+            )
+        ) or attempted_submission_mode == "productive_in_slice"
+        context_capture_only = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="context_capture_only",
+            )
+        ) or attempted_submission_mode == "context_capture"
+        unavailable_in_slice = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="unavailable_in_slice",
+            )
+        )
+        stale_or_mismatch_refused = bool(
+            self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="stale_or_mismatch_refused",
+            )
+        )
+        return {
+            "universal_path_kind": self._classify_follow_or_continue_current_honest_path_kind(
+                route_top_level_helper_name=route_top_level_helper_name,
+                route_receipt=route_receipt,
+                route_result=route_result,
+            ),
+            "used_top_level_final_receipt": uses_top_level_final_receipt,
+            "used_guards": uses_guards,
+            "used_rebase_policy": uses_rebase_policy,
+            "route_top_level_helper_name": route_top_level_helper_name,
+            "attempt_allowed": attempt_allowed,
+            "attempted_call_type": self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="attempted_call_type",
+            ),
+            "attempted_submission_mode": attempted_submission_mode,
+            "productive_in_slice": productive_in_slice,
+            "context_capture_only": context_capture_only,
+            "missing_required_fields": missing_required_fields,
+            "requires_additional_user_or_agent_input": bool(
+                self._pick_first_present(
+                    route_receipt,
+                    route_result,
+                    key="requires_additional_user_or_agent_input",
+                )
+            ),
+            "unavailable_in_slice": unavailable_in_slice,
+            "stale_or_mismatch_refused": stale_or_mismatch_refused,
+            "dominant_target_kind_now": self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="dominant_target_kind_now",
+            ),
+            "dominant_blocker_kind_now": self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="dominant_blocker_kind_now",
+            ),
+            "best_next_move_now": self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="best_next_move_now",
+            ),
+            "execution_allowed_now": self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="execution_allowed_now",
+            ),
+            "execution_hold_kind_now": self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="execution_hold_kind_now",
+            ),
+            "current_job_is_primary_focus_now": self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="current_job_is_primary_focus_now",
+            ),
+            "relevant_plan_item_is_primary_focus_now": self._pick_first_present(
+                route_receipt,
+                route_result,
+                key="relevant_plan_item_is_primary_focus_now",
+            ),
+        }
+
     def _attach_follow_current_honest_path_receipt(
         self,
         *,
@@ -2086,6 +2273,18 @@ class GarageAlfredProcessor:
             if "allowed_to_submit" in route_receipt:
                 return bool(route_receipt.get("allowed_to_submit"))
         return False
+
+    @staticmethod
+    def _resolve_follow_or_continue_current_honest_path_receipt_source(
+        route_result: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        top_level_continuation_receipt = route_result.get("top_level_continuation_receipt")
+        if isinstance(top_level_continuation_receipt, dict):
+            return top_level_continuation_receipt
+        top_level_final_receipt = route_result.get("top_level_final_receipt")
+        if isinstance(top_level_final_receipt, dict):
+            return top_level_final_receipt
+        return None
 
     @staticmethod
     def _classify_top_level_final_path_kind(
@@ -2870,6 +3069,48 @@ class GarageAlfredProcessor:
             continuation_kind,
             "top_level_receipt_stale_refused",
         )
+
+    @staticmethod
+    def _classify_follow_or_continue_current_honest_path_kind(
+        *,
+        route_top_level_helper_name: str,
+        route_receipt: dict[str, Any] | None,
+        route_result: dict[str, Any],
+    ) -> str:
+        attempted_submission_mode = None
+        attempt_allowed = False
+        missing_required_fields: tuple[Any, ...] = ()
+        unavailable_in_slice = False
+        stale_or_mismatch_refused = False
+        if isinstance(route_receipt, dict):
+            attempted_submission_mode = route_receipt.get("attempted_submission_mode")
+            attempt_allowed = bool(route_receipt.get("attempt_allowed"))
+            missing_required_fields = tuple(route_receipt.get("missing_required_fields") or ())
+            unavailable_in_slice = bool(route_receipt.get("unavailable_in_slice"))
+            stale_or_mismatch_refused = bool(route_receipt.get("stale_or_mismatch_refused"))
+        if not isinstance(route_receipt, dict):
+            attempted_submission_mode = route_result.get("attempted_submission_mode")
+            attempt_allowed = bool(route_result.get("attempt_allowed"))
+            missing_required_fields = tuple(route_result.get("missing_required_fields") or ())
+            unavailable_in_slice = bool(route_result.get("unavailable_in_slice"))
+            stale_or_mismatch_refused = bool(route_result.get("stale_or_mismatch_refused"))
+
+        prefix = (
+            "continue"
+            if route_top_level_helper_name == "continue_from_top_level_final_receipt"
+            else "follow"
+        )
+        if attempt_allowed:
+            if attempted_submission_mode == "context_capture":
+                return f"{prefix}_context_capture"
+            return f"{prefix}_productive_execution"
+        if missing_required_fields:
+            return f"{prefix}_missing_input_refused"
+        if stale_or_mismatch_refused:
+            return f"{prefix}_stale_or_mismatch_refused"
+        if unavailable_in_slice:
+            return f"{prefix}_unavailable_refused"
+        return f"{prefix}_unavailable_refused"
 
     @staticmethod
     def _classify_guarded_rebase_final_attempt_path(result: dict[str, Any]) -> str:
